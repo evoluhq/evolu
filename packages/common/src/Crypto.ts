@@ -451,7 +451,8 @@ export const createXChaCha20Poly1305 = (): XChaCha20Poly1305 => ({
  * Returns the PADMÉ padded length for a given input length.
  *
  * PADMÉ limits information leakage about the length of the plain-text for a
- * wide range of encrypted data sizes.
+ * wide range of encrypted data sizes. The padded length is at most 12% larger
+ * than the input length.
  *
  * See the PURBs paper for details: https://bford.info/pub/sec/purb.pdf
  *

@@ -1,20 +1,19 @@
 export const metadata = {
   title: "Privacy",
-  description: "Understand how Evolu protects your data and ensures privacy.",
+  description: "What Evolu encrypts and what relays and others can still see.",
 };
 
 # Privacy
 
-Privacy is fundamental to local-first software, and Evolu takes it seriously. Unlike traditional client-server applications where data lives on someone else's servers, Evolu ensures that data remains under the user's complete control while providing the synchronization and backup benefits needed.
+Evolu encrypts the data an app syncs and the databases it stores on the device. Relays store and forward changes they can't read, but they see some metadata, such as when changes were made. This page describes what Evolu protects and what stays visible.
 
-## End-to-end encryption by default
+## End-to-end encryption
 
-All data Evolu syncs is encrypted end-to-end. This means:
+Evolu encrypts and authenticates every change before it leaves the device, with keys derived from the owner's secret, which users see as a mnemonic. Relays never get those keys, so data taken from a relay or intercepted in transit can't be read or forged. Whoever has the mnemonic can read and change all of the owner's data, so show it only to its user.
 
-- Data is always encrypted when it leaves the device
-- The Evolu Relay receives only encrypted data and the metadata it needs to sync it
-- Only devices with the correct encryption keys can decrypt the data
-- Data intercepted in transit or taken from a relay can't be decrypted, though the relay sees the [metadata listed below](#relay-blindness-by-design), and anyone who knows the OwnerId and can connect to that relay sees the owner's timestamps, NodeIds, and approximate change sizes
+No option marks data public or turns off encryption, of synced changes or of databases on the device, though the key of the database that keeps the AppOwners' secrets can be public, as [Encryption on the device](#encryption-on-the-device) describes.
+
+Evolu sends data only to the relays the app sets. An app that omits `transports` syncs through `free.evoluhq.com`, a [testing relay](/docs/relay#hosting-evolu-relay) that admits anyone, so set your own relays before release.
 
 ## Encryption on the device
 
@@ -35,106 +34,47 @@ Exports leave encryption: `exportDatabase` returns the database as a plain SQLit
 
 A database kept in memory stores nothing on the device and is gone when its instance ends. Its changes still sync, so an instance of the same owner that stores its database on the device, now or later, keeps them. [Will my data stay on the device?](/docs/faq#will-my-data-stay-on-the-device) says when Evolu keeps a database in memory.
 
-## API design prevents data leaks
-
-Evolu's API is designed to prevent developers from accidentally leaking sensitive data:
-
-- **No public data options**: There is no API to mark data as "public" or "unencrypted"
-- **Can't be disabled**: No option turns off end-to-end encryption or the encryption of the databases on the device, though a device database with a public key, as [Encryption on the device](#encryption-on-the-device) describes, protects nothing from whoever can read the app's storage
-- **Explicit plaintext export**: `exportDatabase` returns the whole local database as a plain, unencrypted SQLite file, so users can open their data in any SQLite tool. SQL's `VACUUM INTO` also writes an unencrypted file, on every platform. Apps should treat such files as sensitive
-
-## Traffic analysis protection
-
-Evolu pads every change with [PADMÉ](https://lbarman.ch/blog/padme/) before encrypting it, so a relay sees only its approximate size, rounded up by at most 12%. Timestamps and NodeIds still reveal activity, as described below.
-
-## Relay blindness by design
-
-The Evolu Relay can't decrypt user data. What the relay sees:
-
-- **OwnerId**: A unique identifier for the data owner. Every relay the owner uses and everyone the owner shares data with know it; keep it from anyone else. A relay that admits anyone who knows an OwnerId lets them download the owner's encrypted changes and subscribe to new ones, which reveals the metadata listed here, and [register their own write key](#write-keys) by writing there before the owner's devices do. The OwnerId doesn't tell the relay who the owner is, unless the relay identifies its users itself, for example for billing
-- **Timestamps**: When changes occurred (for synchronization ordering)
-- **NodeId**: Every timestamp includes a random ID of the session that wrote the change. Evolu picks a new one when an app starts using its database and keeps it until shortly after the app stops. On the web, a stored database's session spans every open tab using it, so it can last days; a memory database's session belongs to one instance. Within a session, it's the same for every owner the database writes changes for, so a relay can link those owners, even across IP addresses. Across sessions it changes, so a relay can't use it to count an owner's devices or follow one device over time, though connections, IP addresses, and changes made offline that upload in the next session can still link sessions. Changes stored before NodeIds became per session keep the NodeId of the database that wrote them
-- **Encrypted binary blobs**: The actual data, encrypted and padded, so only its approximate size shows
-- **Write key**: A token that authorizes writes for an owner, [described below](#write-keys)
-- **IP addresses**: Network addresses of connecting clients (standard for any network service unless using Tor or similar privacy networks). Owners synced over one connection are linked to each other. By default, all owners an app syncs share one connection per relay. On the web, each memory instance opens its own
-
-The relay functions purely as a message buffer for synchronization and backup—it stores and forwards encrypted messages without any ability to decrypt them.
-
-The relay stores all of the above except IP addresses in a plain SQLite file. The changes are already encrypted end-to-end, and the relay needs the rest to sync.
-
-A relay sees this metadata and holds the write keys of every owner it serves. Ideally, users sync through private relays, run by themselves or hosted for them, that admit only their own devices and the people they share data with. Evolu doesn't provide that access control: a relay's `isOwnerAllowed` sees only the OwnerId a connection names, which anyone who knows it can name too. It has to come from how the relay is deployed, such as a home network, a VPN, or the host's own authentication. A relay that several customers share admits all of them, so each customer's OwnerIds must stay secret from the others. Apps that omit `transports` sync through `free.evoluhq.com`, a [testing relay](/docs/relay#hosting-evolu-relay) that admits anyone, so set your own relays before release.
-
-## Write keys
-
-A write key authorizes writes for an owner. Clients send it with every write and while syncing, so every relay an owner syncs with has it, and it's the same on all of them. Collaborators of a shared owner have it too. A relay can't be trusted not to keep it, so Evolu doesn't treat it as a secret from relays, and relays store it unhashed: hashing would hide it only from someone who later gets a relay's database, not from the relay itself.
-
-A write key doesn't let a relay operator, or someone who got a relay's database, read or forge the owner's changes, because each change is encrypted and authenticated with the owner's encryption key, which relays never receive. Collaborators of a shared owner and readers of a shared read-only owner have that key too, so they can read the owner's data and create changes that devices accept. Only the write key keeps readers from storing those changes on the owner's relays. But whoever has the write key and can connect to a relay the owner uses can store data for the owner there, and that data can disrupt sync:
-
-- It counts toward the owner's quota on a relay that has one, so the relay can refuse the owner's own changes.
-- A relay keeps the first change it receives for a timestamp, so data stored under the timestamp of a change that hasn't reached that relay yet takes the change's place. Devices that sync through that relay get data they can't decrypt or verify instead, which sync state reports.
-- It can include timestamps whose [fingerprints](/docs/api-reference/common/local-first/Storage/type-aliases/Fingerprint) combine to equal a change's. Sync through that relay then skips that change, and nothing reports it.
-
-Devices that sync only through such a relay miss those changes. Syncing through several relays doesn't prevent this if they admit anyone who knows the OwnerId, because whoever has the write key, including any one of those relays, can then store such data on all of them. Private relays keep everyone else out, but not a relay's operator, who can store such data on their own relay, or collaborators, who can store it on every relay that admits them.
-
-A relay keeps the write key of the first write it accepts for an owner, and only its operator can remove it, so a write key can't be rotated yet, and a leaked one can't be revoked. To remove a collaborator, who also holds the owner's encryption key, move the data to a new owner shared only with the remaining collaborators and stop syncing the old one. The removed collaborator keeps what they already synced. Whoever knows an OwnerId and can write to a relay before the owner's devices do can register their own key there and store data for the owner, and the relay then rejects the owner's key until its operator deletes everything it stores for that OwnerId with `deleteOwner` of the relay that `createRelay` returns. A squatter that still writes for the owner can then register its key again with its next write the relay accepts. That includes a reader of a shared read-only owner on a private relay that admits them, and because a reader holds the owner's encryption key, the changes it stores there are valid: devices that sync through that relay accept them as the owner's and pass them on to the owner's other relays.
-
-Because every relay an owner syncs with has its write key, the write key alone won't authorize an owner to delete its data from relays, which Evolu doesn't implement yet.
-
-## Timestamp metadata
-
-Relays, collaborators, and anyone else who knows an OwnerId and can connect to one of the owner's relays can see timestamps (user activity). A timestamp records when a change was made, even offline, and the Evolu Relay keeps it.
-
-### Why timestamps are visible
-
-Relays reconcile changes by their timestamps, so Evolu sends them unencrypted. Real‑time communication inherently reveals that “something happened” (bytes were transferred), so an observer could record packet timing anyway. Stored timestamps add when offline changes were made and the history of past activity.
-
-### Mitigating activity leakage
-
-If maximum privacy is required (e.g., hiding interaction cadence), an application can implement a local write queue:
-
-1. Write changes immediately to a local‑only table
-2. Periodically and randomly flush messages to sync tables
-
-The trade-off is that collaboration is no longer real-time.
-
 ## Post-quantum resistance
 
-In a "harvest now, decrypt later" attack, an adversary collects encrypted data today and waits for a quantum computer to decrypt it. Encrypted data can be collected by a relay operator, by anyone who breaches a relay, by anyone who knows an OwnerId and can connect to one of the owner's relays, or by anyone recording network traffic. Evolu is designed so that such data stays encrypted.
+In a "harvest now, decrypt later" attack, an adversary collects encrypted data today and waits for a quantum computer to decrypt it. Evolu is designed so that the changes in such data stay encrypted, as long as the owner secret has enough entropy.
 
 ### Why symmetric encryption
 
-A large quantum computer running Shor's algorithm could break public-key cryptography such as RSA and elliptic curves. Evolu sync doesn't rely on it. Changes are encrypted with XChaCha20-Poly1305 under a 256-bit symmetric key, and the Evolu Relay never sees or stores public keys.
+A large quantum computer could break public-key cryptography, such as RSA and elliptic curves. Evolu doesn't use it to encrypt changes: they're encrypted with a 256-bit symmetric key, which keeps about 128 bits of security against a quantum computer.
 
-The best known quantum attack on symmetric cryptography is Grover's algorithm, which searches N possibilities in about √N steps. That halves the bits of security, so a 256-bit key keeps about 128 bits.
-
-### Where the keys come from
-
-Each owner's keys are derived from its owner secret with SLIP-21 (HMAC-SHA512):
-
-- **OwnerId**: the identifier relays use to find the owner's data
-- **Encryption key**: the 256-bit key that encrypts the owner's changes
-- **Write key**: a token relays check before accepting changes; it controls who can write, not who can read
+Relay connections use TLS, which relies on public-key cryptography. Whoever records that traffic today and breaks TLS later can learn the metadata [relays see](#what-relays-see), but not the data.
 
 ### How much entropy is enough
 
-Since every key is derived from the owner secret, an owner's keys are only as strong as that secret: anyone who knows the OwnerId can test guesses offline against it.
-
-`createOwnerSecret` generates 32 random bytes, shown to users as a 24-word mnemonic. Against a quantum computer, that leaves about 128 bits of security, which matches NIST's highest post-quantum category (at least as hard as breaking AES-256). NIST still accepts its lowest category (AES-128) because Grover's algorithm parallelizes poorly, but Evolu targets the highest because local-first data may need to stay private for decades.
+All of an owner's keys derive from its owner secret, so they're only as strong as that secret: anyone who knows the OwnerId can test guesses offline. `createOwnerSecret` generates 32 random bytes, which apps show users as a 24-word mnemonic. Against a quantum computer, that leaves about 128 bits of security, NIST's highest post-quantum category, which Evolu targets because local-first data may need to stay private for decades.
 
 | Owner secret | Mnemonic | Classical security | Quantum security |
 | ------------ | -------- | ------------------ | ---------------- |
 | 32 bytes     | 24 words | 256 bits           | about 128 bits   |
 | 16 bytes     | 12 words | 128 bits           | about 64 bits    |
 
-Evolu also accepts owner secrets of 16, 20, 24, or 28 bytes (12, 15, 18, or 21 words), for example for owners created by other apps. A 16-byte secret still gives 128 bits of security against classical computers, which is far beyond any classical attack, but leaves less margin against a future quantum computer. That can be the right trade-off: a 12-word BIP-39 or 20-word SLIP-39 backup is easier for users to write down and check, and not every app's data needs to stay private for decades. A mobile wallet meant for small amounts is an example. Its Bitcoin keys rely on elliptic curves that a quantum computer could break anyway, so a longer backup phrase would cost usability without removing that risk.
+Evolu also accepts shorter secrets, such as 12-word mnemonics from other apps. They still resist any classical attack but leave less margin against a quantum computer, which can be the right trade-off when a shorter backup matters more than decades of privacy.
 
-Length alone is not entropy. A secret derived from a smaller root is no stronger than the root, because derivation can't add randomness. For example, a 32-byte owner secret derived from a 20-word SLIP-39 share, which holds 16 bytes, has only 128 bits of entropy.
+Length alone isn't entropy: a secret derived from a smaller root is no stronger than the root. When data must stay private long term, create owner secrets with `createOwnerSecret`, or derive them from a root of at least 256 bits, such as a 24-word BIP-39 mnemonic or a 33-word SLIP-39 share.
 
-When data must stay private long term:
+## What relays see
 
-- Create owner secrets with `createOwnerSecret`, or restore them from the 24-word mnemonic Evolu shows.
-- If you derive owners from your own root secret, give that root at least 256 bits of entropy, such as a 24-word BIP-39 mnemonic or a 33-word SLIP-39 share.
+A relay can't read changes, but it sees what it needs to sync them:
 
-### Collaboration
+- **OwnerId**: The identifier under which relays store the owner's data. It doesn't tell a relay who the owner is, unless the relay identifies its users itself, for example for billing.
+- **Timestamps**: When each change was made, which relays need to sync.
+- **NodeId**: Every timestamp includes a random ID of the session that wrote the change. A session lasts while the app uses its database, on the web across its open tabs, so it can last days. Within a session, the NodeId is the same for every owner its database writes for, such as an AppOwner and the shared owners its instance syncs, so a relay can link those owners, even across IP addresses. A new session gets a new NodeId, though connections, IP addresses, and changes uploaded later can still link sessions.
+- **Change sizes**: Evolu pads every change with [PADMÉ](https://lbarman.ch/blog/padme/) before encrypting it, so a relay sees only its approximate size.
+- **IP addresses**: Owners synced over one connection are linked to each other, and by default an app syncs all its owners over one connection per relay.
 
-For collaboration, asymmetric cryptography is required, and asymmetric cryptography can be vulnerable to quantum attacks. Detailed documentation will be provided soon.
+A relay stores the OwnerId, timestamps, and NodeIds as they are, because it needs them to sync, the owner's [write key](/docs/relay#access-control), which every write must carry, and the changes, which are already encrypted. Whether IP addresses are logged depends on how the relay and any proxy in front of it are deployed.
+
+Every relay the owner uses and everyone the owner shares data with know its OwnerId. Keep it from anyone else: whoever knows it and can connect to one of the owner's relays can download the owner's encrypted changes and subscribe to new ones, and so see the owner's timestamps, NodeIds, and change sizes.
+
+A relay keeps an owner's data until its operator deletes it. Evolu can't delete an owner's data from relays yet.
+
+## Deleting data
+
+Deleting a row in a synced table marks it deleted, and every device and relay keeps its history, encrypted on relays, as [Time travel](/docs/time-travel) shows. Tables whose names start with `_` don't sync and delete rows for good.
+
+Deleting a database or an owner's data, or removing an AppOwner, deletes only this device's copy. Relays keep the owner's data, and encrypted copies in device backups and in freed storage remain.

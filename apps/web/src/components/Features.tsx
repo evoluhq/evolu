@@ -124,7 +124,7 @@ const features: Array<Feature> = [
     name: "Honest",
     description:
       "Limits are documented: what relays can see, and the trade-offs behind design decisions.",
-    href: "/docs/privacy#relay-blindness-by-design",
+    href: "/docs/privacy#what-relays-see",
     icon: IconEye,
   },
 ];

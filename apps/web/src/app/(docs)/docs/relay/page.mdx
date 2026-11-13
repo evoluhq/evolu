@@ -57,3 +57,11 @@ for about two minutes, so the proxy's idle timeout must be longer than thirty
 seconds. See
 [OwnerWebSocketTransport](/docs/api-reference/common/local-first/Owner/interfaces/OwnerWebSocketTransport#heartbeats)
 for the heartbeat contract.
+
+## Access control
+
+A relay admits anyone who knows an OwnerId. Whoever does can download the owner's encrypted changes and see the metadata that [Privacy](/docs/privacy#what-relays-see) lists. Ideally, users sync through private relays that admit only their own devices and the people they share data with. Evolu doesn't provide that access control: a relay knows a connection only by the OwnerId it names, which anyone who knows it can name too, and an admitted connection can sync any owner. `createRelay`'s `isOwnerAllowed` decides which OwnerId a connection must name to connect, but not who connects or which owners the connection then syncs. To store only some owners' data, such as paying customers', refuse other owners' writes with `isOwnerWithinQuota`. Access control has to come from how the relay is deployed, such as a home network, a VPN, or the host's own authentication. A relay that several customers share admits all of them, so each customer's OwnerIds must stay secret from the others.
+
+A relay accepts an owner's writes only with the owner's write key, which every relay the owner syncs with and every collaborator has. It doesn't let them read or forge the owner's changes, which the owner's encryption key protects, but whoever has it and can connect to a relay the owner uses can store data that uses up the owner's quota and disrupts sync through that relay, as [Fingerprint](/docs/api-reference/common/local-first/Storage/type-aliases/Fingerprint) describes. A write key can't be rotated or revoked yet.
+
+A relay keeps the write key of the first write it accepts for an owner. Whoever knows an OwnerId can register their own key by writing before the owner's devices do, and the relay then rejects the owner's writes until its operator deletes everything it stores for that OwnerId with the relay's [`deleteOwner`](/docs/api-reference/common/local-first/Relay/interfaces/Relay#deleteowner). Refuse the squatter's writes first, as `deleteOwner` describes, or its next write registers its key again.

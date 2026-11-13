@@ -85,8 +85,7 @@ export interface RelayConfig extends StorageConfig {
    * OwnerId exposure reveals no change contents. But anyone who knows an
    * OwnerId can download the owner's encrypted changes and their timestamps
    * from a relay and subscribe to new ones, as
-   * [Privacy](https://www.evolu.dev/docs/privacy#relay-blindness-by-design)
-   * describes.
+   * [Privacy](https://www.evolu.dev/docs/privacy#what-relays-see) describes.
    *
    * OwnerId exposure also allows write-key squatting. The relay stores the
    * write key of the first write it accepts for an owner, so anyone who learns

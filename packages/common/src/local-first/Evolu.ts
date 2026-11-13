@@ -381,10 +381,10 @@ export interface EvoluConfig {
    * Use {@link createOwnerWebSocketTransport} to create WebSocket transport
    * configurations with proper URL formatting and {@link OwnerId} inclusion. The
    * {@link OwnerId} in the URL lets a relay's `isOwnerAllowed` admit or reject
-   * owners, for example for paid tiers, but anyone who knows an OwnerId can
-   * name it, so a private relay needs access control beyond the OwnerId, as
-   * [Privacy](https://www.evolu.dev/docs/privacy#relay-blindness-by-design)
-   * describes.
+   * the connection, but an admitted connection can sync any owner, and anyone
+   * who knows an OwnerId can name it, so a private relay needs access control
+   * beyond the OwnerId, as
+   * [Relay](https://www.evolu.dev/docs/relay#access-control) describes.
    *
    * The default value is:
    *

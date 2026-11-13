@@ -437,6 +437,10 @@ export interface SharedOwner extends Owner, Typed<"SharedOwner"> {}
  * Use {@link createSharedReadonlyOwner} to create a read-only version for
  * sharing.
  *
+ * Access can't be revoked: to remove a collaborator, move the data to a new
+ * owner shared only with the others and stop syncing the old one. The removed
+ * collaborator keeps what they already synced.
+ *
  * @group Variants
  */
 export const createSharedOwner = (secret: OwnerSecret): SharedOwner => ({
@@ -487,8 +491,7 @@ export type OwnerTransport = OwnerWebSocketTransport;
  * set custom headers on a WebSocket handshake. URLs often get logged, and
  * whoever reads an OwnerId there can't decrypt changes but can download the
  * owner's encrypted changes and timestamps from the relay and subscribe to new
- * ones, as
- * [Privacy](https://www.evolu.dev/docs/privacy#relay-blindness-by-design)
+ * ones, as [Privacy](https://www.evolu.dev/docs/privacy#what-relays-see)
  * describes. On a relay that hasn't stored the owner's write key yet, they can
  * also store their own and so lock the owner out of writing there.
  *
