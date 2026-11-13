@@ -16,12 +16,18 @@ import {
   IconBook,
   IconBrandTypescript,
   IconBug,
+  IconDatabase,
   IconEye,
   IconFeather,
   IconFilter,
+  IconHistory,
+  IconLock,
   IconPackage,
   type IconProps,
+  IconSchema,
+  IconServer2,
   IconShieldLock,
+  IconSql,
   IconSubtask,
   IconTrash,
 } from "@tabler/icons-react";
@@ -102,15 +108,13 @@ const patterns: Array<Pattern> = [
 const features: Array<Feature> = [
   {
     name: "Simple",
-    description:
-      "Data lives in SQLite tables you query with type-safe SQL. No complex abstractions.",
+    description: "Data lives in SQLite tables you query with type-safe SQL.",
     href: "/docs/local-first#query-data",
     icon: IconFeather,
   },
   {
     name: "Strict",
-    description:
-      "Types say what was checked. Broken invariants throw before invalid state spreads.",
+    description: "Types say what was checked. Broken invariants fail fast.",
     href: "/docs/api-reference/common/Type",
     icon: IconFilter,
   },
@@ -122,9 +126,8 @@ const features: Array<Feature> = [
   },
   {
     name: "Honest",
-    description:
-      "Limits are documented: what relays can see, and the trade-offs behind design decisions.",
-    href: "/docs/privacy#what-relays-see",
+    description: "Limits are documented. Key decisions are in ADRs.",
+    href: "https://github.com/evoluhq/evolu/tree/main/docs/adr",
     icon: IconEye,
   },
 ];
@@ -205,7 +208,13 @@ const Feature: FC<{ feature: Feature; index: number }> = ({
         <div className="mb-2 flex items-center gap-3">
           <FeatureIcon icon={feature.icon} />
           <h3 className="text-sm leading-7 font-semibold text-zinc-900 dark:text-white">
-            <Link href={feature.href}>
+            <Link
+              href={feature.href}
+              // External links open in a new tab, as elsewhere on the site.
+              target={
+                feature.href.startsWith("https://") ? "_blank" : undefined
+              }
+            >
               <span className="absolute inset-0 rounded-2xl" />
               {feature.name}
             </Link>
@@ -237,6 +246,57 @@ const FeatureGrid: FC<{
 
 export const Features: FC = () => (
   <FeatureGrid features={features} columns={4} />
+);
+
+/** Evolu local-first platform features. */
+export const LocalFirstFeatures: FC = () => (
+  <FeatureGrid
+    columns={2}
+    features={[
+      {
+        name: "SQLite everywhere",
+        description:
+          "Browsers, React Native, and Electron, with React, Vue, and Svelte bindings. Plain SQLite, compiled from sqlite.org's verified source.",
+        href: "/blog/evolu-runs-its-own-sqlite-everywhere",
+        icon: IconDatabase,
+      },
+      {
+        name: "Type-safe SQL",
+        description:
+          "Kysely queries whose results update when local or synced data changes.",
+        href: "/docs/local-first#query-data",
+        icon: IconSql,
+      },
+      {
+        name: "Any schema library",
+        description:
+          "Define columns with Evolu Type or any Standard Schema library, such as Zod.",
+        href: "/docs/schema",
+        icon: IconSchema,
+      },
+      {
+        name: "End-to-end encrypted",
+        description:
+          "Relays store and forward encrypted changes they can't read.",
+        href: "/docs/privacy",
+        icon: IconLock,
+      },
+      {
+        name: "Relays you can host",
+        description:
+          "The relay is MIT-licensed and self-hostable. Use several at once, so sync survives an outage.",
+        href: "/docs/relay",
+        icon: IconServer2,
+      },
+      {
+        name: "History included",
+        description:
+          "Every synced change is kept, so you can travel in time. The last writer wins per column.",
+        href: "/docs/time-travel",
+        icon: IconHistory,
+      },
+    ]}
+  />
 );
 
 /** Evolu Library features. The bundle size comes from the bundle snapshot. */

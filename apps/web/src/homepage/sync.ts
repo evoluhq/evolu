@@ -1,46 +1,41 @@
 import {
   AppName,
-  createAppOwner,
-  createEvolu,
-  createOwnerSecret,
-  createRandomBytes,
+  createEvoluApp,
   NonEmptyTrimmedString100,
+  sqliteTrue,
   WebSocketUrl,
 } from "@evolu/common";
 import { createEvoluDeps, createRun } from "@evolu/web";
-import { Schema, todosQuery } from "./data.ts";
-
-// First run only: create the owner's secret on this device and store it
-// securely. Every key, including the local database's, is derived from it.
-const appOwner = createAppOwner(
-  createOwnerSecret({ randomBytes: createRandomBytes() }),
-);
+import { AppSchema } from "./data.ts";
 
 const run = createRun(createEvoluDeps());
 
-const evolu = await run.ok(
-  createEvolu(Schema, {
+const app = await run.orThrow(
+  createEvoluApp(AppSchema, {
     appName: AppName.orThrow("todos"),
-    appOwner,
+    auth: { type: "InstantStart" },
+    // The first start creates the account and opens it.
+    createFirstAppOwner: true,
     // Sync through one relay, several, or none.
     transports: [
       {
         type: "WebSocket",
         url: WebSocketUrl.orThrow("wss://relay.example.com/"),
       },
-      {
-        type: "WebSocket",
-        url: WebSocketUrl.orThrow("wss://free.evoluhq.com/"),
-      },
     ],
   }),
 );
 
-// Writes go to SQLite on this device, so they work offline.
-evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("Buy milk") });
+// The first start opens the AppOwner it created. A later start opens none if
+// the user has removed them all.
+const current = app.current.get();
+if (current) {
+  const evolu = await current.evolu;
 
-// Load the rows, then get notified when local or synced changes affect them.
-console.log(await evolu.loadQuery(todosQuery));
-evolu.subscribeQuery(todosQuery)(() => {
-  console.log(evolu.getQueryRows(todosQuery));
-});
+  // Writes go to SQLite on this device, so they work offline, and sync through
+  // the relays.
+  const { id } = evolu.insert("todo", {
+    title: NonEmptyTrimmedString100.orThrow("Buy milk"),
+  });
+  evolu.update("todo", { id, isCompleted: sqliteTrue });
+}

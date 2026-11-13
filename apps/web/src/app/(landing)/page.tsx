@@ -6,49 +6,43 @@ import { join } from "node:path";
 import type { FC, ReactNode } from "react";
 
 import { Button } from "@/components/Button";
-import { Features, LibraryFeatures } from "@/components/Features";
+import { Card } from "@/components/Card";
+import {
+  Features,
+  LibraryFeatures,
+  LocalFirstFeatures,
+} from "@/components/Features";
 import { Logo } from "@/components/Logo";
 import { SnippetCodeGroup } from "@/components/SnippetCodeGroup";
 
-const definition =
-  "Evolu is a local-first platform. Apps store data in SQLite on each device and sync it end-to-end encrypted through relays you can host yourself.";
+const definition = "Evolu is a local-first platform and TypeScript library.";
 
 export const metadata: Metadata = {
   title: { absolute: "Evolu" },
-  description: definition,
+  description: `${definition} Its local-first platform is SQLite on every platform, synced end-to-end encrypted without an authoritative server.`,
 };
+
+// Non-breaking hyphens (U+2011) keep "end-to-end" on one line.
+const platformDescription =
+  "SQLite on every platform, synced end\u2011to\u2011end encrypted without an authoritative server. Relays, which you can host yourself, only store and pass on changes they can't read.";
+
+const libraryDescription =
+  "The library Evolu itself is built on, for any TypeScript project: Result for typed errors, Type for runtime validation, and Task for structured concurrency, in idiomatic TypeScript.";
 
 const linkClassName =
   "font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-2 transition hover:decoration-zinc-500 dark:text-white dark:decoration-zinc-600 dark:hover:decoration-zinc-400";
 
-const Section: FC<{ title: string; children: ReactNode }> = ({
+const Section: FC<{ title: string; id?: string; children: ReactNode }> = ({
   title,
+  id,
   children,
 }) => (
-  <section className="mx-auto mt-24 w-full max-w-3xl">
+  <section id={id} className="mx-auto mt-24 w-full max-w-3xl">
     <h2 className="text-2xl font-bold tracking-tight text-zinc-900 sm:text-3xl dark:text-white">
       {title}
     </h2>
     {children}
   </section>
-);
-
-const Facts: FC<{ children: ReactNode }> = ({ children }) => (
-  <dl className="mt-8 grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
-    {children}
-  </dl>
-);
-
-const Fact: FC<{ title: string; children: ReactNode }> = ({
-  title,
-  children,
-}) => (
-  <div>
-    <dt className="font-semibold text-zinc-900 dark:text-white">{title}</dt>
-    <dd className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-      {children}
-    </dd>
-  </div>
 );
 
 const Lead: FC<{ children: ReactNode }> = ({ children }) => (
@@ -79,7 +73,8 @@ const projects = [
 ];
 
 const Page: FC = async () => {
-  // Homepage.test.ts bundles src/homepage/task.ts and measures it.
+  // Homepage.test.ts bundles a sample of Types, Tasks, and logging and
+  // measures it.
   const bundleSnapshot = await readFile(
     join(process.cwd(), "../../test/bundle/Bundle/Homepage.test.ts.snapshot"),
     "utf8",
@@ -98,33 +93,83 @@ const Page: FC = async () => {
         <h1 className="text-4xl font-bold tracking-tight text-balance text-zinc-900 sm:text-5xl dark:text-white">
           local&#8209;first all the things
         </h1>
-        <p className="max-w-2xl text-lg text-balance text-zinc-600 dark:text-zinc-400">
-          {definition}
-        </p>
-        <div className="flex justify-center gap-4">
-          <Button href="/docs" arrow="right">
-            Get started
-          </Button>
-          <Button href="/playgrounds/full/instant" variant="outline">
-            Playground
-          </Button>
+        {/* The gaps leave room for each card's hover background, which extends
+            beyond its text. */}
+        <div className="mt-6 grid w-full max-w-3xl grid-cols-1 gap-12 text-left sm:grid-cols-2">
+          <Card>
+            <Card.Title href="#local-first-platform">
+              Local-first platform
+            </Card.Title>
+            <Card.Description marginClassName="mt-4">
+              {platformDescription}
+            </Card.Description>
+          </Card>
+          <Card>
+            <Card.Title href="#typescript-library">
+              TypeScript library
+            </Card.Title>
+            <Card.Description marginClassName="mt-4">
+              {libraryDescription}
+            </Card.Description>
+          </Card>
         </div>
       </section>
 
-      <div className="mx-auto mt-6 w-full max-w-3xl">
-        <SnippetCodeGroup
-          snippets={[
-            { title: "Your data", file: "data.ts" },
-            { title: "Your sync", file: "sync.ts" },
-            { title: "Your code", file: "task.ts" },
-          ]}
-        />
-      </div>
-
-      <section className="mt-16">
+      <section className="mx-auto mt-16 w-full max-w-3xl">
         <h2 className="sr-only">Simple, strict, secure, honest</h2>
         <Features />
       </section>
+
+      <Section title="Local-first platform" id="local-first-platform">
+        <SnippetCodeGroup
+          snippets={[
+            { title: "Schema and queries", file: "data.ts" },
+            { title: "Sync and mutations", file: "sync.ts" },
+          ]}
+        />
+        <Lead>
+          Apps that keep data on their servers stop working offline, make users
+          wait on spinners, and take their data with them when the company
+          behind them changes its plans. Local&#8209;first apps read and write
+          on the device, so they respond instantly, work offline, and keep
+          working for as long as their users need them.
+        </Lead>
+        <div className="mt-8">
+          <LocalFirstFeatures />
+        </div>
+        <div className="mt-8">
+          <Button href="/docs/local-first" arrow="right">
+            Get started with local&#8209;first
+          </Button>
+        </div>
+      </Section>
+
+      <Section title="TypeScript library" id="typescript-library">
+        <SnippetCodeGroup
+          snippets={[
+            { title: "Typed errors", file: "errors.ts" },
+            { title: "Branded types", file: "brands.ts" },
+            { title: "Type boundaries", file: "boundaries.ts" },
+            { title: "Tasks", file: "concurrency.ts" },
+            { title: "Fails fast", file: "strict.ts" },
+          ]}
+        />
+        <Lead>
+          It&apos;s written test&#8209;first: its tests are the runnable
+          specification, and most modules have full test coverage. The source
+          and unit tests ship in the npm package, and every example in its API
+          reference is type&#8209;checked and run, so developers and agents
+          learn from verified code.
+        </Lead>
+        <div className="mt-8">
+          <LibraryFeatures bundleSize={taskBundleSize} />
+        </div>
+        <div className="mt-8">
+          <Button href="/docs/library" arrow="right">
+            Get started with the library
+          </Button>
+        </div>
+      </Section>
 
       <Section title="Built with Evolu">
         <ul className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-3">
@@ -150,119 +195,20 @@ const Page: FC = async () => {
         </ul>
       </Section>
 
-      <Section title="Local-first">
-        <Lead>
-          Local&#8209;first apps keep data on the user&apos;s device and use
-          servers only to sync and back it up. They work offline, and users keep
-          their data even when the company behind an app changes its plans. Read{" "}
-          <Link
-            href="/blog/why-the-world-needs-local-first-apps"
-            className={linkClassName}
-          >
-            why the world needs local&#8209;first apps
-          </Link>
-          .
-        </Lead>
-        <Facts>
-          <Fact title="SQLite everywhere">
-            Browsers, React Native, with or without Expo, and Electron, with
-            React, Vue, and Svelte bindings. On every platform, Evolu compiles{" "}
-            <Link
-              href="/blog/evolu-runs-its-own-sqlite-everywhere"
-              className={linkClassName}
-            >
-              plain SQLite
-            </Link>{" "}
-            from sqlite.org&apos;s source, checked against the hash sqlite.org
-            publishes.
-          </Fact>
-          <Fact title="Type-safe SQL">
-            Kysely queries whose results update when local or synced data
-            changes.
-          </Fact>
-          <Fact title="Any schema library">
-            Define columns with Evolu Type or any{" "}
-            <Link href="/docs/schema" className={linkClassName}>
-              Standard Schema
-            </Link>{" "}
-            library, such as Zod.
-          </Fact>
-          <Fact title="End-to-end encrypted">
-            Relays store and forward encrypted changes they can&apos;t read. The{" "}
-            <Link href="/docs/privacy" className={linkClassName}>
-              privacy docs
-            </Link>{" "}
-            explain what relays can see.
-          </Fact>
-          <Fact title="Relays you can host">
-            The{" "}
-            <Link href="/docs/relay" className={linkClassName}>
-              relay
-            </Link>{" "}
-            is MIT-licensed and self-hostable. Use several at once, so sync
-            survives an outage.
-          </Fact>
-          <Fact title="History included">
-            Every synced change is kept, so you can{" "}
-            <Link href="/docs/time-travel" className={linkClassName}>
-              travel in time
-            </Link>
-            . Devices converge deterministically, and the last writer wins per
-            column.
-          </Fact>
-        </Facts>
-        <div className="mt-8">
-          <Button href="/docs/local-first" arrow="right">
-            Get started with local&#8209;first
-          </Button>
-        </div>
-      </Section>
-
-      <Section title="Evolu Library">
-        <Lead>
-          The TypeScript library Evolu is built on, ready to use on its own.
-          It&apos;s written test&#8209;first: its tests are the runnable
-          specification, and most modules have full test coverage. The source
-          and unit tests ship in the npm package, and every example in its API
-          reference is type-checked and run, so developers and agents learn from
-          verified code.
-        </Lead>
-        <div className="mt-8">
-          <LibraryFeatures bundleSize={taskBundleSize} />
-        </div>
-        <SnippetCodeGroup
-          snippets={[
-            { title: "Branded types", file: "brands.ts" },
-            { title: "Type boundaries", file: "boundaries.ts" },
-            { title: "Tasks", file: "concurrency.ts" },
-            { title: "Fails fast", file: "strict.ts" },
-          ]}
-        />
-        <div className="mt-8">
-          <Button href="/docs/library" arrow="right">
-            Get started with the library
-          </Button>
-        </div>
-      </Section>
-
       <Section title="Made by Daniel Steigerwald">
         <Lead>
           When I started Evolu, I knew I didn&apos;t know everything, so I built
           on popular functional programming libraries. That was a compromise,
           because depending on code I don&apos;t understand is a kind of vendor
-          lock&#8209;in too. So I wrote Evolu Library. For structured
-          concurrency and resource management, I studied how other languages,
-          frameworks, and libraries handle them. It was an incredible journey,
-          and I stand behind how Evolu works today.
+          lock&#8209;in too. So I wrote my own TypeScript library. For
+          structured concurrency and resource management, I studied how other
+          languages, frameworks, and libraries handle them. It was an incredible
+          journey, and I stand behind how Evolu works today.
         </Lead>
         <Lead>
           I&apos;ve also learned that tests can show bugs but never prove their
           absence. Formal verification can, so future versions of Evolu will be
           formally verified.
-        </Lead>
-        <Lead>
-          Evolu is designed to fit in one developer&apos;s head: one author, one
-          consistent design, and design decisions explained next to the code.
         </Lead>
         <Lead>
           <a

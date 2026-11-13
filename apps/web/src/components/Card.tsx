@@ -64,8 +64,17 @@ Card.Title = <T extends React.ElementType = "h2">({
   );
 };
 
-const CardDescription: FC<{ children: ReactNode }> = ({ children }) => (
-  <p className="relative z-10 mt-2 text-base text-zinc-600 max-sm:leading-[1.6] dark:text-zinc-400">
+/** A description whose top margin, `mt-2` by default, the caller can replace. */
+const CardDescription: FC<{
+  marginClassName?: string;
+  children: ReactNode;
+}> = ({ marginClassName = "mt-2", children }) => (
+  <p
+    className={clsx(
+      marginClassName,
+      "relative z-10 text-base text-zinc-600 max-sm:leading-[1.6] dark:text-zinc-400",
+    )}
+  >
     {children}
   </p>
 );
