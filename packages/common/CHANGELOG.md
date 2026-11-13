@@ -1,5 +1,371 @@
 # @evolu/common
 
+## 8.28.0
+
+### Minor Changes
+
+- 546484b: Renamed onComplete to onSuccess and added onError to mutations
+
+  A mutation's `onComplete` ran only when the mutation was stored, though its name suggested it ran whenever the mutation ended, so code waiting on it, such as a promise around an insert, never settled when storing failed. It's now `onSuccess`, and the new `onError` runs instead when the mutation could not be stored. `evoluError` reports that error too, so pass `onError` only where code must know that the mutation ended. `onError` also runs when the database is refused, such as when another context holds its files. Neither runs when the instance is disposed before it receives the mutation's result, so a promise like the one below then stays pending. TypeScript rejects `onComplete`, so rename it to `onSuccess`.
+
+  ```ts
+  import {
+    assertType,
+    id,
+    NonEmptyTrimmedString100,
+    type Evolu,
+  } from "@evolu/common";
+
+  const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
+
+  const insertTodo = (
+    evolu: Evolu<typeof Schema>,
+    title: NonEmptyTrimmedString100,
+  ) =>
+    new Promise<void>((resolve, reject) => {
+      evolu.insert("todo", { title }, { onSuccess: resolve, onError: reject });
+    });
+
+  const _insertTodoWithOnComplete = (
+    evolu: Evolu<typeof Schema>,
+    title: NonEmptyTrimmedString100,
+  ) => {
+    // @ts-expect-error MutationOptions has no onComplete; it's onSuccess now.
+    evolu.insert("todo", { title }, { onComplete: () => undefined });
+  };
+
+  assertType<ReturnType<typeof insertTodo>, Promise<void>>();
+  ```
+
+- 18f65ea: Added promiseToTask
+
+  `promiseToTask(start, mapError?)` awaits the promise that `start` returns through a Run, whose abort ends the wait at once and ignores the late result. It takes a function rather than a promise, so `retry`, `repeat`, and `timeout` start the operation again, and passes the Run's signal to it, so an operation such as `fetch` aborts too. Without `mapError`, a rejection is a defect; with it, the rejection becomes an `Err`, as `tryAsync` maps one.
+
+  ```ts
+  import {
+    assertErr,
+    assertOk,
+    createRun,
+    promiseToTask,
+    type Task,
+    type Typed,
+  } from "@evolu/common";
+
+  interface ReadError extends Typed<"ReadError"> {
+    readonly cause: unknown;
+  }
+
+  const readSetting = (name: string, signal: AbortSignal): Promise<string> =>
+    name === "theme"
+      ? Promise.resolve(signal.aborted ? "" : "dark")
+      : Promise.reject(new Error(`No setting ${name}`));
+
+  const readSettingTask = (name: string): Task<string, ReadError> =>
+    promiseToTask(
+      (signal) => readSetting(name, signal),
+      (cause) => ({ type: "ReadError", cause }),
+    );
+
+  await using run = createRun();
+  assertOk(await run(readSettingTask("theme")), "dark");
+  assertErr(await run(readSettingTask("font")));
+  ```
+
+- abd13c6: Added databaseHeldTimeout
+
+  `databaseHeldTimeout` is how long Evolu waits for another context to release a database, such as a tab of another build of the app that keeps it open, or another process of a native app, before it fails with `DatabaseHeldError`.
+
+  ```ts
+  import { assertEqual, databaseHeldTimeout } from "@evolu/common";
+
+  assertEqual(databaseHeldTimeout, "10s");
+  ```
+
+- 518e073: Added createEvoluApp, which creates and keeps the app's AppOwners
+
+  An app no longer has to create, store, and reopen its AppOwner itself, as the examples did with the public `testAppOwner`. `createEvoluApp` keeps the app's AppOwners in a device database and opens the one opened last, or the one `startAppOwnerId` names. With `createFirstAppOwner: true`, the first start creates one, so the app starts with an AppOwner. `appOwners` lists them; `open`, `add`, `rename`, and `remove` change them; and `current` holds the open AppOwner with its Evolu instance. `subscribeAppOwnerState` follows `current` as an `AppOwnerState`: `None`, `Opening` while the instance opens, or `Open` with it, as the UI bindings do. `device` is the device database's instance for the app's own data that belongs to the device, such as settings. It takes no AppOwner. Its `useOwner` takes transports, because it has none by default. A mutation of one of its synced tables takes the `owner` it syncs with.
+
+  The `auth` option encrypts the device database, which holds the AppOwners' secrets. `{ type: "InstantStart" }` needs no prompt, but its key is public, so anything that can read the app's storage can read those secrets. `{ type: "DeviceSecret", secret }` takes a secret only the user or the platform can unlock. On the web, `unlockWrappedDeviceSecret` creates and unlocks one with a key provider, such as `@evolu/web`'s passkeys, `hasWrappedDeviceSecret` tells whether one is stored, and `forgetWrappedDeviceSecret` starts over, with `onlyPending` only while no secret is stored. [Privacy](https://www.evolu.dev/docs/privacy#encryption-on-the-device) says what each mode protects.
+
+  Apps that bring their own AppOwners, such as ones derived from a hardware wallet, keep calling `createEvolu`. `createEvoluApp` replaces Evolu 7's `restoreAppOwner` and `resetAppOwner`, which Evolu 8 removed: `add` restores an AppOwner from the secret `mnemonicToOwnerSecret` derives from its mnemonic, and to start over, an app adds a new AppOwner, then removes the old one.
+
+  ```ts
+  import {
+    AppName,
+    assertEqual,
+    assertOk,
+    createEvoluApp,
+    createOwnerSecret,
+    id,
+    NonEmptyTrimmedString100,
+    subscribeAppOwnerState,
+    type AppOwnerState,
+  } from "@evolu/common";
+  import { createEvoluDeps, createRun } from "@evolu/web";
+
+  const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
+  const run = createRun(createEvoluDeps());
+
+  await using app = await run.orThrow(
+    createEvoluApp(Schema, {
+      appName: AppName.orThrow("todos"),
+      auth: { type: "InstantStart" },
+      createFirstAppOwner: true,
+      transports: [],
+    }),
+  );
+  // The first start created an AppOwner and opened it.
+  assertEqual(app.appOwners.get().length, 1);
+
+  // An added AppOwner opens at once.
+  const added = await app.add(createOwnerSecret(run.deps));
+  assertOk(added);
+  assertEqual(app.current.get()?.appOwner.id, added.value);
+
+  // Without a UI binding, the app follows the open AppOwner itself.
+  const states: Array<AppOwnerState<typeof Schema>["type"]> = [];
+  const unsubscribe = subscribeAppOwnerState(app.current, (state) => {
+    states.push(state.type);
+  });
+  await app.current.get()?.evolu;
+  assertEqual(states, ["Opening", "Open"]);
+  unsubscribe();
+  ```
+
+  The `DeviceAppOwner` type is gone. It described an owner of a local-only instance for the device's data, kept in secure storage that Evolu didn't provide. `createEvoluApp`'s `device` instance is that instance now, with an owner it derives from `auth`, so type an owner of your own as `AppOwner`.
+
+  ```ts
+  import { assertType, type AppOwner } from "@evolu/common";
+  // @ts-expect-error -- DeviceAppOwner is gone; type an owner of your own as AppOwner.
+  import type { DeviceAppOwner } from "@evolu/common"; // oxlint-disable-line no-unused-vars -- Only shows that the type is gone.
+
+  // An owner of the app's own, such as one derived from a hardware wallet.
+  const ownerIdOf = (owner: AppOwner) => owner.id;
+
+  assertType<Parameters<typeof ownerIdOf>, [AppOwner]>();
+  ```
+
+- f004cd2: Added isLeaderLockHeld, which tells whether a caller leads for a name
+
+  `isLeaderLockHeld` tells whether a caller leads for a name, as `acquireLeaderLock` or `acquireLeaderLockCallback` makes it. A context that ends leads for nothing, so another context can check that one leading for a name, such as a worker leading for its ID while it runs, still runs.
+
+  ```ts
+  import {
+    acquireLeaderLock,
+    assertFalse,
+    assertTrue,
+    isLeaderLockHeld,
+    testCreateLockManager,
+    testCreateRun,
+  } from "@evolu/common";
+
+  await using run = testCreateRun({ lockManager: testCreateLockManager() });
+  const isHeld = isLeaderLockHeld(run.deps);
+  assertFalse(await isHeld("example"));
+
+  const lease = await run.ok(acquireLeaderLock("example"));
+  assertTrue(await isHeld("example"));
+
+  await lease[Symbol.asyncDispose]();
+  assertFalse(await isHeld("example"));
+  ```
+
+- 8dd9cf4: Added ownerSecretToOwnerId
+
+  An app that needed only an OwnerSecret's OwnerId, for example to tell whether a backup's AppOwner is already on the device, had to create the whole AppOwner, which also derives its keys and mnemonic. `ownerSecretToOwnerId` returns only the OwnerId, the same one every owner created from the secret has.
+
+  ```ts
+  import {
+    assertTrue,
+    mnemonicToOwnerSecret,
+    ownerSecretToOwnerId,
+    testAppOwner,
+    type OwnerId,
+  } from "@evolu/common";
+
+  // The IDs of the AppOwners on this device.
+  const appOwnerIds: ReadonlySet<OwnerId> = new Set([testAppOwner.id]);
+
+  // A backup's mnemonic, of an AppOwner that's already on this device.
+  const secret = mnemonicToOwnerSecret(testAppOwner.mnemonic);
+
+  assertTrue(appOwnerIds.has(ownerSecretToOwnerId(secret)));
+  ```
+
+- 771dc61: Kept memory databases separate for each instance
+
+  Instances of one app and owner that kept their database in memory, with
+  `memoryOnly` or where the browser refuses storage, shared one memory database,
+  and on the web one of their tabs hosted it. Closing that tab emptied the other
+  tabs' memory databases and lost their unsynced changes. Each memory instance now
+  has its own database under a random `Evolu.name`, and on the web its own tab
+  runs its workers. Stored databases are unchanged.
+
+  A memory instance loses its data when it ends, including when its tab closes,
+  navigates away, or enters the back-forward cache. On the web, it exchanges
+  changes with other instances, stored instances of the same owner included, only
+  through relays, so not offline. It opens its own relay connections, so a relay
+  can appear in `deps.syncState` once per worker.
+
+  Where the browser refuses storage, Evolu no longer reloads the tab when another
+  tab loads a new version of the app. Where storage is available, it still may,
+  and the reload ends `memoryOnly` instances too.
+
+  Update `@evolu/web` and `@evolu/react-native` together with `@evolu/common`;
+  with an older adapter, `evoluError` reports an `UnknownError` and instances
+  never load. Custom platform integrations pass `createStoredWorker` to
+  `createEvoluDeps` instead of `sharedWorker`, and may pass the new
+  `createMemoryInstanceWorker` to run each memory instance in a worker of its
+  own. Code that runs `createEvolu` with its own deps provides `storedWorker`.
+
+- 518e073: Added loadQuery's cache option, which reads the rows SQLite holds now
+
+  `loadQuery` returns the query's cached or pending load, which can miss a change another tab stored a moment ago. With `{ cache: false }`, it reads the rows SQLite holds now, after the mutations this instance made before it and the changes other tabs stored before it, so code holding a lock, such as `acquireLeaderLock`, can check rows another tab wrote under the same lock. Its answer updates the cached rows and settled loads like any load's, and pending loads keep their promises, which React Suspense relies on. On a refused database, it rejects with an `UnknownError`, the refusal itself or one wrapping it, while cached loads stay pending.
+
+  ```ts
+  import {
+    assertType,
+    createQueryBuilder,
+    id,
+    NonEmptyTrimmedString100,
+    type Evolu,
+    type QueryRows,
+  } from "@evolu/common";
+
+  const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
+  const todosQuery = createQueryBuilder(Schema)((db) =>
+    db.selectFrom("todo").select(["id", "title"]),
+  );
+
+  const loadTodosNow = (evolu: Evolu<typeof Schema>) =>
+    evolu.loadQuery(todosQuery, { cache: false });
+
+  assertType<
+    Awaited<ReturnType<typeof loadTodosNow>>,
+    QueryRows<typeof todosQuery.Row>
+  >();
+  ```
+
+### Patch Changes
+
+- 518e073: Made deleteDatabase delete a database that doesn't open
+
+  An app whose local database doesn't open, such as a corrupt one or one that a newer version of the app wrote, often has to delete it and start over, but `deleteDatabase` of such a database stayed pending until the instance was disposed. It now deletes the database's files by name, without opening them, and resolves once they are gone, as for any database. A deletion that doesn't finish in time, such as while the tab that starts it shows a modal dialog, fails with `DatabaseHeldError`. After a failure, the database may be partly or wholly deleted, and its instances keep working.
+
+- e75628b: Fixed ownership of transferred in-memory ports and their handlers
+
+  A dropped message releases the port transfers it carries. Forwarding a delivered
+  port moves its reservation to the next message, and a failed transfer-list read
+  leaves ownership unchanged.
+
+  Disposing a port wrapper clears its handler. The remaining messages stay queued
+  if the port survives, and delivery continues after a handler throws.
+
+- 518e073: Rejected another AppOwner in useOwner and mutations
+
+  An AppOwner's data lives only in its own database. An instance could sync another AppOwner with `useOwner`, or write its rows with a mutation's `owner`, and those rows then outlived the deletion of that AppOwner's database, which can't reach them, while `deleteOwner` takes no AppOwner. An instance now throws when `useOwner` or a mutation's `owner` names an AppOwner other than its own, and still syncs and writes its own. An instance of `createEvolu` recognizes another AppOwner by its type, so it misses an owner with another AppOwner's ID but another type, such as one created from that AppOwner's secret. An instance of `createEvoluApp` also checks the IDs of the AppOwners the app lists.
+
+  To migrate, open each AppOwner in its own instance, with `createEvolu` and that AppOwner as its `appOwner`, or with `createEvoluApp`, which opens one per AppOwner. Data that several AppOwners share gets an owner of its own, such as a `ShardOwner` or `SharedOwner`. Rows already written under another AppOwner's ID stay in this database until it is deleted with `deleteDatabase`.
+
+- 518e073: Stopped a local-only update from recreating a deleted row
+
+  A delete in a local-only table removes the row, but `update` created any row that didn't exist. So when one tab deleted a row and a tab that hadn't seen the delete yet then updated it, the row came back with only that update's columns. An update of a local-only table now changes only an existing row, so an update after a delete leaves the row deleted, as the `isDeleted` tombstone of a synced table does. `insert` and `upsert` still create rows.
+
+  Code that relied on `update` creating a local-only row uses `upsert` instead.
+
+  ```ts
+  import {
+    AppName,
+    assertEqual,
+    createEvolu,
+    createQueryBuilder,
+    id,
+    NonEmptyTrimmedString100,
+    sqliteTrue,
+    testAppOwner,
+  } from "@evolu/common";
+  import { createEvoluDeps, createRun } from "@evolu/web";
+
+  const Schema = {
+    _draft: { id: id("Draft"), title: NonEmptyTrimmedString100 },
+  };
+  const run = createRun(createEvoluDeps());
+  const evolu = await run.ok(
+    createEvolu(Schema, {
+      appName: AppName.orThrow("LocalOnlyUpdate"),
+      appOwner: testAppOwner,
+      transports: [],
+    }),
+  );
+  const drafts = createQueryBuilder(Schema)((db) =>
+    db.selectFrom("_draft").select("title"),
+  );
+  const title = NonEmptyTrimmedString100.orThrow("Shopping list");
+
+  const { id: draftId } = evolu.insert("_draft", { title });
+  evolu.update("_draft", { id: draftId, isDeleted: sqliteTrue });
+  // An update from a tab that hasn't seen the delete yet.
+  evolu.update("_draft", { id: draftId, title });
+  assertEqual(await evolu.loadQuery(drafts), []);
+
+  // An upsert creates the row.
+  evolu.upsert("_draft", { id: draftId, title });
+  assertEqual(await evolu.loadQuery(drafts), [{ title }]);
+  ```
+
+- a73e71d: Notified every Store listener when one throws
+
+  A Store stopped notifying its remaining listeners when one of them threw, so a listener subscribed later, such as React's, could keep rendering the previous value. It now calls every listener and then throws the error, or an `AggregateError` of every error, in listener order, when several listeners threw. A tab also finishes connecting to its worker when an `evoluError` listener throws as the tab clears another build's `OtherBuildRunningError`. A tab also logs a worker's error before it reports it, so an `evoluError` listener that throws no longer hides it from the console.
+
+- ac5706c: Stopped logging Evolu's lifecycle events by default
+
+  Evolu logged its own lifecycle events, such as creating and disposing an instance and its DbWorker taking the lead, at `info`, which the default console level, `log`, prints, so every app printed them. They're now at `debug`. To see them, give the deps a console at that level, such as `createEvoluDeps({ console: createConsole({ level: "debug" }) })`.
+
+- f004cd2: Released leader locks granted after their wait ended
+
+  Web Locks grant a request before they run its callback, and an abort after the grant doesn't cancel it. `acquireLeaderLock` then kept a lock granted after its Task was aborted, and `acquireLeaderLockCallback` kept one granted after its handle was disposed and still called its callback. The lock stayed held until the page or worker ended, so every later request for its name waited. Both now release such a lock at once. Racing `acquireLeaderLock`, as `timeout` does, can still lose a lock granted as the deadline wins; to bound the wait, dispose the handle of `acquireLeaderLockCallback`.
+
+- e532d48: Kept late cleanup from deleting a newer keyed semaphore
+
+  `createSemaphoreByKey` and `createMutexByKey` keep a replacement registered
+  when a cancelled waiter finishes cleaning up the previous entry. Tasks with the
+  same key continue to share one semaphore or mutex.
+
+- 505274b: Accepted union arguments in Callbacks execute
+
+  `Callbacks.execute` of callbacks whose argument is a union, such as a `Result`, required an argument of each member's type at once. It now takes the union as one type.
+
+  ```ts
+  import {
+    assertEqual,
+    createCallbacks,
+    err,
+    ok,
+    type Result,
+    testCreateDeps,
+  } from "@evolu/common";
+
+  const parsePort = (input: string): Result<number, string> => {
+    const port = Number(input);
+    return Number.isInteger(port) ? ok(port) : err(`Invalid port: ${input}`);
+  };
+
+  using callbacks = createCallbacks<Result<number, string>>(testCreateDeps());
+  const results: Array<Result<number, string>> = [];
+  const id = callbacks.register((result) => {
+    results.push(result);
+  });
+
+  // The argument is the whole Result, not an Ok and an Err at once.
+  callbacks.execute(id, parsePort("8080"));
+  assertEqual(results, [ok(8080)]);
+  ```
+
+- 1e1568d: Preserved microtask order after flushing a batch immediately
+
+  A scheduled flush now runs only for its own batch, so a later batch waits for
+  its place in the microtask queue.
+
 ## 8.27.2
 
 ### Patch Changes

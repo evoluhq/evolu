@@ -1,5 +1,55 @@
 # @evolu/svelte
 
+## 3.1.0
+
+### Minor Changes
+
+- 518e073: Added loaded to queryState
+
+  A component couldn't tell a loading query from an empty one, and a query SQLite failed reached no UI, only an unhandled rejection, so apps listed each query twice, once for `queryState` and once for an `{#await}` of `evolu.loadQuery`. `queryState` now returns a `QueryState`, whose `loaded` is the current query's first load, so a component renders `{#await todos.loaded}`, what shows while the query loads, `{:then}`, the rows of `todos.rows`, `{:catch error}`, the failure, `{/await}`. When the query changes, `loaded` is the new query's first load, and a later refresh leaves it as it is. A failure the component awaits isn't also reported as an unhandled rejection, and one that nothing awaits still is. Without a query, `loaded` has resolved with no rows. It stays pending for an instance whose database was deleted, as React's `useQuery` stays suspended, and while a refused database answers no load.
+
+- 518e073: Added storeState
+
+  `storeState(store)` follows an Evolu `ReadonlyStore`, such as `evoluError` or `syncState` of `evoluSvelteDeps`, and returns an object whose `current` is the store's value, as React's `useSyncExternalStore` does and as Svelte's `fromStore` names it. Apps no longer mirror a store into `$state` by hand, which missed a change made between the first render and the effect's subscription: `storeState` reads the store again once subscribed. Like `queryState`, it creates an `$effect`, so call it during component initialization.
+
+- 518e073: Added evoluAppState for createEvoluApp
+
+  `evoluAppState(app)` follows an app that `createEvoluApp` created and returns an `EvoluAppState`, whose `state` and `appOwners` update when it changes. `state` is an `AppOwnerState`: `None` while the tab has no AppOwner open, `Opening` with the `current` AppOwner while its instance opens, and `Open` with `current` and `evolu`, the instance. A component renders `{#if appState.state.type === "Open"}{#key appState.state.evolu}` with the AppOwner's UI, which the key remounts when the tab opens another AppOwner, and passes the instance to `queryState`. While the state is `None`, such as after a removal, it shows a choice such as to create or restore an AppOwner. Like `queryState`, it creates an `$effect`, so call it during component initialization.
+
+  `queryState` now takes any instance, also `AppOwnerEvolu` and the device database's `app.device`, not only an `Evolu`.
+
+- 518e073: Added ownerSync and ownerSyncStatusState
+
+  Svelte apps get what React's and Vue's `useOwner` and `useOwnerSyncStatus` do. `ownerSync(evolu, () => owner, () => transports)` syncs an owner, such as a shared project's, while the component lives, and stops when it's destroyed or the owner or transports change. A null owner syncs none, for a component that waits for one, and owners and transports are compared by content, so recreating them keeps the registration. `ownerSyncStatusState(evolu, syncState)` returns an object whose `status` is the `OwnerSyncStatus` of the instance's AppOwner, or of the owner a third argument returns, and updates when the status changes, not with every snapshot. Pass `evoluSvelteDeps.syncState`, or the `syncState` of the deps the instance was created with. Before the first snapshot and during server rendering, the status is `NoRelays`. Like `queryState`, both create an `$effect`, so call them during component initialization.
+
+### Patch Changes
+
+- 518e073: Fixed queryState throwing after deleteDatabase
+
+  `deleteDatabase` disposes the instance, and the app reloads or replaces it afterward. Until then, `queryState` threw "Cannot use a disposed object." when its effect ran again, such as for a query that depends on rows the deletion emptied, and destroying the component then threw "subscribeQuery unsubscribe can be called only once." A `queryState` created after the deletion threw as well. It now checks `isDatabaseDeleted`, as the React binding does, and returns empty rows without loading or subscribing.
+
+- Updated dependencies [546484b]
+- Updated dependencies [518e073]
+- Updated dependencies [18f65ea]
+- Updated dependencies [518e073]
+- Updated dependencies [e75628b]
+- Updated dependencies [518e073]
+- Updated dependencies [518e073]
+- Updated dependencies [a73e71d]
+- Updated dependencies [abd13c6]
+- Updated dependencies [518e073]
+- Updated dependencies [f004cd2]
+- Updated dependencies [ac5706c]
+- Updated dependencies [8dd9cf4]
+- Updated dependencies [771dc61]
+- Updated dependencies [f004cd2]
+- Updated dependencies [518e073]
+- Updated dependencies [e532d48]
+- Updated dependencies [505274b]
+- Updated dependencies [1e1568d]
+  - @evolu/common@8.28.0
+  - @evolu/web@3.8.0
+
 ## 3.0.5
 
 ### Patch Changes
