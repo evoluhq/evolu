@@ -1829,7 +1829,7 @@ export const createEvolu =
         : createIdFromString(appOwner.id)
     }` as Name;
     const console = run.deps.console.child(name).child("Evolu");
-    console.info("createEvolu");
+    console.debug("createEvolu");
 
     await using disposer = new AsyncDisposableStack();
 
@@ -2391,7 +2391,7 @@ export const createEvolu =
     let disposed = false;
     disposer.defer(() => {
       disposed = true;
-      console.info("disposeEvolu");
+      console.debug("disposeEvolu");
     });
 
     // oxlint-disable-next-line react/rules-of-hooks -- useOwner manages sync ownership and is not a React Hook.

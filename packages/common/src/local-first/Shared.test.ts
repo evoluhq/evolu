@@ -789,17 +789,17 @@ describe("AnnounceTabLeader", () => {
     const { console } = setup.run.deps;
     const quietName = Name.orThrow("quiet");
 
-    await setup.createEvolu({ consoleLevel: "info" });
+    await setup.createEvolu({ consoleLevel: "debug" });
     await setup.createEvolu({ tenantName: quietName, consoleLevel: "warn" });
 
-    const infoTenantNames = new Set(
+    const debugTenantNames = new Set(
       console
         .getEntriesSnapshot()
-        .filter(({ method }) => method === "info")
+        .filter(({ method }) => method === "debug")
         .map(({ path }) => path[0]),
     );
-    assertTrue(infoTenantNames.has(testName));
-    assertFalse(infoTenantNames.has(quietName));
+    assertTrue(debugTenantNames.has(testName));
+    assertFalse(debugTenantNames.has(quietName));
   });
 
   it("posts console entry arguments that cannot be cloned as strings", () => {
@@ -14386,15 +14386,15 @@ describe("database deletion", () => {
     instance.evoluChannel.port2.postMessage({ type: "DeleteDatabase" });
     await testWaitForWorkerMessage();
     await answerDeletion(instance);
-    const hasInfo = (): boolean =>
+    const hasDebug = (): boolean =>
       console
         .getEntriesSnapshot()
-        .some(({ method, path }) => method === "info" && path[0] === testName);
-    assertFalse(hasInfo());
+        .some(({ method, path }) => method === "debug" && path[0] === testName);
+    assertFalse(hasDebug());
     const outputCount = setup.sharedWorkerOutputs.length;
 
     await addInstance(setup, setup.worker.port, disposer, {
-      consoleLevel: "info",
+      consoleLevel: "debug",
     });
     const revived = setupDbWorkerPort(
       getDbWorkerInit(setup.sharedWorkerOutputs.at(outputCount)),
@@ -14406,7 +14406,7 @@ describe("database deletion", () => {
     });
     await testWaitForWorkerMessage();
 
-    assertTrue(hasInfo());
+    assertTrue(hasDebug());
   });
 });
 

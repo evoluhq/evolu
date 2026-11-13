@@ -2147,7 +2147,7 @@ export const initSharedWorker =
             case "AnnounceTabLeader": {
               deps.console.setLevel(message.consoleLevel);
               tabLeaderPortStore.set(port);
-              console.info("tabLeaderAnnounced");
+              console.debug("tabLeaderAnnounced");
               break;
             }
 
@@ -3029,13 +3029,13 @@ const createEvoluTenant =
                 allTransports,
               );
             }
-            console.info("leaderAcquired");
+            console.debug("leaderAcquired");
             dbWorkerInited.resolve();
             runQueue();
             break;
           }
           case "LeaderRefused": {
-            console.info("leaderRefused", message.error);
+            console.debug("leaderRefused", message.error);
             // A refused tenant keeps its first error, which its tabs already
             // received, so a later refusal only releases its port, as does
             // one from a worker requested before the database was deleted.
@@ -3116,7 +3116,7 @@ const createEvoluTenant =
             pendingOwnerDeletionCountByOwnerId.clear();
             ownerTransportApplyRelation.clear();
             dbWorker = { type: "Deleted" };
-            console.info("databaseDeleted");
+            console.debug("databaseDeleted");
             // oxlint-disable-next-line unicorn/no-useless-spread -- Snapshot the instances, because disposing one removes it from the map.
             for (const instance of [...instancesById.values()]) {
               instance.port.postMessage({ type: "OnDatabaseDeleted" });
@@ -4229,7 +4229,7 @@ const createEvoluTenant =
           disposer.defer(() => {
             instancesById.delete(instance.id);
             refreshSyncRoutes();
-            console.info("evoluDispose", { name, id: instance.id });
+            console.debug("evoluDispose", { name, id: instance.id });
           });
           disposer.use(instance.port);
           disposer.defer(() => {

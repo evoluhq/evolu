@@ -2570,7 +2570,7 @@ describe("Evolu", () => {
 
       assertEqual(entries, [
         {
-          method: "info",
+          method: "debug",
           path: [evolu.name, "Evolu"],
           args: ["disposeEvolu"],
         },
