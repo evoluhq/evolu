@@ -59,9 +59,26 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # A run that main has moved past, such as one still running when the
+      # Version Packages pull request was merged, would version the changesets
+      # that merge consumed and open the pull request again. So, as in
+      # deploy-web, only the commit main points to versions, and an older one
+      # skips. A failed lookup fails the step.
+      - name: Check that main points to this commit
+        id: main
+        run: |
+          main=$(git ls-remote --exit-code origin refs/heads/main)
+          main=${main%%[[:space:]]*}
+          if [ "$main" = "$GITHUB_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::main is at $main, and only its Release run versions packages. If that run was cancelled or failed, or the commit has [skip ci], run Release on main manually."
+          fi
+
       # The version script also versions @evolu/sqlite-wasm by its SQLite
       # version, which Changesets cannot compute.
       - name: Version packages
+        if: steps.main.outputs.current == 'true'
         uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
           script: pnpm run version

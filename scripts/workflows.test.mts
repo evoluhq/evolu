@@ -1,4 +1,4 @@
-import { assertEqual, assertTrue } from "@evolu/common";
+import { assert, assertEqual, assertTrue } from "@evolu/common";
 import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
@@ -324,6 +324,26 @@ describe("GitHub workflows", () => {
 
     assertTrue(/\n    needs: \[[^\]]*\bchecks\b/u.test(version));
     assertEqual(/\b(?:always|cancelled|failure)\(\)/u.test(version), false);
+  });
+
+  // A run still going when the Version Packages pull request was merged would
+  // version the changesets the merge consumed and open the pull request again.
+  it("version the packages only on the commit main points to", () => {
+    const steps = splitSteps(job(workflow("release.yaml"), "version"));
+    const check = steps.find((step) => step.includes("\n        id: main\n"));
+    const version = steps.find((step) =>
+      step.includes("uses: changesets/action/version@"),
+    );
+    assert(check && version, "Expected the check and the version step.");
+
+    assertTrue(steps.indexOf(check) < steps.indexOf(version));
+    assertTrue(
+      check.includes("git ls-remote --exit-code origin refs/heads/main") &&
+        check.includes('if [ "$main" = "$GITHUB_SHA" ]; then'),
+    );
+    assertTrue(
+      version.includes("\n        if: steps.main.outputs.current == 'true'\n"),
+    );
   });
 
   // A fork's schedule would spend its owner's macOS minutes.
