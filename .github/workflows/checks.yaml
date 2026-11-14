@@ -12,6 +12,7 @@ jobs:
   static:
     name: Static
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -486,6 +487,7 @@ jobs:
   type-benchmarks:
     name: Type benchmarks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -505,6 +507,7 @@ jobs:
   protocol-benchmarks:
     name: Protocol benchmarks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -534,6 +537,7 @@ jobs:
     # @evolu/nodejs every target's SQLite addon.
     needs: [sqlite-wasm, nodejs-native-linux, nodejs-native-macos]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -583,6 +587,7 @@ jobs:
     # The integration tests load the SQLite wasm.
     needs: sqlite-wasm
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     # Each job pays for its container, install and build, so the suites are
@@ -649,6 +654,7 @@ jobs:
     # tests start from source loads @evolu/nodejs's SQLite addon.
     needs: [sqlite-wasm, nodejs-native-linux]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     # Each test replaces the relay at the one URL built into the app, so a job
@@ -707,6 +713,7 @@ jobs:
     # The browser integration tests load the SQLite wasm.
     needs: sqlite-wasm
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     strategy:
