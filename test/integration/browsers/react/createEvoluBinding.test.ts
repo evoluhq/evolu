@@ -91,7 +91,6 @@ import {
   testCreateMessagePort,
   testCreateSharedWorker,
   testCreateWorker,
-  testWaitForWorkerMessage,
 } from "../../../../packages/common/src/Worker.ts";
 import { createEvoluBinding } from "../../../../packages/react/src/local-first/createEvoluBinding.ts";
 
@@ -1169,10 +1168,11 @@ describe("EvoluAppProvider", () => {
         ),
       );
     });
-    for (let i = 0; i < 30 && caught.length === 0; i++)
-      await act(async () => {
-        await testWaitForWorkerMessage();
-      });
+    // Waits for the rejection itself. A bounded wait for idle worker messages
+    // could end before it, as in WebKit on CI.
+    await act(async () => {
+      await appPromise.catch(constVoid);
+    });
 
     assertEqual(caught.length, 1);
     const [error] = caught;
