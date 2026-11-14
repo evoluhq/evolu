@@ -182,14 +182,16 @@ test("keeps offering Start Over while only a pending passkey is involved", async
   const alert = page.getByRole("alert").filter({ hasText: /\S/u });
   for (const attempt of [1, 2]) {
     await page.getByRole("button", { name: "Create Account" }).click();
-    // A new passkey's first refusal isn't a failed retry.
-    await page.getByRole("button", { name: "Try Again" }).click();
+    // A new passkey's first refusal isn't a failed retry. Without a stored
+    // secret, the choices are the retry.
+    await page.getByRole("button", { name: "Create Account" }).click();
     if (attempt === 2)
       await expect(alert).toContainText(
         "It still fails after starting over, so this passkey provider likely can't unlock. Start over to try another one.",
       );
     // Forgetting a pending key loses nothing, so it asks for no confirmation.
     await page.getByRole("button", { name: "Start Over" }).click();
+    await expect(alert).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Create Account" }),
     ).toBeVisible();
@@ -207,5 +209,45 @@ test("tells when the passkey provider lacks the PRF extension", async ({
     "This passkey provider doesn't support the WebAuthn PRF extension. Try another one.",
   );
   await expect(page.getByRole("button", { name: "Start Over" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Try Again" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try Again" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Create Account" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Restore Account" }),
+  ).toBeVisible();
+});
+
+test("offers both choices again after the user dismisses the passkey prompt of Restore Account", async ({
+  baseURL,
+  browserEvents,
+  page,
+}) => {
+  await addVirtualAuthenticator(page);
+  // The user dismisses the first passkey prompt, as one who changed their mind.
+  await page.addInitScript(() => {
+    const create = navigator.credentials.create.bind(navigator.credentials);
+    let dismissed = false;
+    navigator.credentials.create = (options) => {
+      if (dismissed) return create(options);
+      dismissed = true;
+      return Promise.reject(new DOMException("Dismissed", "NotAllowedError"));
+    };
+  });
+  await page.goto(passkeyUrl(baseURL));
+  await page.getByRole("button", { name: "Restore Account" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: /\S/u })).toHaveText(
+    "The passkey prompt was dismissed, or the passkey is gone. Try again.",
+  );
+  // A dismissed prompt leaves no key, so there's nothing to start over.
+  await expect(page.getByRole("button", { name: "Start Over" })).toHaveCount(0);
+
+  browserEvents.acceptNextPrompt(namePrompt, "Account 1");
+  await page.getByRole("button", { name: "Create Account" }).click();
+  await expect(
+    page.getByRole("heading", { name: "No projects yet" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("list", { name: "Accounts on this device" }),
+  ).toContainText("Account 1 (open)");
 });

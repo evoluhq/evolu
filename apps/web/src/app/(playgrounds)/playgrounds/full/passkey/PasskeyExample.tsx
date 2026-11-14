@@ -71,8 +71,6 @@ const Unlock: FC = () => {
     auth.state.get,
     auth.state.get,
   );
-  // What the button the user clicked asked for, which Try Again repeats.
-  const [action, setAction] = useState<UnlockAction>("Unlock");
   const [started, setStarted] = useState<Promise<App> | null>(inMemoryApp);
 
   if (started)
@@ -91,7 +89,6 @@ const Unlock: FC = () => {
     );
 
   const unlock = (nextAction: UnlockAction) => {
-    setAction(nextAction);
     void auth.unlock().then(() => {
       const unlocked = auth.state.get();
       if (unlocked.type !== "Unlocked") return;
@@ -143,18 +140,38 @@ const Unlock: FC = () => {
       )}
       {state.type === "StartingOver" ? (
         <p className="text-sm text-gray-600">Starting over…</p>
-      ) : state.type === "Failed" ? (
+      ) : (
         <div className="flex flex-wrap gap-2">
-          <Button
-            title="Try Again"
-            variant="primary"
-            onClick={() => {
-              // With a secret stored, as after a declined start over, it only
-              // unlocks rather than adding an account too.
-              unlock(state.hasDeviceSecret ? "Unlock" : action);
-            }}
-          />
-          {state.canStartOver && (
+          {state.hasDeviceSecret ? (
+            // With a secret stored, as after a declined start over, it only
+            // unlocks rather than adding an account too.
+            <Button
+              title={state.type === "Failed" ? "Try Again" : "Unlock"}
+              variant="primary"
+              onClick={() => {
+                unlock("Unlock");
+              }}
+            />
+          ) : (
+            // After a failure too, so a dismissed passkey prompt doesn't hold
+            // the user to the choice that opened it.
+            <>
+              <Button
+                title="Create Account"
+                variant="primary"
+                onClick={() => {
+                  unlock("Create");
+                }}
+              />
+              <Button
+                title="Restore Account"
+                onClick={() => {
+                  unlock("Restore");
+                }}
+              />
+            </>
+          )}
+          {state.type === "Failed" && state.canStartOver && (
             <Button
               title="Start Over"
               onClick={() => {
@@ -167,30 +184,6 @@ const Unlock: FC = () => {
               }}
             />
           )}
-        </div>
-      ) : state.hasDeviceSecret ? (
-        <Button
-          title="Unlock"
-          variant="primary"
-          onClick={() => {
-            unlock("Unlock");
-          }}
-        />
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          <Button
-            title="Create Account"
-            variant="primary"
-            onClick={() => {
-              unlock("Create");
-            }}
-          />
-          <Button
-            title="Restore Account"
-            onClick={() => {
-              unlock("Restore");
-            }}
-          />
         </div>
       )}
     </div>
