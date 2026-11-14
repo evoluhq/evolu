@@ -24,7 +24,7 @@ This guide will help you get started with the Evolu local-first platform.
 
 ## Installation
 
-Evolu offers SDKs for a variety of frameworks, including React, Svelte, React Native, Expo, and others. Below, you can see how to install the SDKs for each framework.
+Evolu offers SDKs for a variety of frameworks, including React, Svelte, React Native, Expo, and others.
 
 <SinglePlatformCodeGroup>
 
@@ -77,21 +77,21 @@ npm install @evolu/common @evolu/web
 </ConditionalPlatformAlert>
 
 <ConditionalPlatformAlert platform={["Expo", "React Native"]} type="info">
-  Install Evolu's polyfills in a module of their own that your app's entry file
-  imports first, because a file's imports all run before its own code and Evolu
-  reads randomness when it's imported. Add a `polyfills.ts` that calls
-  `installPolyfills` from `@evolu/react-native/polyfills`, and import it first:
-  in an Expo app with Expo Router, from an `index.ts` at the app's root that
-  then imports `expo-router/entry`, with `"main": "index.ts"` in `package.json`,
-  as the [react-expo
+  Evolu needs React Native 0.88 or later, in Expo SDK 58 or later, on Hermes,
+  React Native's default engine. iOS builds with CocoaPods; SwiftPM support
+  comes later. Install Evolu's polyfills in a module of their own that your
+  app's entry file imports first, because a file's imports all run before its
+  own code and Evolu reads randomness when it's imported. Add a `polyfills.ts`
+  that calls `installPolyfills` from `@evolu/react-native/polyfills`, and import
+  it first: in an Expo app with Expo Router, from an `index.ts` at the app's
+  root that then imports `expo-router/entry`, with `"main": "index.ts"` in
+  `package.json`, as the [react-expo
   example](https://github.com/evoluhq/evolu/tree/main/examples/react-expo) does;
   in any other app, on the first line of its entry file, such as `index.js`, as
   the [react-native
   example](https://github.com/evoluhq/evolu/tree/main/examples/react-native)
-  does. Evolu needs React Native 0.88 or later, in Expo SDK 58 or later, on
-  Hermes, React Native's default engine. iOS builds with CocoaPods; SwiftPM
-  support comes later. [React Native](/docs/react-native) explains how to start
-  from the examples and what Evolu adds to an app's size.
+  does. [React Native](/docs/react-native) explains how to start from the
+  examples and what Evolu adds to an app's size.
 </ConditionalPlatformAlert>
 
 ## Updating
@@ -163,132 +163,7 @@ assertErr(Schema.todo.title.fromUnknown(""));
 
 ## Create Evolu
 
-After defining the schema, create Evolu for your environment. Evolu is multitenant: an app can have several accounts, called AppOwners, on one device, such as a personal one and a work one. `createEvoluApp` creates them, keeps them on the device, and opens one:
-
-```ts
-import {
-  AppName,
-  createEvoluApp,
-  NonEmptyTrimmedString100,
-} from "@evolu/common";
-import { createEvoluDeps, createRun } from "@evolu/web";
-// ---cut-start---
-import {
-  assertEqual,
-  assertNotNull,
-  createQueryBuilder,
-  id,
-} from "@evolu/common";
-
-const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
-// ---cut-end---
-
-const run = createRun(createEvoluDeps());
-const app = await run.orThrow(
-  createEvoluApp(Schema, {
-    appName: AppName.orThrow("your-app-name"),
-    auth: { type: "InstantStart" },
-    createFirstAppOwner: true,
-  }),
-);
-
-// The open AppOwner, with its Evolu instance.
-const current = app.current.get();
-if (current) {
-  const evolu = await current.evolu;
-  evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("Buy milk") });
-}
-// ---cut-start---
-assertNotNull(current);
-const evolu = await current.evolu;
-const titles = createQueryBuilder(Schema)((db) =>
-  db.selectFrom("todo").select("title"),
-);
-assertEqual(await evolu.loadQuery(titles), [{ title: "Buy milk" }]);
-await app[Symbol.asyncDispose]();
-// ---cut-end---
-```
-
-The example sets two options that decide how the app starts: `auth` and `createFirstAppOwner`.
-
-### Auth
-
-Evolu encrypts not only the data an app syncs but also the data it keeps on the device, because malware can read a browser's or an app's storage. The device database, which keeps the AppOwners' secrets, needs a key such malware can't read. `auth` decides where that key comes from:
-
-- `DeviceSecret` keeps it in secure storage malware can't read. On React Native, [`loadDeviceSecret`](/docs/api-reference/react-native/functions/loadDeviceSecret) keeps it in the iOS Keychain or the Android Keystore, with no prompt. A browser has no such storage, so on the web the only safe place is a passkey, which the user confirms on every start. [`createPasskeyAuth`](/docs/api-reference/web/functions/createPasskeyAuth) unlocks the secret with one, as the [passkey playground](/playgrounds/full/passkey) shows.
-- `InstantStart` is for apps whose users won't keep anything sensitive in them, such as one made for fun, where a passkey prompt on every start only annoys users who don't see why it's needed. It needs no prompt, but its key is public, so it doesn't protect against malware that can read the app's storage.
-
-[Privacy](/docs/privacy#encryption-on-the-device) explains what each protects.
-
-### createFirstAppOwner
-
-For some apps, mobile ones especially, it makes sense to create the user's account when they first open the app and open it again at every later start. Onboarding is simpler, and because the account is local, it costs nothing. A user who already has an account can restore it from a menu, or the app can ask on the first start, "Already use the app? Restore your account." The empty account can then be removed.
-
-`createFirstAppOwner: true` does this. Evolu provides it because on the web, creating exactly one account is harder than it looks: the app can run in several tabs at once, and a check in app code, such as in localStorage or IndexedDB, can race and create two AppOwners. Evolu creates the first AppOwner when the device database is created, so there's always exactly one.
-
-### Accounts
-
-`app.appOwners` lists the AppOwners on the device, and `app.open` opens one as `app.current`. `app.add` adds a new AppOwner, or restores one from its mnemonic, and opens it. To restore one, validate what the user typed with `Mnemonic`, convert it with `mnemonicToOwnerSecret`, and pass the secret to `app.add`. [EvoluApp](/docs/api-reference/common/local-first/Evolu/interfaces/EvoluApp) describes each method, and the [examples](/docs/examples) show how full apps manage accounts.
-
-A restored AppOwner syncs its data back from the relays in `transports`, except the rows of local-only tables, whose names start with `_`, because they never sync.
-
-### React
-
-In React, `EvoluAppProvider` from `createEvoluBinding` takes the app's promise, created once at module scope, such as `appPromise` from `run.orThrow(createEvoluApp(…))`, and provides the open AppOwner's instance, so `useEvolu` and the query hooks read its data. It renders under a Suspense boundary while the app opens, and renders `withoutAppOwner` while no AppOwner is open, such as after the user removed the last one:
-
-```tsx {{ title: 'React' }}
-import { createEvoluBinding } from "@evolu/react";
-import { Suspense, type FC } from "react";
-// ---cut-start---
-import {
-  AppName,
-  assertTrue,
-  createEvoluApp,
-  id,
-  NonEmptyTrimmedString100,
-} from "@evolu/common";
-import { createEvoluDeps } from "@evolu/react-web";
-import { createRun } from "@evolu/web";
-import { prerender } from "react-dom/static";
-
-const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
-const run = createRun(createEvoluDeps());
-const appPromise = run.orThrow(
-  createEvoluApp(Schema, {
-    appName: AppName.orThrow("your-app-name"),
-    auth: { type: "InstantStart" },
-    createFirstAppOwner: true,
-  }),
-);
-
-const Todos: FC = () => <p>Todos</p>;
-const CreateOrRestore: FC = () => <p>Create or restore an account</p>;
-// ---cut-end---
-
-const { EvoluAppProvider, useEvolu, useQuery } =
-  createEvoluBinding<typeof Schema>();
-
-export const App: FC = () => (
-  <Suspense fallback={<p>Opening…</p>}>
-    <EvoluAppProvider value={appPromise} withoutAppOwner={<CreateOrRestore />}>
-      <Todos />
-    </EvoluAppProvider>
-  </Suspense>
-);
-// ---cut-start---
-
-const { prelude } = await prerender(<App />);
-assertTrue((await new Response(prelude).text()).includes("Todos"));
-assertTrue(typeof useEvolu === "function" && typeof useQuery === "function");
-await (await appPromise)[Symbol.asyncDispose]();
-// ---cut-end---
-```
-
-In Vue, [EvoluAppProvider](/docs/api-reference/vue/variables/EvoluAppProvider) does the same, with composables typed by [createEvoluBinding](/docs/api-reference/vue/functions/createEvoluBinding), and in Svelte, [evoluAppState](/docs/api-reference/svelte/functions/evoluAppState) follows the open AppOwner and its instance.
-
-### Run
-
-Create one Run for the whole app, with your platform's deps:
+After defining the schema, create one [`Run`](/docs/api-reference/common/Task/interfaces/Run) for the whole app, with your platform's deps:
 
 <SinglePlatformCodeGroup>
 
@@ -374,49 +249,128 @@ assertSame(run.getState().type, "Running");
 
 </SinglePlatformCodeGroup>
 
-### Relays
-
-Without `transports`, Evolu syncs through `free.evoluhq.com`, a [testing relay](/docs/relay#hosting-evolu-relay) whose data may be deleted. Set your own relays before release, or pass `transports: []` to sync nothing.
-
-### Supply your own owner
-
-If an app's AppOwners come from outside Evolu, such as from a hardware wallet in an app like Trezor Suite, the app manages them itself and creates an Evolu instance with [`createEvolu`](/docs/api-reference/common/local-first/Evolu/functions/createEvolu) and the AppOwner as its `appOwner`:
+Then create Evolu. Evolu is multitenant: an app can have several accounts, called AppOwners, on one device, such as a personal one and a work one. `createEvoluApp` creates them, keeps them on the device, and opens one:
 
 ```ts
-import { AppName, createEvolu } from "@evolu/common";
-import { createEvoluDeps, createRun } from "@evolu/web";
+import {
+  AppName,
+  createEvoluApp,
+  NonEmptyTrimmedString100,
+} from "@evolu/common";
 // ---cut-start---
 import {
-  assertSame,
+  assertEqual,
+  assertNotNull,
+  createQueryBuilder,
   id,
-  NonEmptyTrimmedString100,
-  nullOr,
-  SqliteBoolean,
-  testAppOwner,
 } from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
 
-const Schema = {
-  todo: {
-    id: id("Todo"),
-    title: NonEmptyTrimmedString100,
-    isCompleted: nullOr(SqliteBoolean),
-  },
-};
-const appOwner = testAppOwner;
+const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
+const run = createRun(createEvoluDeps());
 // ---cut-end---
 
-const run = createRun(createEvoluDeps());
-const evolu = await run.ok(
-  createEvolu(Schema, {
+const app = await run.orThrow(
+  createEvoluApp(Schema, {
     appName: AppName.orThrow("your-app-name"),
-    appOwner,
+    auth: { type: "InstantStart" },
+    createFirstAppOwner: true,
   }),
+);
+
+// The open AppOwner, with its Evolu instance.
+const current = app.current.get();
+if (current) {
+  const evolu = await current.evolu;
+  evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("Buy milk") });
+}
+// ---cut-start---
+assertNotNull(current);
+const evolu = await current.evolu;
+const titles = createQueryBuilder(Schema)((db) =>
+  db.selectFrom("todo").select("title"),
+);
+assertEqual(await evolu.loadQuery(titles), [{ title: "Buy milk" }]);
+await app[Symbol.asyncDispose]();
+// ---cut-end---
+```
+
+The example sets two options that decide how the app starts: `auth` and `createFirstAppOwner`.
+
+### Auth
+
+Evolu encrypts not only the data an app syncs but also the data it keeps on the device, because a browser doesn't protect localStorage, IndexedDB, or OPFS from other programs, such as malware. `createEvoluApp` keeps the AppOwners' secrets in one more database, the device database, so its key protects them all, and `auth` decides whether malware can read it:
+
+- `DeviceSecret` keeps the key where malware can't read it. On React Native, [`loadDeviceSecret`](/docs/api-reference/react-native/functions/loadDeviceSecret) protects it with the iOS Keychain or the Android Keystore. A browser has no such storage, so on the web, [`createPasskeyAuth`](/docs/api-reference/web/functions/createPasskeyAuth) unlocks it with a passkey. Unlike on mobile, the user has to confirm it on every start, as the [passkey playground](/playgrounds/full/passkey) shows.
+- `InstantStart` uses a fixed key that Evolu provides, which is public, so the app starts without a prompt, but malware that can read the app's storage can read the AppOwners' secrets. It suits apps without sensitive data, where a passkey prompt on every start would only annoy users.
+
+Choose the mode before the first release, because an account never moves from `InstantStart` to `DeviceSecret`. [Local auth](/docs/local-auth) shows how to set up each.
+
+### createFirstAppOwner
+
+For some apps, mobile ones especially, it makes sense to create the user's account when they first open the app and open it again at every later start. Onboarding is simpler, and because the account is local, it costs nothing. A user who already has an account can restore it from a menu, or the app can ask on the first start, "Already use the app? Restore your account." The empty account can then be removed.
+
+`createFirstAppOwner: true` does this. Evolu provides it because on the web, creating exactly one account is harder than it looks: the app can run in several tabs at once, and a check in app code, such as in localStorage or IndexedDB, can race and create two AppOwners. Evolu creates the first AppOwner when the device database is created, so the app gets exactly one. An app that starts with a choice, such as to create an account or restore one, sets it to `false`.
+
+[Local auth](/docs/local-auth#accounts) shows how an app restores, switches, and removes accounts, and why to ask the user to [back up](/docs/local-auth#backups) the account's mnemonic.
+
+### React
+
+In React, `EvoluAppProvider` from `createEvoluBinding` takes the app's promise, created once at module scope, such as `appPromise` from `run.orThrow(createEvoluApp(…))`, and provides the open AppOwner's instance, so `useEvolu` and the query hooks read its data. It renders under a Suspense boundary while the app opens, and renders `withoutAppOwner` while no AppOwner is open, such as after the user removed the last one:
+
+```tsx {{ title: 'React' }}
+import { createEvoluBinding } from "@evolu/react";
+import { Suspense, type FC } from "react";
+// ---cut-start---
+import {
+  AppName,
+  assertTrue,
+  createEvoluApp,
+  id,
+  NonEmptyTrimmedString100,
+} from "@evolu/common";
+import { createEvoluDeps } from "@evolu/react-web";
+import { createRun } from "@evolu/web";
+import { prerender } from "react-dom/static";
+
+const Schema = { todo: { id: id("Todo"), title: NonEmptyTrimmedString100 } };
+const run = createRun(createEvoluDeps());
+const appPromise = run.orThrow(
+  createEvoluApp(Schema, {
+    appName: AppName.orThrow("your-app-name"),
+    auth: { type: "InstantStart" },
+    createFirstAppOwner: true,
+  }),
+);
+
+const Todos: FC = () => <p>Todos</p>;
+const CreateOrRestore: FC = () => <p>Create or restore an account</p>;
+// ---cut-end---
+
+const { EvoluAppProvider, useEvolu, useQuery } =
+  createEvoluBinding<typeof Schema>();
+
+export const App: FC = () => (
+  <Suspense fallback={<p>Opening…</p>}>
+    <EvoluAppProvider value={appPromise} withoutAppOwner={<CreateOrRestore />}>
+      <Todos />
+    </EvoluAppProvider>
+  </Suspense>
 );
 // ---cut-start---
 
-assertSame(evolu.appOwner, appOwner);
+const { prelude } = await prerender(<App />);
+assertTrue((await new Response(prelude).text()).includes("Todos"));
+assertTrue(typeof useEvolu === "function" && typeof useQuery === "function");
+await (await appPromise)[Symbol.asyncDispose]();
 // ---cut-end---
 ```
+
+In Vue, [EvoluAppProvider](/docs/api-reference/vue/variables/EvoluAppProvider) does the same, with composables typed by [createEvoluBinding](/docs/api-reference/vue/functions/createEvoluBinding), and in Svelte, [evoluAppState](/docs/api-reference/svelte/functions/evoluAppState) follows the open AppOwner and its instance.
+
+### Relays
+
+Without `transports`, Evolu syncs through `free.evoluhq.com`, a [testing relay](/docs/relay#hosting-evolu-relay) whose data may be deleted. Set your own relays before release, or pass `transports: []` to sync nothing.
 
 ## Handle errors
 
@@ -452,7 +406,7 @@ assertEqual(await new Response(prelude).text(), "");
 
 Vue follows the store with `useStore`, Svelte with `storeState`, and other frameworks subscribe to it the same way. [EvoluError](/docs/api-reference/common/local-first/Evolu/type-aliases/EvoluError) lists each error and what to ask the user. Each one blocks the app: after an `UnknownError`, for example, Evolu is in an unknown state, so ask the user to close all the app's tabs, or on React Native to restart the app. A problem syncing through a relay is not an `EvoluError`; the owner's [sync status](#sync-status) shows it.
 
-Two cases can stop the app as it starts. While another build of the app, running in another tab, keeps the database, the app waits, and `evoluError` shown outside the Suspense boundary tells the user. When the device database is refused, `createEvoluApp` rejects, so put an error boundary of your own around the Suspense boundary.
+Two cases can stop the app as it starts. While another build of the app, running in another tab, keeps the database, the app waits, and `evoluError` shown outside the Suspense boundary tells the user. When the device database can't open, `createEvoluApp` rejects, so put an error boundary of your own around the Suspense boundary.
 
 `StartupErrorBoundary` below is an [error boundary](https://react.dev/reference/react/Component#catching-rendering-errors-with-an-error-boundary) of the app's own, which catches `createEvoluApp`'s rejection and shows the failure instead of React unmounting the page:
 
@@ -538,7 +492,7 @@ await (await appPromise)[Symbol.asyncDispose]();
 
 ## Sync status
 
-Evolu stores changes in the local database before they sync, so sync needs no UI while it works. Show the owner's sync status once, such as below the header, as one quiet line that appears only when no relay can be reached or a relay fails. React and Vue have `useOwnerSyncStatus` and Svelte has `ownerSyncStatusState`, while other frameworks subscribe to `run.deps.syncState` and pass its value, the database's name, and the owner's ID to [syncStateToOwnerSyncStatus](/docs/api-reference/common/local-first/Shared/functions/syncStateToOwnerSyncStatus), and [OwnerSyncStatus](/docs/api-reference/common/local-first/Shared/type-aliases/OwnerSyncStatus) describes each status and what to show for it.
+Evolu stores changes in the local database before they sync, so sync needs no UI while it works. Show the owner's sync status once, such as below the header, as one quiet line that appears only when no relay can be reached or a relay fails. React and Vue have `useOwnerSyncStatus`, and Svelte has `ownerSyncStatusState`. Other frameworks subscribe to `run.deps.syncState` and pass its value, the database's name, and the owner's ID to [syncStateToOwnerSyncStatus](/docs/api-reference/common/local-first/Shared/functions/syncStateToOwnerSyncStatus). [OwnerSyncStatus](/docs/api-reference/common/local-first/Shared/type-aliases/OwnerSyncStatus) describes each status and what to show for it.
 
 ## Mutate data
 
@@ -893,7 +847,7 @@ assertEqual(await evolu.loadQuery(allTodos), [
 
 ## Query data
 
-Evolu uses type-safe TypeScript SQL query builder [Kysely](https://github.com/koskimas/kysely), so autocompletion works out-of-the-box.
+Evolu uses [Kysely](https://github.com/kysely-org/kysely), a type-safe SQL query builder for TypeScript, so autocompletion works out of the box.
 
 Let's start with a simple `Query`.
 
@@ -1639,10 +1593,6 @@ assertEqual(
   asynchronously. See [Time Travel](/docs/time-travel) to learn how to recover
   deleted data.
 </Warn>
-
-## Protect data
-
-Evolu encrypts the data an app syncs and the data it keeps on the device, as [Privacy](/docs/privacy) explains. An AppOwner's mnemonic restores it on another device, and whoever has it can read and change all of the AppOwner's data, so let the user back it up and show it only to them, such as in a recovery UI that shows `evolu.appOwner.mnemonic`.
 
 ## Purge data
 

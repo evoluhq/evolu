@@ -35,7 +35,8 @@ tells what it knows for sure with `evolu.devicePersistence`:
   option asks for it or the browser refuses storage, as private browsing does
   in Safari and the other WebKit browsers and in Firefox, or as a storage
   failure does. Each instance has its own memory database, even for the same
-  app and owner. Its data lasts until the instance ends: closing, reloading, or
+  app and owner. With `createEvoluApp`, that includes the device database, so
+  each tab has its own accounts. Its data lasts until the instance ends: closing, reloading, or
   navigating away from its tab, including entering the back-forward cache, ends
   it. Where storage is available, Evolu may reload the tab, for example when
   another tab loads a new version of the app. Data synced with a relay comes
@@ -458,7 +459,7 @@ assertEqual(
 
 **Alternative approach**: Create Evolu without transports initially, verify the user through a backend service that knows whether it's their first login, then have the client insert data explicitly before enabling sync:
 
-Using `CategorySchema` and `seedDefaultData` above, with the shared `run` and `appOwner` from Supply your own owner in [Create Evolu](/docs/local-first#create-evolu):
+Using `CategorySchema` and `seedDefaultData` above, with the shared `run` and `appOwner` from [Bring your own accounts](/docs/local-auth#bring-your-own-accounts):
 
 ```ts
 import { AppName, createEvolu, WebSocketUrl } from "@evolu/common";

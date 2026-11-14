@@ -17,18 +17,9 @@ Evolu sends data only to the relays the app sets. An app that omits `transports`
 
 ## Encryption on the device
 
-Evolu encrypts every database an app stores on the device with AES-256, on the web and in Electron, in React Native and Expo, and in Node.js. The Evolu Relay's database isn't encrypted, because the changes it stores already are.
+Evolu encrypts every database an app stores on the device with AES-256, on the web and in Electron, in React Native and Expo, and in Node.js, because programs that can read the user's files, such as malware, can read what an app stores: a browser doesn't protect localStorage, IndexedDB, or OPFS from them. The Evolu Relay's database isn't encrypted, because the changes it stores already are.
 
-Each AppOwner's database is encrypted with a key derived from the AppOwner's secret. The app keeps those secrets in one more database on the device, whose key decides how safe the data on the device is.
-
-On React Native, that key can come from the platform's secure storage, the iOS Keychain or the Android Keystore, without a prompt, so anything that can only read the app's storage can't read the secrets.
-
-On the web, a browser gives an app no secure storage that works without the user, so the key comes from a passkey or is public:
-
-- A passkey keeps the secrets from anything that can only read the app's storage, but the user has to confirm it whenever the app starts, and not every passkey provider supports it yet.
-- A public key lets the app start without a prompt, but anything that can read the app's storage can read the secrets, and with them every AppOwner's data.
-
-An app with sensitive data should use a passkey. An app with little at stake, such as a PWA wallet that holds only small amounts, may prefer to start without a prompt. On Node.js, Evolu offers no secure storage yet, so the key is public unless the app keeps it itself, as it can on any platform, such as with Electron's `safeStorage`. An app that supplies its own AppOwners, such as ones derived from a hardware wallet, keeps their secrets itself, so their databases are only as safe as the place it keeps them.
+Each AppOwner's database is encrypted with a key derived from the AppOwner's secret. An app created with `createEvoluApp` keeps those secrets in one more database, the device database, so its key decides how safe the data on the device is. With a `DeviceSecret`, from the iOS Keychain, the Android Keystore, or a passkey, anything that can only read the app's storage can't read the secrets. With `InstantStart`, the key is public, so anything that can read the app's storage can read them, and with them every AppOwner's data. [Local auth](/docs/local-auth) explains which mode to choose and how to set it up. An app that supplies its own AppOwners keeps their secrets itself.
 
 Exports leave encryption: `exportDatabase` returns the database as a plain SQLite file that users can open in any SQLite tool, so treat exported files as sensitive.
 

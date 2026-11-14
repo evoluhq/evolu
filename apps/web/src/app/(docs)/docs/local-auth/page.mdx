@@ -1,0 +1,143 @@
+export const metadata = {
+  title: "Local auth",
+  description:
+    "How Evolu keeps an app's accounts on the device, what unlocks them, and how apps manage them.",
+};
+
+# Local auth
+
+In a local-first app, no server signs the user in. A relay's host can require a sign-in to sync through it, as [Access control](/docs/relay#access-control) describes, but that only decides who may use the relay, which can't read the user's data. The user's account, which Evolu calls an AppOwner, is a secret on the device. It identifies the user's data, encrypts it, and lets the user sync it to other devices or restore it from a backup. Local auth decides what unlocks that secret on the device.
+
+[`createEvoluApp`](/docs/api-reference/common/local-first/Evolu/functions/createEvoluApp) creates the app's accounts, keeps them on the device, and opens one of them. [Create Evolu](/docs/local-first#create-evolu) shows the basic setup. This page explains the choices it leaves to the app.
+
+## The device database
+
+`createEvoluApp` keeps the accounts in a database of their own, the device database. It belongs to the device, not to any account: it holds the secret of every account the app can open on this device, and those secrets never sync.
+
+A browser doesn't protect what an app stores, such as in localStorage, IndexedDB, or OPFS, from other programs that can read the user's files, such as malware. That's why Evolu encrypts every database it keeps on the device. Each account's database is encrypted with that account's key, so the device database's key decides how safe all of them are on the device. The `auth` option decides whether malware can read that key.
+
+The device database's name derives from the `appName` and from that key, so another name or another key opens another device database, without the accounts of the old one. Keep the `appName` and the `auth` mode the same across releases.
+
+The device database can also keep the app's own data that belongs to the device rather than to an account, such as UI settings, which stay the same when the user opens another account. [How do I store device-specific settings that shouldn't sync?](/docs/faq#how-do-i-store-device-specific-settings-that-shouldnt-sync) shows how.
+
+## Choose a mode
+
+| Platform                  | `auth`                                                   | Prompt                       |
+| ------------------------- | -------------------------------------------------------- | ---------------------------- |
+| React Native              | `DeviceSecret` from `loadDeviceSecret`                   | None                         |
+| Web, with sensitive data  | `DeviceSecret` from `createPasskeyAuth`                  | On every start, in every tab |
+| Web, with little at stake | `InstantStart`                                           | None                         |
+| Electron and Node.js      | `InstantStart`, or a `DeviceSecret` the app keeps itself | None                         |
+
+`InstantStart` doesn't protect the accounts from malware on the device. It uses a fixed key that Evolu provides, so the app starts without a prompt, but the key is public. Anything that can read the app's storage can read every account's secret, and with it the account's data on relays. Use it on the web when the app holds no sensitive data or significant money, where a passkey prompt on every start would only annoy users.
+
+The mode is fixed per app. An account never moves from `InstantStart` to `DeviceSecret`: its secret was readable before, and whoever copied it then can still read the account's data on relays, so moving it would only look like protection. An app that may need `DeviceSecret` uses it from the first release. One that adopts it later gives each user a new account and copies the data into it. The old accounts stay in the old device database, which `createEvoluApp` with the old `auth` still opens.
+
+[Privacy](/docs/privacy) explains what Evolu encrypts and what relays can still see.
+
+## Passkeys on the web
+
+A browser gives an app no secure storage that works without the user, so on the web, a `DeviceSecret` needs a passkey. [`createPasskeyAuth`](/docs/api-reference/web/functions/createPasskeyAuth) unlocks it with the passkey's WebAuthn PRF output, and on the first use creates the passkey and the secret. `rpName` and `userName` are the labels the browser or passkey provider shows for the passkey.
+
+The app creates its `EvoluApp` only once the secret is unlocked, so it starts with a screen of its own, which the `state` of the returned `PasskeyAuth` describes:
+
+- `NotPersisted`: the browser keeps nothing, as in Safari's Private Browsing or a Firefox private window, so every start would create another passkey. Start the app at once with `InstantStart` instead. Its data lasts until the tab closes, reloads, or navigates away, and nothing is stored, so this doesn't change the app's mode.
+- `Locked`: call `auth.unlock()` from a button's click, because some browsers allow a passkey prompt only in a user gesture. With `hasDeviceSecret`, the button is "Unlock". Without it, it's the first start, so offer "Create account" and "Restore account": the click creates the passkey, and once the `EvoluApp` is created, the app adds a new account or restores one. That's why such an app sets `createFirstAppOwner` to `false`.
+- `Failed`: keep the screen usable and let the user try again. A dismissed prompt, a deleted passkey, and a passkey provider without PRF, which not every provider supports yet, all end here. The first use prompts twice, to create the passkey and to unlock with it, and Safari can refuse the second prompt, so a first unlock can end here with a working passkey, which trying again uses. When `canStartOver` is true, the app can offer to start over with `auth.startOver({ confirm })`, which forgets a stored secret only once `confirm`, the app's own dialog, returns true. The accounts of that device database then come back only from their backups.
+- `Unlocked`: create the `EvoluApp` with `{ type: "DeviceSecret", secret }`. In React, keep the promise `createEvoluApp` returns in state and pass it to `EvoluAppProvider`, as the passkey playground does.
+
+While the state is `Unlocking` or `StartingOver`, show progress. The [passkey playground](/playgrounds/full/passkey) shows the whole flow.
+
+A passkey outlives the storage it unlocks. When the browser deletes the app's storage, as Chrome's incognito does when the session ends, the next start creates another passkey, and the old one unlocks nothing.
+
+## React Native
+
+On React Native, [`loadDeviceSecret`](/docs/api-reference/react-native/functions/loadDeviceSecret) creates a `DeviceSecret` on the first start and keeps it in the iOS Keychain or, on Android, encrypted with an Android Keystore key. Later starts load it without a prompt. Pass it to `createEvoluApp` as `{ type: "DeviceSecret", secret }`.
+
+A load can fail. `DeviceSecretStorageUnavailableError` means the storage can't be read yet, such as on iOS before the device's first unlock after a restart. The secret is intact, so only try again later, and never start over. `DeviceSecretUnreadableError`, which only Android reports, means the storage holds a secret it can't read. Evolu never deletes a stored secret on its own, so let the user try again, and only when that fails too and the user confirms what's lost, start over with [`forgetDeviceSecret`](/docs/api-reference/react-native/functions/forgetDeviceSecret).
+
+A forgotten secret and a new phone, also one restored from a device backup, both mean a new `DeviceSecret` and with it a new device database, so the old accounts come back only from their backups. The [Expo example](https://github.com/evoluhq/evolu/blob/main/examples/react-expo/app/index.tsx) shows the whole flow.
+
+## Electron and Node.js
+
+Evolu can't keep a `DeviceSecret` in Electron's `safeStorage` yet, which [issue 782](https://github.com/evoluhq/evolu/issues/782) tracks, and Node.js has no secure storage that Evolu supports. Choose now, because the mode is fixed: an app with sensitive data creates a secret with [`createDeviceSecret`](/docs/api-reference/common/local-first/Auth/functions/createDeviceSecret) and keeps it itself, where only the user or the platform can unlock it, such as with Electron's `safeStorage`. Other apps use `InstantStart`.
+
+## Accounts
+
+### The first account
+
+[`createFirstAppOwner`](/docs/local-first#create-evolu) decides whether the app starts with an account. Evolu creates it only when it creates the device database, never later, even after the user removed every account, so the app offers to create or restore one when none is left.
+
+### Several accounts
+
+An app can have several accounts on one device, such as a personal one and a work one. `app.appOwners` lists them, the one opened most recently first. `app.open` opens one in this tab, and other tabs keep theirs. `app.add` adds a new account, from `createOwnerSecret`, or restores one from its secret, and opens it. `app.rename` names one, and `app.remove` removes one. [EvoluApp](/docs/api-reference/common/local-first/Evolu/interfaces/EvoluApp) describes each, and the [examples](/docs/examples) show complete apps.
+
+In React and Vue, `useAppOwners` follows the list and `useEvoluApp` returns the app, and in Svelte, [`evoluAppState`](/docs/api-reference/svelte/functions/evoluAppState) returns the app's `appOwners`, so an account switcher takes a few lines, as the examples show.
+
+### Restore an account
+
+To restore an account, normalize what the user typed to NFKD with single spaces between its words, validate it with [`Mnemonic`](/docs/api-reference/common/Type/variables/Mnemonic), convert it with `mnemonicToOwnerSecret`, and pass the secret to `app.add`.
+
+The restored account syncs its data back from the relays in `transports`, except the rows of local-only tables, whose names start with `_`, because they never sync.
+
+### Remove an account
+
+`app.remove` deletes this device's copy of an account. Its changes not yet synced are lost, its data on relays stays, and adding the account again syncs that data back. [`app.remove`](/docs/api-reference/common/local-first/Evolu/interfaces/EvoluApp#remove) describes what happens when a removal fails.
+
+To replace an account with a new one, add the new one first, then remove the old one, so a crash between the two leaves two accounts rather than none.
+
+### Start with a specific account
+
+`startAppOwnerId` picks the account a tab starts with, or with `null`, none, to let the user choose. Without it, a tab starts with the account opened most recently, which another tab may have changed. Evolu reloads tabs on its own, such as when another build of the app starts, so a tab that should come back to the account it showed passes that account's ID, such as from a URL fragment. Keep it out of the URL's path and query, which reach the server.
+
+## Backups
+
+An account lives on the device, so losing the device's storage loses it, and so does losing the passkey or `DeviceSecret` of its device database. Browsers delete storage for [several reasons](/docs/faq#will-my-data-stay-on-the-device). Synced data then comes back only from a backup of the account's mnemonic, so ask the user to back it up once they've created data. Whoever has the mnemonic can read and change all of the account's data, so show it only to the user, such as in a recovery UI that shows `evolu.appOwner.mnemonic`.
+
+## Bring your own accounts
+
+If an app's accounts come from outside Evolu, such as from a hardware wallet in an app like Trezor Suite, the app manages them itself and creates an Evolu instance with [`createEvolu`](/docs/api-reference/common/local-first/Evolu/functions/createEvolu) and the AppOwner as its `appOwner`:
+
+```ts
+import { AppName, createAppOwner, createEvolu } from "@evolu/common";
+import { createEvoluDeps, createRun } from "@evolu/web";
+// ---cut-start---
+import {
+  assertEqual,
+  assertSame,
+  id,
+  NonEmptyTrimmedString100,
+  nullOr,
+  SqliteBoolean,
+  testAppOwner,
+  testOwnerSecret,
+} from "@evolu/common";
+
+const Schema = {
+  todo: {
+    id: id("Todo"),
+    title: NonEmptyTrimmedString100,
+    isCompleted: nullOr(SqliteBoolean),
+  },
+};
+const ownerSecret = testOwnerSecret;
+// ---cut-end---
+
+// The OwnerSecret the app keeps itself, such as one from a hardware wallet.
+const appOwner = createAppOwner(ownerSecret);
+
+const run = createRun(createEvoluDeps());
+const evolu = await run.ok(
+  createEvolu(Schema, {
+    appName: AppName.orThrow("your-app-name"),
+    appOwner,
+  }),
+);
+// ---cut-start---
+
+assertSame(evolu.appOwner, appOwner);
+assertEqual(appOwner.id, testAppOwner.id);
+// ---cut-end---
+```
+
+Such an app keeps the accounts' secrets itself, so their databases are only as safe as the place it keeps them.

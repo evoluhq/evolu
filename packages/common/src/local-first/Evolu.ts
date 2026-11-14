@@ -1991,11 +1991,7 @@ export interface EvoluAppConfig<
    * opens the one opened most recently.
    *
    * Where the ID comes from is the app's business, such as a URL fragment,
-   * which no server sees. Don't put the {@link OwnerId} itself in a URL, not
-   * even in its fragment: URLs land in browser history, which browsers sync,
-   * and in shared links and screenshots, while an OwnerId is secret to everyone
-   * but the owner's relays and those it's shared with. Keep a non-secret alias
-   * instead, such as in a device table, and map it to the OwnerId.
+   * which, unlike the path or query, no server sees.
    */
   readonly startAppOwnerId?: OwnerId | null;
 
