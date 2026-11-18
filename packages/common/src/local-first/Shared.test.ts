@@ -297,7 +297,7 @@ const setupSharedWorker = async ({
     autoDispose = true,
     initialClock = createTimestamp(),
     memoryOnly = false,
-    instanceKind = { type: "Standalone" },
+    instanceKind = { type: "Standalone", evolu7: null },
     consoleLevel = "debug",
   }: {
     tenantName?: Name;
@@ -931,7 +931,10 @@ describe("storage", () => {
   it("gives a device database's DbWorkers its createFirstAppOwner, replacements included", async () => {
     await using setup = await setupSharedWorker();
     using disposer = new DisposableStack();
-    const createFirstAppOwner = { deviceOwnerId: testAppOwner.id };
+    const createFirstAppOwner = {
+      deviceOwnerId: testAppOwner.id,
+      evolu7Name: testName,
+    };
 
     const first = await setup.createEvolu({
       instanceKind: { type: "Device", createFirstAppOwner },
@@ -1116,7 +1119,7 @@ describe("builds", () => {
       sqliteSchema: testSqliteSchema,
       encryptionKey: testAppOwner.encryptionKey,
       memoryOnly: false,
-      instanceKind: { type: "Standalone" },
+      instanceKind: { type: "Standalone", evolu7: null },
       evoluPort: evoluChannel.port1.native,
     });
     await testWaitForWorkerMessage();
@@ -1284,7 +1287,7 @@ describe("builds", () => {
       sqliteSchema: testSqliteSchema,
       encryptionKey: testAppOwner.encryptionKey,
       memoryOnly: false,
-      instanceKind: { type: "Standalone" },
+      instanceKind: { type: "Standalone", evolu7: null },
       evoluPort: evoluChannel.port1.native,
     });
     await testWaitForWorkerMessage();
@@ -1320,7 +1323,7 @@ describe("builds", () => {
       sqliteSchema: testSqliteSchema,
       encryptionKey: testAppOwner.encryptionKey,
       memoryOnly: false,
-      instanceKind: { type: "Standalone" },
+      instanceKind: { type: "Standalone", evolu7: null },
       evoluPort: evoluChannel.port1.native,
     });
     await testWaitForWorkerMessage();
@@ -6598,7 +6601,7 @@ describe("sync state", () => {
         sqliteSchema: testSqliteSchema,
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: false,
-        instanceKind: { type: "Standalone" },
+        instanceKind: { type: "Standalone", evolu7: null },
         evoluPort: siblingChannel.port1.native,
       });
       await testWaitForWorkerMessage();
@@ -6700,7 +6703,7 @@ describe("sync state", () => {
         sqliteSchema: testSqliteSchema,
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: false,
-        instanceKind: { type: "Standalone" },
+        instanceKind: { type: "Standalone", evolu7: null },
         evoluPort: siblingChannel.port1.native,
       });
       await testWaitForWorkerMessage();
@@ -8100,7 +8103,7 @@ describe("with one evolu instance", () => {
         sqliteSchema: testSqliteSchema,
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: false,
-        instanceKind: { type: "Standalone" },
+        instanceKind: { type: "Standalone", evolu7: null },
         evoluPort: evoluChannel.port1.native,
       });
       await testWaitForWorkerMessage();
@@ -8342,7 +8345,7 @@ describe("with one evolu instance", () => {
         sqliteSchema: testSqliteSchema,
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: false,
-        instanceKind: { type: "Standalone" },
+        instanceKind: { type: "Standalone", evolu7: null },
         evoluPort: secondChannel.port1.native,
       });
       await testWaitForWorkerMessage();
@@ -8456,7 +8459,7 @@ describe("with one evolu instance", () => {
         sqliteSchema: testSqliteSchema,
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: false,
-        instanceKind: { type: "Standalone" },
+        instanceKind: { type: "Standalone", evolu7: null },
         evoluPort: evoluChannel.port1.native,
       });
 
@@ -8574,7 +8577,7 @@ describe("with one evolu instance", () => {
         sqliteSchema: testSqliteSchema,
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: false,
-        instanceKind: { type: "Standalone" },
+        instanceKind: { type: "Standalone", evolu7: null },
         evoluPort: siblingChannel.port1.native,
       });
       const siblingOutputs: Array<EvoluOutput> = [];
@@ -9728,7 +9731,7 @@ describe("with one evolu instance", () => {
           sqliteSchema: testSqliteSchema,
           encryptionKey: testAppOwner.encryptionKey,
           memoryOnly: false,
-          instanceKind: { type: "Standalone" },
+          instanceKind: { type: "Standalone", evolu7: null },
           evoluPort: siblingChannel.port1.native,
         });
         await testWaitForWorkerMessage();
@@ -9980,7 +9983,7 @@ describe("with one evolu instance", () => {
         sqliteSchema: testSqliteSchema,
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: false,
-        instanceKind: { type: "Standalone" },
+        instanceKind: { type: "Standalone", evolu7: null },
         evoluPort: siblingChannel.port1.native,
       });
       await testWaitForWorkerMessage();
@@ -10161,7 +10164,7 @@ describe("with one evolu instance", () => {
         sqliteSchema: testSqliteSchema,
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: false,
-        instanceKind: { type: "Standalone" },
+        instanceKind: { type: "Standalone", evolu7: null },
         evoluPort: siblingChannel.port1.native,
       });
       await testWaitForWorkerMessage();
@@ -11878,7 +11881,7 @@ describe("with one evolu instance", () => {
           sqliteSchema: testSqliteSchema,
           encryptionKey: testAppOwner.encryptionKey,
           memoryOnly: false,
-          instanceKind: { type: "Standalone" },
+          instanceKind: { type: "Standalone", evolu7: null },
           evoluPort: siblingChannel.port1.native,
         },
         [siblingChannel.port1.native],
@@ -13310,7 +13313,7 @@ describe("refusal", () => {
     sqliteSchema: testSqliteSchema,
     encryptionKey: testAppOwner.encryptionKey,
     memoryOnly: false,
-    instanceKind: { type: "Standalone" },
+    instanceKind: { type: "Standalone", evolu7: null },
     evoluPort,
   });
 
@@ -13799,7 +13802,7 @@ const addInstance = async (
   {
     consoleLevel = "debug",
     name = testName,
-    instanceKind = { type: "Standalone" },
+    instanceKind = { type: "Standalone", evolu7: null },
   }: {
     consoleLevel?: ConsoleLevel;
     name?: Name;
@@ -14966,6 +14969,7 @@ describe("database deletion", () => {
         device.evoluChannel.port2.postMessage({
           type: "RemoveAppOwner",
           name: appOwnerDatabaseName,
+          evolu7Name: testName,
           change: removal,
           callbackId,
           subscribedQueries: new Set(),
@@ -15100,6 +15104,7 @@ describe("database deletion", () => {
         device.evoluChannel.port2.postMessage({
           type: "RemoveAppOwner",
           name: appOwnerDatabaseName,
+          evolu7Name: testName,
           change: removal,
           callbackId,
           subscribedQueries: new Set(),
@@ -15134,6 +15139,7 @@ describe("database deletion", () => {
       device.evoluChannel.port2.postMessage({
         type: "RemoveAppOwner",
         name: appOwnerDatabaseName,
+        evolu7Name: testName,
         change: removal,
         callbackId: createId(setup.run.deps),
         subscribedQueries: new Set(),
@@ -15197,7 +15203,11 @@ describe("database deletion", () => {
     });
 
     /** The AppOwner's row in the device database `setupRemoval` starts. */
-    const appOwnerRow = { deviceName: testName, ownerId: testAppOwner.id };
+    const appOwnerRow = {
+      deviceName: testName,
+      ownerId: testAppOwner.id,
+      evolu7Name: testName,
+    };
 
     /** Answers the device DbWorker's last request with `response`. */
     const answerDevice = async (
@@ -15305,15 +15315,15 @@ describe("database deletion", () => {
 
       // Without the device database's tenant, its app was disposed.
       const withoutDevice = await open({
+        ...appOwnerRow,
         deviceName: Name.orThrow("Disposed"),
-        ownerId: testAppOwner.id,
       });
       assertEqual(withoutDevice.outputs, told);
 
       // A check its tenant drops at a removal of that database.
       const droppedByRemoval = await open({
+        ...appOwnerRow,
         deviceName: appOwnerDatabaseName,
-        ownerId: testAppOwner.id,
       });
       assertEqual(
         appOwner.dbInputs.at(-1)?.request.message.type,
@@ -15476,6 +15486,7 @@ describe("database deletion", () => {
       device.evoluChannel.port2.postMessage({
         type: "RemoveAppOwner",
         name: appOwnerDatabaseName,
+        evolu7Name: testName,
         change: removal,
         callbackId,
         subscribedQueries: new Set(),
@@ -15653,6 +15664,7 @@ describe("database deletion", () => {
       device.evoluChannel.port2.postMessage({
         type: "RemoveAppOwner",
         name: secondName,
+        evolu7Name: testName,
         change: removal,
         callbackId: createId(setup.run.deps),
         subscribedQueries: new Set(),
@@ -15907,6 +15919,7 @@ describe("database deletion", () => {
       device.evoluChannel.port2.postMessage({
         type: "RemoveAppOwner",
         name: appOwnerDatabaseName,
+        evolu7Name: testName,
         change: removal,
         callbackId,
         subscribedQueries: new Set(),
@@ -15932,6 +15945,7 @@ describe("database deletion", () => {
       device.evoluChannel.port2.postMessage({
         type: "RemoveAppOwner",
         name: appOwnerDatabaseName,
+        evolu7Name: testName,
         change: removal,
         callbackId: createId(setup.run.deps),
         subscribedQueries: new Set(),
@@ -15981,6 +15995,7 @@ describe("database deletion", () => {
       device.evoluChannel.port2.postMessage({
         type: "RemoveAppOwner",
         name: appOwnerDatabaseName,
+        evolu7Name: testName,
         change: removal,
         callbackId: createId(setup.run.deps),
         subscribedQueries: new Set(),
@@ -16035,6 +16050,7 @@ describe("database deletion", () => {
       device.evoluChannel.port2.postMessage({
         type: "RemoveAppOwner",
         name: appOwnerDatabaseName,
+        evolu7Name: testName,
         change: removal,
         callbackId: createId(setup.run.deps),
         subscribedQueries: new Set(),
@@ -16134,6 +16150,7 @@ describe("database deletion", () => {
       device.evoluChannel.port2.postMessage({
         type: "RemoveAppOwner",
         name: appOwnerDatabaseName,
+        evolu7Name: testName,
         change: removal,
         callbackId: createId(setup.run.deps),
         subscribedQueries: new Set(),
@@ -16149,6 +16166,7 @@ describe("database deletion", () => {
       device.evoluChannel.port2.postMessage({
         type: "RemoveAppOwner",
         name: Name.orThrow("SecondAppOwnerDatabase"),
+        evolu7Name: testName,
         change: removal,
         callbackId: createId(setup.run.deps),
         subscribedQueries: new Set(),
@@ -16219,6 +16237,7 @@ describe("database deletion", () => {
       device.evoluChannel.port2.postMessage({
         type: "RemoveAppOwner",
         name: appOwnerDatabaseName,
+        evolu7Name: testName,
         change: removal,
         callbackId: createId(setup.run.deps),
         subscribedQueries: new Set(),
@@ -16336,6 +16355,7 @@ describe("database deletion", () => {
       device.evoluChannel.port2.postMessage({
         type: "RemoveAppOwner",
         name: appOwnerDatabaseName,
+        evolu7Name: testName,
         change: removal,
         callbackId: createId(setup.run.deps),
         subscribedQueries: new Set(),
@@ -16398,6 +16418,7 @@ describe("database deletion", () => {
       device.evoluChannel.port2.postMessage({
         type: "RemoveAppOwner",
         name: appOwnerDatabaseName,
+        evolu7Name: testName,
         change: removal,
         callbackId: createId(setup.run.deps),
         subscribedQueries: new Set(),

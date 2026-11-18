@@ -22,6 +22,7 @@ import {
 import type {
   ConsoleEntryOrError,
   CreateDbWorker,
+  Evolu7DatabaseExistsDep,
   DbWorker,
   DbWorkerInit,
   DeleteDatabaseFilesDep,
@@ -61,6 +62,7 @@ export const createEvoluDeps = (
     DeleteDatabaseFilesDep &
     ReloadAppDep &
     Partial<ConsoleDep> &
+    Partial<Evolu7DatabaseExistsDep> &
     Partial<WaitForDatabaseReleaseDep> &
     Partial<XChaCha20Poly1305Dep>,
 ): EvoluDeps => {
@@ -84,6 +86,9 @@ export const createEvoluDeps = (
       deleteDatabaseFiles: deps.deleteDatabaseFiles,
       lockManager,
       randomBytes: createRandomBytes(),
+      ...(deps.evolu7DatabaseExists && {
+        evolu7DatabaseExists: deps.evolu7DatabaseExists,
+      }),
       ...(deps.waitForDatabaseRelease && {
         waitForDatabaseRelease: deps.waitForDatabaseRelease,
       }),

@@ -1,0 +1,34 @@
+import { ArticleLayout } from "@/components/ArticleLayout";
+
+export const article = {
+  author: "Daniel Steigerwald",
+  date: "2026-11-18",
+  title: "Evolu 8 migrates Evolu 7 data",
+  description:
+    "Apps built on Evolu 7 can update to Evolu 8 now. The first start moves the Evolu 7 database on the device into Evolu 8, also what hasn't synced yet, on the web and on React Native.",
+};
+
+export const metadata = {
+  title: article.title,
+  description: article.description,
+};
+
+export default (props) => <ArticleLayout article={article} {...props} />;
+
+When we released [Evolu 8](/blog/evolu-8-is-released), we asked apps with Evolu 7 user data to stay on Evolu 7, because Evolu 8 couldn't migrate it. We haven't forgotten those apps. Evolu 8 migrates their data now.
+
+The first time an app updated from Evolu 7 starts, Evolu moves the Evolu 7 database on the device into Evolu 8 and then deletes it, on the web and on React Native. The owner comes across with its mnemonic, and so does the data: what is synced, what never reached a relay, and local-only tables. Users do nothing.
+
+## What the app does
+
+- An app that let Evolu 7 create its owner uses `createEvoluApp` with instant start and `createFirstAppOwner: true`. Its first AppOwner is the Evolu 7 owner.
+- An app that gave Evolu 7 its own owner passes that owner to `createEvolu`.
+- Evolu 8 renamed Evolu 7's `name` option to `appName`. An app whose Evolu 7 `name` differs from its `appName` passes it as `evolu7Name`.
+
+Before you release the update, read [Upgrading from Evolu 7](/docs/upgrading#evolu-7-to-evolu-8). Two things matter most: never roll a migrated device back to an Evolu 7 build, and while a tab still runs Evolu 7, the updated app doesn't start until that tab closes.
+
+## How we tested it
+
+The tests don't fake Evolu 7. They create real databases with the published Evolu 7.4.1 and let Evolu 8 migrate them: in Node.js, in Chromium, Firefox and WebKit, and with React Native's SQLite driver. They also sync an Evolu 7 device and an Evolu 8 device of one owner through a relay, in both directions, because users don't update all their devices at once.
+
+If your app waited on Evolu 7, it can update now. If something doesn't come across as you expect, please [open an issue](https://github.com/evoluhq/evolu/issues).

@@ -61,6 +61,7 @@
     "@bokuweb/zstd-wasm": "0.0.27",
     "@changesets/cli": "^3.0.3",
     "@evolu/common": "workspace:*",
+    "@evolu/common-7.4.1": "npm:@evolu/common@7.4.1",
     "@evolu/nodejs": "workspace:*",
     "@evolu/oxlint-config": "workspace:*",
     "@evolu/sqlite-wasm-2.2.4": "npm:@evolu/sqlite-wasm@2.2.4",

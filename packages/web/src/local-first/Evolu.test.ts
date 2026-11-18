@@ -1080,6 +1080,7 @@ const setupWebEvoluDeps = ({
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: false,
         createFirstAppOwner: null,
+        evolu7: null,
         gateId: createIdFromString("gate"),
         consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
         sharedWorkerId: createIdFromString<"SharedWorker">("worker"),

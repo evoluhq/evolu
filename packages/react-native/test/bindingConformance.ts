@@ -694,6 +694,38 @@ export const describeBindingConformance = ({
     );
   });
 
+  test("a memory database attaches a database's file, and attaching a missing file fails with SQLITE_CANTOPEN and creates nothing", () => {
+    const path = pathOf("attached.db");
+    const created = binding.openFile(path);
+    run(created, "create table t (a)");
+    run(created, "insert into t values (?)", ["attached"]);
+    created.close();
+
+    const memory = binding.openMemory();
+    try {
+      run(memory, "attach database ? as a", [path]);
+      assertEqual(rowsOf(memory, "select a from a.t"), [{ a: "attached" }]);
+      // An attach that created the file would attach it the second time.
+      for (const missing of [
+        pathOf("attached-missing.db"),
+        pathOf("attached-missing.db"),
+        pathOf("attached-missing-directory/x.db"),
+      ])
+        assertEqual(
+          thrownBy(() => run(memory, "attach database ? as b", [missing])),
+          sqliteError({
+            operation: "step",
+            extendedCode: 14,
+            message: `unable to open database: ${missing}`,
+            // ENOENT.
+            systemErrno: 2,
+          }),
+        );
+    } finally {
+      memory.close();
+    }
+  });
+
   test("each path function throws a TypeError for a path that contains a NUL character, isn't absolute or doesn't end in a file name", () => {
     const pathFunctions: ReadonlyArray<(path: string) => unknown> = [
       binding.openFile,

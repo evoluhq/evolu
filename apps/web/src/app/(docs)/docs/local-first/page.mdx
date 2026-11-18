@@ -6,12 +6,6 @@ export const metadata = {
 
 This guide will help you get started with the Evolu local-first platform.
 
-<Announcement>
-  Upgrading from Evolu 7? Evolu 8 uses a different local storage format and does
-  not migrate existing Evolu 7 databases yet. Automatic migration is planned.
-  Until then, existing Evolu 7 data is preserved but is not shown in Evolu 8.
-</Announcement>
-
 <Note>
   Requirements: TypeScript 7 or newer with `exactOptionalPropertyTypes` enabled.
   Evolu supports the current major version of each tool it works with, such as
@@ -93,17 +87,6 @@ npm install @evolu/common @evolu/web
   does. [React Native](/docs/react-native) explains how to start from the
   examples and what Evolu adds to an app's size.
 </ConditionalPlatformAlert>
-
-## Updating
-
-The local-first APIs aren't stable yet, so incompatible changes to them ship as
-patch releases, with migration notes in the [release
-notes](https://github.com/evoluhq/evolu/releases). Those changes are to the code
-you write. An update keeps the data your deployed app stored on users' devices,
-and when Evolu changes how it stores data, the updated app migrates existing
-databases when it opens them. Read the release notes before you update, and
-update the Evolu packages together, because a release of one can need the same
-release of the others.
 
 ## Define schema
 

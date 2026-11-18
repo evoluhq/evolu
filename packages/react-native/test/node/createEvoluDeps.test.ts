@@ -7,10 +7,12 @@
 import {
   assertEqual,
   assertFalse,
+  assertNonNullable,
   assertTrue,
   createRandomBytes,
   createRun,
   id,
+  Name,
   NonEmptyTrimmedString100,
   ok,
   type NativeSqlite,
@@ -20,6 +22,7 @@ import {
   AppName,
   createAppOwner,
   createEvolu,
+  createEvoluApp,
   createOwnerSecret,
   createQueryBuilder,
   testAppOwner,
@@ -30,6 +33,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, mock, test } from "node:test";
+import { setupEvolu7 } from "../../../../test/integration/nodejs/local-first/_evolu7.ts";
 
 installPolyfills();
 
@@ -135,6 +139,62 @@ test("Evolu deletes its database's file from EvoluApp's directory", async () => 
   // file held.
   assertEqual(await evolu.deleteDatabase(), ok());
 
+  assertFalse(existsSync(path));
+  assertFalse(existsSync(`${path}-journal`));
+});
+
+test("createEvoluApp starts with the owner and the data of the Evolu 7 database in EvoluApp's directory, and deletes its file", async () => {
+  const schema = {
+    todo: { id: id("Todo"), title: NonEmptyTrimmedString100 },
+  };
+  const titlesQuery = createQueryBuilder(schema)((db) =>
+    db.selectFrom("todo").select("title"),
+  );
+  const appName = AppName.orThrow("Evolu7ReactNative");
+  // Evolu 7 kept its database with expo-sqlite, in the file the driver opens
+  // for the app's name, without a key.
+  const path = join(directory, `evolu1-${appName}.db`);
+  await using evolu7Run = createRun({
+    createSqliteDriver: createReactNativeSqliteDriver({
+      nativeSqlite: binding,
+      databaseDirectory: directory,
+    }),
+  });
+  const evolu7 = await (async () => {
+    using driver = await evolu7Run.ok(
+      evolu7Run.deps.createSqliteDriver(Name.orThrow(appName)),
+    );
+    const evolu7 = await setupEvolu7(driver, { name: appName });
+    evolu7.evolu.insert("todo", { title: "stored by Evolu 7" });
+    await evolu7.settled();
+    // The app closed, so nothing holds the file.
+    return evolu7;
+  })();
+  assertTrue(
+    readFileSync(path).toString("latin1", 0, 15) === "SQLite format 3",
+  );
+
+  using deps = createEvoluDeps();
+  await using run = createRun(deps);
+  await using app = await run.orThrow(
+    createEvoluApp(schema, {
+      appName,
+      auth: { type: "InstantStart" },
+      createFirstAppOwner: true,
+      transports: [],
+    }),
+  );
+
+  assertEqual(
+    app.appOwners.get().map((appOwner) => appOwner.id),
+    [evolu7.appOwner.id],
+  );
+  const current = app.current.get();
+  assertNonNullable(current);
+  assertEqual(current.appOwner.mnemonic, evolu7.appOwner.mnemonic);
+  assertEqual(await (await current.evolu).loadQuery(titlesQuery), [
+    { title: "stored by Evolu 7" },
+  ]);
   assertFalse(existsSync(path));
   assertFalse(existsSync(`${path}-journal`));
 });

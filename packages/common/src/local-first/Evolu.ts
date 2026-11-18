@@ -227,6 +227,28 @@ export interface EvoluConfig {
   readonly appName: AppName;
 
   /**
+   * The name of the Evolu 7 database to migrate. Evolu 7 named its database by
+   * the `name` option of its config, which Evolu 8 renamed to
+   * {@link EvoluConfig.appName}, so it defaults to `appName`. When the two
+   * differ, pass Evolu 7's `name`.
+   *
+   * When that database exists and holds the instance's AppOwner, Evolu imports
+   * it into the AppOwner's database before the instance gets any data and then
+   * deletes it. A database of another owner stays as it is. Evolu opens a
+   * database of that name to tell, on the web any OPFS directory `.<name>`, so
+   * keep no database or directory of the app's own under it.
+   *
+   * With {@link EvoluAppConfig.createFirstAppOwner} and instant start,
+   * {@link createEvoluApp} starts with the Evolu 7 owner instead of a new one,
+   * when it creates the device database. Evolu 7 kept the owner's secret
+   * unprotected, so an app with a DeviceSecret gets a new AppOwner, and a
+   * device whose device database an earlier release created keeps the AppOwners
+   * it has. There, the Evolu 7 database stays until {@link EvoluApp.add} adds
+   * its owner, whose database then imports it.
+   */
+  readonly evolu7Name?: Name;
+
+  /**
    * {@link AppOwner} used to create this {@link Evolu} instance.
    *
    * Exposed as {@link Evolu.appOwner}. Create an AppOwner before the first run,
@@ -960,6 +982,11 @@ export interface Evolu<
    * A database kept in memory, as with {@link EvoluConfig.memoryOnly}, has a
    * name of its own and no files, so deleting it leaves a stored database of
    * the same owner alone.
+   *
+   * It deletes the Evolu 7 database that holds the owner too, see
+   * {@link EvoluConfig.evolu7Name}. While a tab still runs Evolu 7, it fails
+   * with {@link DatabaseHeldError}, and the database can be refused with the
+   * same error until the app reloads.
    *
    * It deletes the files by name, so it also deletes a database that doesn't
    * open, such as a corrupt one or one of a newer version. Concurrent calls, of
@@ -2330,12 +2357,15 @@ export interface EvoluApp<
    * the AppOwner open have none open afterwards. When deleting fails, such as
    * when another context holds the database's files, the AppOwner stays with
    * the data its database stored, and the tabs that had it open can be left
-   * with none open. After a `DatabaseHeldError`, its data may already be gone,
-   * and removing it again finishes the removal. When the app's last tab closes
-   * during the removal, the AppOwner can stay listed without its local data,
-   * which syncs again when it's opened, and removing it again finishes the
-   * removal. It fails with the refusal when the device database is refused. The
-   * app's disposal ends the call with `EvoluDisposedError`, and the removal
+   * with none open. It deletes the Evolu 7 database that holds the AppOwner
+   * too, see {@link EvoluConfig.evolu7Name}, and last, so when only that
+   * deletion fails, the AppOwner stays with that database instead and imports
+   * it again once opened. After a `DatabaseHeldError`, its data may already be
+   * gone, and removing it again finishes the removal. When the app's last tab
+   * closes during the removal, the AppOwner can stay listed without its local
+   * data, which syncs again when it's opened, and removing it again finishes
+   * the removal. It fails with the refusal when the device database is refused.
+   * The app's disposal ends the call with `EvoluDisposedError`, and the removal
    * still finishes.
    *
    * To start over with a new AppOwner, add it first, then remove the old one,
@@ -2472,6 +2502,7 @@ export const createEvoluApp = <
         {
           appName,
           transports: [],
+          ...(appConfig.evolu7Name && { evolu7Name: appConfig.evolu7Name }),
           ...(device?.indexes && { indexes: device.indexes }),
           // One callback for an owner deleted in any instance of the app, so
           // a tab that syncs an owner of the device database here stops using
@@ -3543,6 +3574,9 @@ const createEvoluInstance =
       ],
     } = config;
 
+    // An AppName is a Name: the same alphabet and a lower limit.
+    const evolu7Name = config.evolu7Name ?? (appName as string as Name);
+
     const devicePersistence: DevicePersistence = config.memoryOnly
       ? "NotPersisted"
       : await run.ok(promiseToTask(() => run.deps.getDevicePersistence()));
@@ -3981,7 +4015,17 @@ const createEvoluInstance =
               ? {
                   type: "Device",
                   createFirstAppOwner: instanceKind.createFirstAppOwner
-                    ? { deviceOwnerId: instanceOwner.id }
+                    ? {
+                        deviceOwnerId: instanceOwner.id,
+                        // Evolu 7 kept its owner's secret unprotected, as
+                        // instant start does, and an AppOwner never moves
+                        // between modes; see
+                        // docs/adr/evolu-creates-and-stores-app-owners.md.
+                        evolu7Name:
+                          instanceOwner.id === instantStartDeviceOwner.id
+                            ? evolu7Name
+                            : null,
+                      }
                     : null,
                 }
               : instanceKind.type === "AppOwner"
@@ -3989,8 +4033,15 @@ const createEvoluInstance =
                     type: "AppOwner",
                     deviceName: instanceKind.deviceName,
                     ownerId: instanceOwner.id,
+                    evolu7Name,
                   }
-                : { type: "Standalone" },
+                : {
+                    type: "Standalone",
+                    evolu7:
+                      instanceKind.type === "Standalone"
+                        ? { name: evolu7Name, appOwnerId: instanceOwner.id }
+                        : null,
+                  },
           evoluPort: evoluChannel.port2.native,
         },
         [evoluChannel.port2.native],
@@ -4315,6 +4366,7 @@ const createEvoluInstance =
           postMessage({
             type: "RemoveAppOwner",
             name,
+            evolu7Name,
             change: removal,
             callbackId,
             subscribedQueries: subscribedQueriesRefCount.keys(),

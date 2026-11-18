@@ -687,6 +687,7 @@ describe("Evolu", () => {
           encryptionKey: testAppOwner.encryptionKey,
           memoryOnly: true,
           createFirstAppOwner: null,
+          evolu7: null,
           gateId,
           consoleEntryOrErrorChannelName:
             consoleEntryOrErrorBroadcastChannelName,
@@ -708,6 +709,7 @@ describe("Evolu", () => {
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: true,
         createFirstAppOwner: null,
+        evolu7: null,
         gateId,
         consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
         sharedWorkerId,
@@ -774,6 +776,7 @@ describe("Evolu", () => {
         encryptionKey: testAppOwner.encryptionKey,
         memoryOnly: true,
         createFirstAppOwner: null,
+        evolu7: null,
         gateId: testCreateId()(),
         consoleEntryOrErrorChannelName: channelName,
         sharedWorkerId: workerId,
@@ -2098,8 +2101,13 @@ describe("Evolu", () => {
       assertEqualBytes(message.encryptionKey, testAppOwner.encryptionKey);
       assertFalse(message.memoryOnly);
       // Neither a device database, which creates the first AppOwner, nor an
-      // AppOwner's, which opens only while the device database lists it.
-      assertEqual(message.instanceKind, { type: "Standalone" });
+      // AppOwner's, which opens only while the device database lists it. The
+      // Evolu 7 database it imports has the app's name unless evolu7Name
+      // names another.
+      assertEqual(message.instanceKind, {
+        type: "Standalone",
+        evolu7: { name: testAppName, appOwnerId: testAppOwner.id },
+      });
       assertNonNullable(message.evoluPort);
     });
 

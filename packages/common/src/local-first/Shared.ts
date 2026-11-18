@@ -554,6 +554,7 @@ import type {
 import type {
   DatabaseHeldError,
   DbWorkerInit,
+  DbWorkerInitFields,
   DeleteDatabaseFiles,
   DeleteDbWorkerInit,
   OpenDbWorkerInit,
@@ -664,6 +665,8 @@ export type SharedWorkerInput =
         | {
             /** Neither of the others, such as a database of `createEvolu`. */
             readonly type: "Standalone";
+            /** Null for a database that isn't an AppOwner's. */
+            readonly evolu7: DbWorkerInitFields["evolu7"];
           }
         | {
             /** The device database of `createEvoluApp`. */
@@ -679,6 +682,8 @@ export type SharedWorkerInput =
             readonly type: "AppOwner";
             readonly deviceName: Name;
             readonly ownerId: OwnerId;
+            /** The Evolu 7 database this AppOwner's database imports. */
+            readonly evolu7Name: Name;
           };
       readonly evoluPort: NativeMessagePort<EvoluOutput, EvoluInput>;
     };
@@ -1603,6 +1608,8 @@ export type EvoluInput =
        */
       readonly type: "RemoveAppOwner";
       readonly name: Name;
+      /** The Evolu 7 database the AppOwner's database imports. */
+      readonly evolu7Name: Name;
       /** Its `id` is the AppOwner's OwnerId, the ID of its row. */
       readonly change: MutationChange & { readonly id: OwnerId };
       readonly callbackId: Id;
@@ -1773,7 +1780,10 @@ type ForSharedWorkerReadMessage = ExtractTyped<
 // How long a deletion by a DbWorker started only to delete may take: its start
 // in the tab leader, its own databaseHeldTimeout wait for the database lock,
 // and the deletion. It bounds the whole deletion, the restarts after a tab
-// leader change included, so it never starts over with them.
+// leader change included, so it never starts over with them. The waits for an
+// AppOwner's Evolu 7 database, for its lock and its files, share it, so when
+// each nearly reaches its own limit, the deletion ends with DatabaseHeldError
+// though none did.
 const deleteDatabaseWithDbWorkerTimeout: PositiveDuration = "30s";
 
 export type DbWorkerOutput =
@@ -2207,10 +2217,12 @@ type EvoluTenantDeps = CreateMessageChannelDep &
 interface DeleteDatabaseWithDbWorkerDep {
   /**
    * Deletes a database's files with a DbWorker started only to delete, not the
-   * platform's {@link DeleteDatabaseFiles}, which that DbWorker calls.
+   * platform's {@link DeleteDatabaseFiles}, which that DbWorker calls, and the
+   * Evolu 7 database of its AppOwner; see {@link DbWorkerInitFields.evolu7}.
    */
   readonly deleteDatabaseWithDbWorker: (
     name: Name,
+    evolu7: DbWorkerInitFields["evolu7"],
   ) => Task<void, DatabaseHeldError | UnknownError>;
 }
 
@@ -2248,6 +2260,7 @@ interface Removals {
    */
   readonly removeDatabase: (
     name: Name,
+    evolu7: DbWorkerInitFields["evolu7"],
     hasRow: Task<boolean, DatabaseRefusalError>,
     onDeleted: () => void,
     onFailed: (error: DatabaseRefusalError) => void,
@@ -2537,7 +2550,7 @@ export const initSharedWorker =
     // That stops it, which releases its attempt's lock, so a DbWorker that
     // starts later deletes nothing.
     const deleteDatabaseWithDbWorker: DeleteDatabaseWithDbWorkerDep["deleteDatabaseWithDbWorker"] =
-      (name) => async (run) => {
+      (name, evolu7) => async (run) => {
         const deleted = await run(
           timeout(
             callback<void, DatabaseHeldError | UnknownError>(({ resolve }) => {
@@ -2568,6 +2581,7 @@ export const initSharedWorker =
                     consoleLevel: deps.console.getLevel(),
                     consoleEntryOrErrorChannelName,
                     attemptId,
+                    evolu7,
                   }),
                 );
                 workerPort.onMessage = (message) => {
@@ -2625,7 +2639,7 @@ export const initSharedWorker =
         else handle();
       },
 
-      removeDatabase: (name, hasRow, onDeleted, onFailed) => {
+      removeDatabase: (name, evolu7, hasRow, onDeleted, onFailed) => {
         assert(!removing, "A removal starts only when no other runs.");
         removing = true;
         // It ends with this worker, which then runs no held message.
@@ -2657,7 +2671,7 @@ export const initSharedWorker =
             if (!created.ok) deleted = err({ type: "DatabaseHeldError", name });
             else {
               currentTenantsByName.get(name)?.closeForRemoval();
-              deleted = await run(deleteDatabaseWithDbWorker(name));
+              deleted = await run(deleteDatabaseWithDbWorker(name, evolu7));
             }
           }
           if (deleted.ok) onDeleted();
@@ -3272,6 +3286,7 @@ const createEvoluTenant =
       readonly encryptionKey: EncryptionKey;
       readonly memoryOnly: boolean;
       readonly createFirstAppOwner: OpenDbWorkerInit["createFirstAppOwner"];
+      readonly evolu7: DbWorkerInitFields["evolu7"];
     }
 
     const createEpoch = ({
@@ -3290,6 +3305,12 @@ const createEvoluTenant =
         instanceKind.type === "Device"
           ? instanceKind.createFirstAppOwner
           : null,
+      evolu7:
+        instanceKind.type === "AppOwner"
+          ? { name: instanceKind.evolu7Name, appOwnerId: instanceKind.ownerId }
+          : instanceKind.type === "Standalone"
+            ? instanceKind.evolu7
+            : null,
     });
 
     /**
@@ -3608,6 +3629,7 @@ const createEvoluTenant =
         encryptionKey: epoch.encryptionKey,
         memoryOnly: epoch.memoryOnly,
         createFirstAppOwner: epoch.createFirstAppOwner,
+        evolu7: epoch.evolu7,
         gateId: gate.id,
         consoleEntryOrErrorChannelName,
         sharedWorkerId: workerId,
@@ -3950,7 +3972,7 @@ const createEvoluTenant =
         using _hold = await run.ok(holdTenant);
         const deleted = epoch.memoryOnly
           ? ok()
-          : await run(deps.deleteDatabaseWithDbWorker(name));
+          : await run(deps.deleteDatabaseWithDbWorker(name, epoch.evolu7));
         // A removal or the tenant's end can abort the deletion after its files
         // went but before this continues.
         if (run.signal.aborted) return ok();
@@ -5065,6 +5087,7 @@ const createEvoluTenant =
                   };
                   deps.removals.removeDatabase(
                     message.name,
+                    { name: message.evolu7Name, appOwnerId: message.change.id },
                     hasAppOwner(message.change.id),
                     () => {
                       const refused = getRefusal();

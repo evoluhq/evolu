@@ -1,0 +1,481 @@
+export const metadata = {
+  title: "Upgrading",
+  description:
+    "How an app moves to a new major version of Evolu: Evolu moves its data by itself, and a prompt for a coding agent updates its code.",
+};
+
+# Upgrading
+
+When a major version of Evolu stores data differently, the updated app moves its data by itself the first time it starts. The changes to the API differ from app to app, so each major version below comes with a prompt for a coding agent that updates the app's code.
+
+## Evolu 7 to Evolu 8
+
+### Data
+
+The first time an app updated from Evolu 7 starts, Evolu moves the Evolu 7 database on the device into Evolu 8, also what hasn't synced yet, and then deletes it. It does so on the web and on React Native.
+
+- An app that let Evolu 7 create its owner uses `createEvoluApp` with `auth: { type: "InstantStart" }` and `createFirstAppOwner: true`, as in [Create Evolu](/docs/local-first#create-evolu). It starts with the Evolu 7 owner, the same mnemonic, and its data.
+- An app that gave Evolu 7 its own owner as `externalAppOwner` creates the same owner from its secret with `createAppOwner` and passes it to [`createEvolu`](/docs/api-reference/common/local-first/Evolu/functions/createEvolu) as `appOwner`.
+
+Evolu 7 named its database by the `name` option of its config, which Evolu 8 renamed to `appName`, so Evolu looks for the Evolu 7 database under `appName`. When the two differ, pass Evolu 7's `name` as [`evolu7Name`](/docs/api-reference/common/local-first/Evolu/interfaces/EvoluConfig#evolu7name). An app that never set `name` has the database `Evolu`.
+
+Before you release the update:
+
+- Never run an Evolu 7 build on a device again once it has migrated, such as by rolling a release back. It would start with a new, empty database.
+- While a tab still runs the Evolu 7 build, the updated app fails to start with `DatabaseHeldError`. [Show the error](/docs/local-first#handle-errors) and ask the user to close the app's other tabs and reload.
+- Ask users to update the app on all their devices. Evolu 7 and Evolu 8 sync with each other, but a device with Evolu 7 receives none of an owner's changes while one of them is stamped further ahead of its clock than its `maxDrift`, five minutes by default, such as from a device whose clock is ahead.
+- Evolu takes the Evolu 7 owner only when it creates the app's first AppOwner with instant start. With `DeviceSecret`, or on a device where `createEvoluApp` of an earlier Evolu 8 release already ran, the app has another AppOwner, and the Evolu 7 database stays, unencrypted, until the user restores its owner from the mnemonic, which imports it.
+
+### API
+
+Give this prompt to a coding agent in the app's repository. It updates the app's code, while the data moves by itself, as described above.
+
+```text
+Move this app from Evolu 7 to Evolu 8.
+
+The first time the updated app starts, Evolu 8 moves the app's local data by
+itself. Change the code so that move works and the rest of the app uses the
+Evolu 8 API. The app must keep its behavior, and its users must keep their data.
+
+Read first:
+- https://www.evolu.dev/docs/upgrading, section "Evolu 7 to Evolu 8"
+- https://www.evolu.dev/docs/local-first
+- the API reference under https://www.evolu.dev/docs/api-reference, for each
+  symbol you change
+- the examples at https://github.com/evoluhq/evolu/tree/main/examples, which are
+  full apps for each framework. Don't copy their workspace:* and catalog:
+  versions or their paths into the Evolu monorepo.
+
+Steps:
+1. Find every use of Evolu: @evolu/* imports, the createEvolu call and its
+   config, the schema, queries, mutations, owner, account and auth code, error
+   and sync UI, tests, and bundler, tsconfig and native config.
+2. Wherever the app's intent is unclear, ask the developer before you edit, and
+   always ask about the cases under "Ask first". Don't guess. If you can't ask,
+   take the defaults given below, and start your report with each open question
+   and the answer you assumed.
+3. Update every @evolu package the app uses in one command with @latest, such as
+   npm install @evolu/common@latest @evolu/react@latest @evolu/react-web@latest
+   @evolu/web@latest. Their version numbers differ, but they are released
+   together. Pin the exact versions it installs, and update them together later.
+   An Evolu package left on an older version may not work with the others.
+   Update the bundler and its plugins to their current majors too, as the
+   examples use them.
+4. Apply the rules below. "A → B" means Evolu 7's A is Evolu 8's B.
+5. Finish with the app's typecheck, lint, tests and build passing. Report what
+   you changed, what you asked, and what is left for the developer.
+
+Ask first:
+- Auth. An app that passed no externalAppOwner let Evolu 7 create its owner, and
+  it moves to createEvoluApp. Only auth { type: "InstantStart" } with
+  createFirstAppOwner: true starts with the Evolu 7 owner, the same mnemonic,
+  and its data. With DeviceSecret auth (a passkey on the web, the Keychain or
+  Keystore on React Native), the app starts with a new owner, and the Evolu 7
+  data stays on the device until the user restores the old mnemonic. Default:
+  InstantStart, but propose DeviceSecret for an app that already asked for a
+  passkey. With DeviceSecret, createFirstAppOwner: true starts with an empty
+  account once the key unlocks, and false lets the first screen offer creating
+  or restoring an account first, as the react-vite-pwa example does.
+- Accounts. Evolu 7 had one owner, and a restore deleted the old one. Ask
+  whether the app keeps one account or lets users have several. Default: one.
+- The app built externalAppOwner from keys without an OwnerSecret or mnemonic.
+  Evolu 8 builds an AppOwner only from an OwnerSecret.
+- The app ran more than one Evolu 7 instance, such as a separate local-only
+  device database. Each instance moves only the Evolu 7 database of the owner it
+  opens.
+- The app runs Evolu as a client on Node.js. @evolu/nodejs has no
+  createEvoluDeps.
+- The app keeps a database or OPFS directory of its own under the name Evolu
+  looks in for Evolu 7 data (see appName below).
+
+Packages and tooling:
+- Node.js 22 → 24.20 or later.
+- TypeScript 7 or later with strict and exactOptionalPropertyTypes. Without
+  exactOptionalPropertyTypes, an undefined column passes the typecheck and the
+  mutation throws. Add esnext (or ESNext.Disposable) to compilerOptions.lib, and
+  list the global typings the app uses in types, such as ["node"], because
+  TypeScript 6 and later default it to []. Install TypeScript 7 as
+  "@typescript/native": "npm:typescript@^7". Tools that load the typescript
+  package, such as typescript-eslint, Next.js, vue-tsc, svelte-check, Expo and
+  React Native, still need TypeScript 6: keep "typescript" on 6, as
+  "npm:@typescript/typescript6@^6" beside TypeScript 7, or, in an Expo, React
+  Native or Vue app, as the only TypeScript, "~6.0.3", without
+  @typescript/native, as the examples do.
+- React on the web: install @evolu/web too, which provides createRun.
+- Local-first symbols that @evolu/common doesn't export, such as
+  syncStateToOwnerSyncStatus, OtherBuildRunningError and ProtocolQuotaError,
+  come from @evolu/common/local-first.
+- Vite: keep "@evolu/sqlite-wasm" in optimizeDeps.exclude. Remove
+  "@sqlite.org/sqlite-wasm" and any pin or override of @evolu/sqlite-wasm 2.x.
+  Any other bundler must emit module workers and shared workers from new
+  URL(..., import.meta.url).
+- Next.js runs Evolu on Turbopack. Drop --webpack if Evolu was the only reason
+  for it.
+- Code that uses Evolu's Type, Result or Task without createEvoluDeps must call
+  installPolyfills() from @evolu/common/polyfills at startup. The web
+  createEvoluDeps installs the polyfills itself.
+
+Deps and Run:
+- Evolu 7 passed a deps constant to createEvolu (evoluReactWebDeps,
+  evoluWebDeps, evoluSvelteDeps, evoluReactNativeDeps). Evolu 8 uses one Run for
+  the whole app, created once at module scope:
+  React web: createRun from @evolu/web, createEvoluDeps from @evolu/react-web.
+  Vue, vanilla JS and others: createRun and createEvoluDeps from @evolu/web.
+  Svelte: createRun(evoluSvelteDeps), with createRun from @evolu/web.
+  React Native and Expo: createRun and createEvoluDeps from @evolu/react-native.
+- run.deps holds the evoluError and syncState stores, which every instance
+  created from those deps shares.
+- Config enableLogging → createEvoluDeps({ console: createConsole({ level:
+  "debug" }) }).
+- Config reloadUrl → the reloadApp option of the web createEvoluDeps, which must
+  still reload the page. The default reloads the current page, not "/".
+
+Creating Evolu and moving the Evolu 7 data:
+- createEvolu(deps)(Schema, config?) returned an instance synchronously. In
+  Evolu 8, creation is an async Task run on the Run, and the instance is
+  AsyncDisposable: await evolu[Symbol.asyncDispose]().
+- App whose owner Evolu 7 created: const appPromise =
+  run.orThrow(createEvoluApp(Schema, { appName, auth: { type: "InstantStart" },
+  createFirstAppOwner: true })). The open AppOwner's instance is
+  app.current.get()?.evolu, a promise, or comes from the framework provider
+  below.
+- App that passed externalAppOwner: recreate the same owner with createAppOwner
+  from the same OwnerSecret (mnemonicToOwnerSecret(mnemonic) if the app kept the
+  mnemonic), then const evolu = await run.ok(createEvolu(Schema, { appName,
+  appOwner })). createEvolu never creates an owner, and it moves the Evolu 7
+  database only when that database holds this AppOwner.
+- name: SimpleName → appName: AppName, which is required, URL-safe and 1 to 41
+  characters. SimpleName → Name. Evolu 8 looks for the Evolu 7 database under
+  appName. Pass evolu7Name: Name.orThrow("<Evolu 7 name>") when Evolu 7's name
+  differs from appName or is longer than 41 characters. Pass it too when the app
+  never set name, because Evolu 7 then named its database "Evolu".
+- Each AppOwner has its own database, whose name is evolu.name. Read evolu.name
+  instead of assuming a fixed file name.
+- Evolu 7 cached instances by name. Evolu 8 creates a new instance on every
+  call, and the caller owns it, so create the Run and the app or instance once,
+  never in a component or an effect. Stored instances with the same appName and
+  AppOwner share one database, so they must use the same schema. Data that
+  belongs only to the device can go in createEvoluApp's device option, but keep
+  the local-only tables the app already has in the AppOwner's schema: the
+  migration imports them into the AppOwner's database, not the device's.
+- evolu.appOwner: Promise<AppOwner> → AppOwner. Replace use(evolu.appOwner) and
+  await evolu.appOwner. AppOwner.mnemonic is now required: build owners with
+  createAppOwner, never by hand, and drop null checks.
+- auth: InstantStart shows no prompt, but its key is public. DeviceSecret keeps
+  the key out of storage that other apps and malware can read, though once
+  unlocked it is in the app's memory. On the web, use createPasskeyAuth from
+  @evolu/web: call unlock in a click handler and render its states, as the
+  react-vite-pwa example does. On React Native, use loadDeviceSecret(appName)
+  from @evolu/react-native and handle its errors, as the react-expo example
+  does. An appName keeps its auth mode for good. A passkey PWA should update its
+  service worker only when the user agrees, because every reload asks for the
+  passkey: with vite-plugin-pwa, set registerType: "prompt" and render its
+  update prompt, which with injectRegister: false is also what registers the
+  worker.
+
+Accounts:
+- evolu.restoreAppOwner, evolu.resetAppOwner and evolu.reloadApp are gone. In
+  Evolu 7, restore and reset deleted the old owner's local data and, unless
+  called with reload: false, reloaded every tab.
+- With createEvoluApp: restore → app.add(mnemonicToOwnerSecret(mnemonic)). Reset
+  → app.add(createOwnerSecret(run.deps)), then app.remove(oldId). To keep one
+  account as in Evolu 7, also remove the old owner after a restore, but only
+  when its id differs from the restored one, as restoring the open account's own
+  mnemonic returns its id. app.appOwners, open and rename manage the list. The
+  providers remount on a switch, so drop the reloads. Handle the Results: add
+  returns Result<OwnerId, UnknownError | EvoluDisposedError> and remove returns
+  Result<void, RemoveAppOwnerError>.
+- With createEvolu: reset → evolu.deleteDatabase(), which deletes this device's
+  copy and returns Result<void, DeleteDatabaseError>. Every instance of that
+  database then calls config.onDatabaseDeleted, or reloads the app if that isn't
+  set. The app then creates the new owner itself.
+- Mnemonic accepts only lowercase ASCII words separated by single spaces, and
+  its error has no value. Normalize the input before Mnemonic.fromUnknown, for
+  example input.normalize("NFKD").trim().toLowerCase().split(/\s+/u).join(" ").
+  OwnerSecret accepts 16, 20, 24, 28 or 32 bytes.
+- The experimental localAuth, LocalAuth, createLocalAuth, SecureStorage,
+  AuthResult and AuthList are gone, and Evolu 8 doesn't migrate what they
+  stored.
+
+Other config:
+- inMemory → memoryOnly, on createEvolu only, so an app that used inMemory keeps
+  createEvolu, with an owner it creates, rather than createEvoluApp, whose
+  databases are stored. Each memory instance has its own database. On the web it
+  exchanges changes with other instances only through relays, and it ends with
+  its tab.
+- encryptionKey is gone. Evolu encrypts every stored database itself.
+- maxDrift is gone; the limit is fixed at five minutes. A change beyond it waits
+  in evolu_message_quarantine instead of failing with TimestampDriftError, and
+  onSuccess still runs.
+- indexes: unique indexes and names starting with evolu_ throw, and Evolu
+  indexes id itself. Drop .unique() and handle duplicates in the app, and drop
+  indexes on id alone.
+- transports: url is a branded WebSocketUrl in its canonical spelling, where a
+  URL without a path ends with "/", for example
+  WebSocketUrl.orThrow("wss://relay.example.com/"). Convert user input with
+  WebSocketUrlFromString. createOwnerWebSocketTransport takes a RelayUrl.
+  Without transports, Evolu syncs through wss://free.evoluhq.com/, a testing
+  relay that may delete data, so set the app's own relays.
+
+Errors:
+- evolu.subscribeError, evolu.getError and useEvoluError (React, Vue) are gone.
+  Subscribe once to run.deps.evoluError and render it outside the Suspense
+  boundary that waits for Evolu. In React use
+  useSyncExternalStore(store.subscribe, store.get, constNull), in Vue useStore,
+  and in Svelte storeState.
+- EvoluError: ProtocolError | SqliteError | SymmetricCryptoDecryptError |
+  TimestampError | TransferableError → DatabaseHeldError |
+  OtherBuildRunningError | UnknownError | UnsupportedDbVersionError. Each one
+  blocks the app. Handle all four, and tell the user what the EvoluError API
+  reference says to. DatabaseHeldError means another context holds the database,
+  such as a tab that still runs Evolu 7: ask the user to close the app's other
+  tabs and reload.
+- Remove handling of the dropped types. TransferableError → UnknownError, and
+  SymmetricCryptoDecryptError → DecryptWithXChaCha20Poly1305Error.
+  TimestampCounterOverflowError and TimestampTimeOutOfRangeError are gone, and
+  relay problems show in the sync status.
+- createEvoluApp fails when the device database is refused, with an UnknownError
+  whose error property holds the refusal, such as DatabaseHeldError, and
+  run.orThrow throws that UnknownError as the cause of an Error. A refused
+  AppOwner database reports through run.deps.evoluError instead. Catch it in the
+  app's own error boundary: in React around the Suspense boundary, in Svelte
+  with {:catch}, in Vue with onErrorCaptured.
+- loadQuery rejects with UnknownError when SQLite fails the query, and React's
+  useQuery throws that error to the nearest error boundary. Put views that query
+  behind one.
+- exportDatabase rejects with EvoluDisposedError or UnknownError. The export is
+  plaintext, so treat it as sensitive.
+
+Sync:
+- SyncState is now the snapshot that run.deps.syncState holds. These are gone:
+  SyncStateInitial, SyncStateIsSyncing, SyncStateIsSynced, SyncStateIsNotSynced,
+  NetworkError, ServerError, PaymentRequiredError and Vue's useSyncState. Show
+  the owner's sync status with useOwnerSyncStatus (React, Vue),
+  ownerSyncStatusState (Svelte), or
+  syncStateToOwnerSyncStatus(run.deps.syncState.get(), evolu.name, ownerId).
+  After the user resolves a ProtocolQuotaError, call evolu.requestSync(ownerId).
+  An app that showed no sync state works without one; offer the developer one
+  quiet status line.
+- evolu.useOwner({ ...owner, transports }) → evolu.useOwner(owner, transports?),
+  and the same for React's and Vue's useOwner. It throws when it has no
+  transports, when transports repeat, and for an AppOwner other than the
+  instance's own. useOwner no longer takes a SyncOwner.
+
+Schema:
+- Keep the tables and columns you have released. A schema only grows.
+- A column can use any Standard Schema validator whose output SQLite can store.
+  A numeric column needs FiniteNumber or narrower, because Number no longer
+  compiles.
+- NonEmptyString, String100, String1000, NonEmptyString100, NonEmptyString1000,
+  TrimmedString100 and TrimmedString1000 are gone. To keep the app's rules,
+  define an identical Type, such as const NonEmptyString1000 =
+  maxLength(1000)(minLength(1)(String)). Switch to NonEmptyTrimmedString100 or
+  NonEmptyTrimmedString1000, which also reject leading and trailing whitespace,
+  only if the developer agrees. maxLength and minLength are curried.
+- typeof X.Type → typeof X.Output.
+- updatedAt is DateIso | null, and stays null until a change later than the
+  row's creation. createdAt is the time of the row's earliest change, and an
+  upsert no longer moves it. For "last changed", use updatedAt ?? createdAt.
+- In a local-only table (one whose name starts with _), update changes only an
+  existing row. Where code relied on update creating the row, use upsert.
+
+Queries:
+- evolu.createQuery → const createQuery = createQueryBuilder(Schema), at module
+  scope. Query<R> → Query<typeof Schema, R>, or use typeof query.Row.
+- The kysely namespace is gone: kysely.NotNull → KyselyNotNull,
+  kysely.jsonArrayFrom → evoluJsonArrayFrom, kysely.jsonObjectFrom →
+  evoluJsonObjectFrom, kysely.jsonBuildObject → evoluJsonBuildObject, kysely.sql
+  → kyselySql. Selecting a Uint8Array column through the JSON helpers no longer
+  compiles. Kysely moved from 0.28 to 0.29; if a query stops compiling, check
+  Kysely's release notes.
+- useQuery's promise option and useQueries' promises option are gone. Keep the
+  evolu.loadQuery preload, because the hooks reuse its load. loadQuery(query, {
+  cache: false }) reads what SQLite holds now.
+
+Mutations:
+- insert, update and upsert used to validate values and return a Result. They
+  now take values that are already valid (the column Types' Output) and return {
+  id }. Validate untrusted input first, with X.fromUnknown, X.orThrow or any
+  Standard Schema, then mutate. Replace result.ok and result.value.id with const
+  { id } = insert(...). onlyValidate is gone.
+- A mutation now throws when a change is invalid or bigger than maxMutationSize
+  (640,000 bytes) instead of returning ValidMutationSizeError. ValidMutationSize
+  and validMutationSize are gone. Give text columns a maxLength, and for
+  unbounded input check evolu.getMutationSize(table, values) <= maxMutationSize
+  before mutating. Local-only tables have no size limit.
+- onComplete → onSuccess. Add onError (UnknownError) where code waits for the
+  mutation, such as a promise around it.
+- ownerId → owner, which takes the Owner itself, with its write key. Search
+  every mutation for ownerId: one left in an options object built elsewhere
+  still compiles and silently writes the row for the AppOwner. A
+  SharedReadonlyOwner can't write, and passing another AppOwner throws.
+- The types Insertable, Updateable and Upsertable → InsertValues, UpdateValues
+  and UpsertValues. The runtime insertable, updateable and upsertable are gone;
+  validate input with the column Types, object(...) or a Standard Schema.
+  InferEvoluSchemaError, InferMutationTypeErrors, InferColumnErrors, DbSchema
+  and evoluSchemaToDbSchema are gone.
+
+React:
+- @evolu/react no longer exports EvoluProvider, the EvoluContext object,
+  createUseEvolu or the top-level hooks, except useIsSsr. Call
+  createEvoluBinding<typeof Schema>() once at module scope and take
+  EvoluAppProvider, EvoluContext, useEvolu, useQuery, useQueries,
+  useQuerySubscription, useOwner, useOwnerSyncStatus, useEvoluApp and
+  useAppOwners from its result.
+- With createEvoluApp, render <EvoluAppProvider value={appPromise}
+  withoutAppOwner={...}> inside Suspense, inside the error boundary, and give
+  data views their own Suspense and error boundary. With createEvolu, render
+  <EvoluContext value={evolu}>.
+- useEvolu returns AppOwnerEvolu<S>, which can't be disposed. Replace
+  useContext(EvoluContext) with useEvolu.
+- withoutAppOwner renders without an instance, so its components can use
+  useEvoluApp and useAppOwners but not useEvolu.
+
+Vue:
+- Use createRun(createEvoluDeps()) from @evolu/web, and composables from
+  createEvoluBinding<typeof Schema>(); createUseEvolu is deprecated. With
+  createEvoluApp, an async component under Suspense awaits the app and renders
+  <EvoluAppProvider :app="app"> with its default, withoutAppOwner and opening
+  slots. With createEvolu, keep provideEvolu or EvoluProvider.
+- useAppOwners, useOwner, useOwnerSyncStatus, useStore and waitForRows are
+  imported from @evolu/vue, not taken from createEvoluBinding. useEvoluError →
+  useStore(run.deps.evoluError). useSyncState →
+  useOwnerSyncStatus(run.deps.syncState). useQueries returns readonly refs.
+  useOwner takes (owner, transports?) and stops with its scope.
+
+Svelte:
+- In a .ts module, write const run = createRun(evoluSvelteDeps) and const
+  appPromise = run.orThrow(createEvoluApp(...)). Render {#await
+  appPromise}{:then app}{:catch}, follow the app with evoluAppState(app), and
+  while appState.state.type is "Open", pass appState.state.evolu down inside
+  {#key}.
+- queryState(evolu, () => query) returns { rows, loaded }, with readonly rows
+  and no mapping option. Use $derived(state.rows.map(...)), and render the list
+  once loaded resolves. appOwnerState(evolu).current → evolu.appOwner.
+
+Vanilla JS and frameworks without an Evolu package (Angular has none):
+- Use @evolu/common and @evolu/web. Follow the open AppOwner with
+  subscribeAppOwnerState(app.current, ...), and read data with evolu.loadQuery,
+  subscribeQuery and getQueryRows. Subscribe to run.deps.evoluError and
+  run.deps.syncState.
+
+On the web:
+- All tabs share one SharedWorker. When a new build opens, the old build's tabs
+  reload by themselves, and the tab the user is in reloads once they leave it.
+  Keep unsaved drafts in local-only tables so a reload doesn't lose them. A tab
+  that can't take over waits and shows OtherBuildRunningError.
+- A browser without SharedWorker runs Evolu in one tab and shows an alert in the
+  others. createEvoluDeps' onSharedWorkerUnsupported option replaces the alert.
+- evolu.devicePersistence resolves to Persisted, NotPersisted or Unknown.
+  NotPersisted happens in private browsing, for example, where the data lives in
+  memory. Don't tell users their data is saved on the device unless it's
+  Persisted, and show a notice for NotPersisted. After the first local change,
+  Evolu calls navigator.storage.persist() once per tab unless the origin's
+  storage is already persistent, which Firefox shows as a prompt.
+  createEvoluDeps' requestPersistentStorage option replaces that call; constVoid
+  never asks.
+
+React Native and Expo:
+- @evolu/react-native/expo-sqlite is gone. Import createEvoluDeps, createRun,
+  loadDeviceSecret and forgetDeviceSecret from @evolu/react-native,
+  EvoluIdenticon from @evolu/react-native/identicon, and hooks from @evolu/react
+  through createEvoluBinding.
+- Evolu needs React Native 0.88 or later on Hermes, Expo SDK 58 or later in a
+  development build (Expo Go can't load it), and CocoaPods on iOS. Upgrade Expo
+  or React Native first, following their upgrade guides for each version in
+  between (npx expo install expo@^58 --fix, then what npx expo-doctor reports),
+  and change the Evolu code after. It ships its own SQLite and crypto through
+  autolinking. Unless the app uses them itself, remove expo-sqlite and its
+  useSqlCipher plugin, expo-secure-store and its plugin,
+  react-native-quick-crypto and its install() call, react-native-nitro-modules
+  and react-native-sensitive-info. react-native-svg 15.15 or later is needed
+  only for the identicon. Run pod install and rebuild the native app.
+- Add polyfills.ts, which calls installPolyfills() from
+  @evolu/react-native/polyfills, and import it before anything else. With Expo
+  Router, add an index.ts that imports "./polyfills" and then
+  "expo-router/entry", and set "main": "index.ts" in package.json. A bare app
+  imports it on the first line of index.js, and its polyfills.ts also installs a
+  WHATWG URL polyfill, such as whatwg-url-minimum 0.2 or later, as
+  examples/react-native/polyfills.ts does. Expo provides URL itself.
+- Remove the Babel plugins added for Kysely (transform-dynamic-import and
+  transform-modules-commonjs) and the Metro wasm and COOP/COEP settings. Add
+  @babel/plugin-transform-explicit-resource-management only if the app's own
+  code uses using.
+- Expo web isn't supported. Build the web app with @evolu/react-web on Vite or
+  Next.js, sharing the schema and queries.
+- Raw SQL needs single-quoted strings, because Evolu's SQLite reads "a" as an
+  identifier.
+- Evolu 7's expo-sqlite databases are moved where they are.
+- Bump the runtime version used for over-the-air updates, and never ship this
+  release over the air to older native builds.
+
+Evolu Library, where the app uses it:
+- Type<Name, T, Input, Error, ...> → Type<Name, Input, Output, Error, ...>.
+  .Type → .Output. from now takes an Output, so for raw input use fromUnknown,
+  orThrow or orNull. fromParent → from.parent. InferInput, InferError,
+  InferName, InferParent and InferParentError are gone; use typeof X.Input,
+  typeof X.Error and InferErrors.
+- brand(name, parent, refine) → brand(name, parent, validate, formatError).
+  validate returns ok() instead of ok(value), and a brand that can fail needs
+  formatError. base and recursive → createType and lazy.
+- createFormatTypeError, createTypeErrorFormatter and the format*Error functions
+  are gone. Use X.formatError(error), and for translations localizeTypes with
+  @evolu/common/intl. Errors of the base Types are { type: "TypeOf", expected,
+  value }. A length error carries its bound in its type, such as "MinLength1" or
+  "MaxLength100". Errors carry the rejected value, so don't log them where the
+  input is sensitive. typeErrorToStandardSchemaIssues → typeErrorToIssues.
+- Gone: CurrencyCode, dateToDateIso and dateIsoToDate (use DateIsoFromDate),
+  parseJson (use JsonValueFromJson), isType (use EvoluType.is), readonly(),
+  createEqRedacted (compare secrets in constant time), and shiftArray and
+  popArray (use the native methods).
+- Renamed: isNonEmptyReadonlyArray → isNonEmptyArray, createRecord →
+  createMutableRecord, getProperty → getOwnProp (which ignores inherited keys),
+  LazyValue → Thunk, eqStrict → eqSameValue (Object.is, so NaN equals NaN and 0
+  differs from -0), eqJsonValue → eqData, TransferableError → UnknownError,
+  createTransferableError → createUnknownError, StoreListener → Listener,
+  StoreUnsubscribe → Unsubscribe, MaybeAsync → Awaitable.
+- createConsole({ enableLogging }) → createConsole({ level, formatter }).
+  createConsoleWithTime({ timestampType }) → createConsole({ formatter:
+  createConsoleFormatter()({ timestampFormat }) }).
+- createSymmetricCrypto().encrypt →
+  encryptWithXChaCha20Poly1305(deps)(plaintext, key), which returns [ciphertext,
+  nonce]. decryptWithXChaCha20Poly1305(ciphertext, nonce, key) fails with
+  DecryptWithXChaCha20Poly1305Error.
+- The Task module was rewritten. A Task is now a function of a run; run it with
+  run(task), run.ok or run.orThrow. wait → sleep, timeout(duration, task) →
+  timeout(task, duration), retry(options, task) → retry(task, schedule). toTask,
+  TaskContext, requestIdleTask and isAsync are gone.
+- Each duration has one spelling: "1s", not "1000ms", and no combinations such
+  as "1h 30m". durationToNonNegativeInt → durationToMillis, time.nowIso() →
+  time.now("DateIso"), createTestTime → testCreateTime, createRandomWithSeed →
+  testCreateRandom, and createRandomLibWithSeed(seed), which returned { random }
+  → testCreateRandomLib(seed), which returns the generator itself.
+- ok() and err() return Result, so annotations such as Ok<T> must change.
+  trySync and tryAsync without mapError return the thrown value as the error.
+  Stores compare values with SameValueZero.
+- These internals are gone: SqliteError, createPreparedStatementsCache,
+  createInitializedWorker, createInstances, createResources, isReactNative and
+  similar, plus @evolu/web's evoluWebDeps, createWebAuthnStore, wrapWebWorker,
+  wrapWebWorkerSelf and createSharedWebWorker (use createWorker and
+  createSharedWorker). Rewrite code that used them against the API reference.
+
+A relay the repository runs:
+- createNodeJsRelay(deps)(config) → runMain({ ...createRelayDeps() })((run) =>
+  run(createRelay({ port: Port.orThrow(4000), ... }))), as
+  apps/relay/src/index.ts in the Evolu repository does. enableLogging is gone;
+  set the console level instead. Alternatively, run npx @evolu/relay or the
+  evoluhq/relay Docker image, as https://www.evolu.dev/docs/relay describes.
+  createBetterSqliteDriver → createNodeJsSqliteDriver, which reads blobs as
+  Uint8Array instead of Buffer. It doesn't open databases on Windows yet, and a
+  bundler must keep @evolu/nodejs external. Ask before changing a relay that
+  already stores users' data.
+
+Before the release, tell the developer:
+- Never run an Evolu 7 build again on a device that has migrated, such as by
+  rolling the release back, because it would start with an empty database.
+- While a tab still runs Evolu 7, the updated app's first start fails with
+  DatabaseHeldError, so the app must show that error and how to recover.
+- Users should update the app on all their devices. A device on Evolu 7 receives
+  none of an owner's changes while one of them is stamped more than its maxDrift
+  (five minutes) ahead of its clock.
+```

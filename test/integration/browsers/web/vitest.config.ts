@@ -22,6 +22,9 @@ export default defineProject(({ mode }) => ({
       "@evolu/sqlite-wasm-2.2.4",
       "@evolu/sqlite-wasm-3.54.0-build2",
     ],
+    // Vite finds Evolu 7 only once its worker loads, and would reload the test
+    // that started it.
+    include: ["@evolu/common-7.4.1", "@evolu/common-7.4.1/local-first"],
   },
   test: {
     exclude: ["**/node_modules/**", "**/dist/**"],

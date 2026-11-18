@@ -188,6 +188,9 @@ importers:
       '@evolu/common':
         specifier: workspace:*
         version: link:packages/common
+      '@evolu/common-7.4.1':
+        specifier: npm:@evolu/common@7.4.1
+        version: '@evolu/common@7.4.1'
       '@evolu/nodejs':
         specifier: workspace:*
         version: link:packages/nodejs
@@ -2390,6 +2393,10 @@ packages:
   '@eslint/plugin-kit@0.7.2':
     resolution: {integrity: sha512-+CNAzxglkrpNf/kKywqQfk74QjtceuOE7Qm+AF8miRvPF/wmmK5+OJOgVh3AVTT3RP2mH3+FOaxlE5v72owk0A==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
+
+  '@evolu/common@7.4.1':
+    resolution: {integrity: sha512-aTSJN9GXvoN5FXo8DRiYdbMVFvBUG6N7Ygu7n5viyauPKBwylyAazZuDcBlQg5MxVv6YrF5c6w2LRG/OR2UIHA==}
+    engines: {node: '>=22.0.0'}
 
   '@evolu/sqlite-wasm@2.2.4':
     resolution: {integrity: sha512-/JOYGFN93QspD2C8HVxVgBUlFWqJ1IpaVuIhEB53u4+ZvE+D3LjpNHDYiwZgf0n7VaH2U85OY5eV3wUrWc3scg==}
@@ -6698,6 +6705,10 @@ packages:
     resolution: {integrity: sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w==}
     engines: {node: '>=6'}
 
+  kysely@0.28.20:
+    resolution: {integrity: sha512-D7rXCs0Psxq2hqjg15PGzk/k2bsWY1ohT9o/Xzl8SzgWExT6GiHCz4Z0NP1z5uOE3WBG7gJ46kYdgLYCOlaLoA==}
+    engines: {node: '>=20.0.0'}
+
   kysely@0.29.7:
     resolution: {integrity: sha512-fmIq+7kv4WbFm2tcfznRzikqB4cuNpgZ40PSU2fAJ2/OO5XhojqnTPrmgrCjYSRJVwBln03XcRXJGnw9H099IQ==}
     engines: {node: '>=22.0.0'}
@@ -7392,6 +7403,9 @@ packages:
   msgpackr-extract@3.0.6:
     resolution: {integrity: sha512-prUB8+Gc/1rEzaNo+3Rjo0Hdi6gFjQ9Td0mDsvAIkSGUyp6EADdEBiU71ZP5Mj4jCG+vai0qSNV+yisQAMYuSQ==}
     hasBin: true
+
+  msgpackr@1.12.1:
+    resolution: {integrity: sha512-4EUH9tQHnMmEgzW/MdAP0KIfa1T9AF+htl0ffe2n5vb2EKn9y2co8ccpgWko6S52Jy1PQZKwRnx5/KkYjtd9MQ==}
 
   msgpackr@2.1.4:
     resolution: {integrity: sha512-TvP18sX5U3MXoHHSUZen/FagaNTEJObyb8OlnJcNbqN6Ux/oCwYJrHhCOzi31bItyW/Efz1IDnRDKQ23j4ZuvA==}
@@ -10968,6 +10982,15 @@ snapshots:
     dependencies:
       '@eslint/core': 1.2.1
       levn: 0.4.1
+
+  '@evolu/common@7.4.1':
+    dependencies:
+      '@noble/ciphers': 2.4.0
+      '@noble/hashes': 2.4.0
+      '@scure/bip39': 2.4.0
+      kysely: 0.28.20
+      msgpackr: 1.12.1
+      random: 5.5.1
 
   '@evolu/sqlite-wasm@2.2.4': {}
 
@@ -15825,6 +15848,8 @@ snapshots:
 
   kleur@3.0.3: {}
 
+  kysely@0.28.20: {}
+
   kysely@0.29.7: {}
 
   lan-network@0.2.1: {}
@@ -16911,6 +16936,10 @@ snapshots:
       '@msgpackr-extract/msgpackr-extract-linux-x64': 3.0.6
       '@msgpackr-extract/msgpackr-extract-win32-x64': 3.0.6
     optional: true
+
+  msgpackr@1.12.1:
+    optionalDependencies:
+      msgpackr-extract: 3.0.6
 
   msgpackr@2.1.4:
     optionalDependencies:
@@ -18036,7 +18065,7 @@ snapshots:
 
   rxjs@7.8.2:
     dependencies:
-      tslib: 2.8.1
+      tslib: 2.9.1
     optional: true
 
   sade@1.8.1:

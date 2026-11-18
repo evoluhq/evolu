@@ -46,6 +46,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -59,6 +60,7 @@ import {
   describeSqliteDriverPrepare,
   setupSqliteAndDriver,
 } from "../../../../test/integration/nodejs/Sqlite/_prepare.ts";
+import { createEvolu7DatabaseExists } from "../../src/sqlite/Evolu7DatabaseExists.ts";
 import { createDeleteDatabaseFiles } from "../../src/sqlite/DeleteDatabaseFiles.ts";
 import { createReactNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
 import { createWaitForDatabaseRelease } from "../../src/sqlite/WaitForDatabaseRelease.ts";
@@ -83,9 +85,9 @@ const setupDirectory = (t: TestContext): string => {
 };
 
 /**
- * The driver, the wait and the deletion of the files over the databases in
- * `directory`, through `nativeSqlite`, and a test Run whose time the test
- * advances.
+ * The driver, the wait, the deletion of the files and whether they exist over
+ * the databases in `directory`, through `nativeSqlite`, and a test Run whose
+ * time the test advances.
  */
 const setupDriver = (directory: string, nativeSqlite = binding) => {
   const run = testCreateRun();
@@ -100,6 +102,7 @@ const setupDriver = (directory: string, nativeSqlite = binding) => {
       run.abortable(createSqliteDriver(testName, options)),
     waitForRelease: () => run(createWaitForDatabaseRelease(deps)(testName)),
     deleteFiles: () => run(createDeleteDatabaseFiles(deps)(testName)),
+    exists: () => run(createEvolu7DatabaseExists(deps)(testName)),
   };
 };
 
@@ -744,6 +747,132 @@ test("the wait finds the database of a directory that doesn't exist yet free at 
   await using _run = setup.run;
 
   assertEqual(await setup.waitForRelease(), ok());
+});
+
+test("evolu7DatabaseExists finds a database's file, and a missing one, also in a directory that doesn't exist yet, without creating it", async (t) => {
+  const directory = setupDirectory(t);
+  const setup = setupDriver(directory);
+  const missingDirectory = setupDriver(join(directory, "SQLite"));
+  await using _run = setup.run;
+  await using _missingDirectoryRun = missingDirectory.run;
+
+  // Another database's file is not this one's.
+  const other = binding.openFile(join(directory, "evolu1-Other.db"));
+  other.run("create table t (a);", []);
+  other.close();
+
+  assertEqual(await setup.exists(), ok(false));
+  assertEqual(await missingDirectory.exists(), ok(false));
+  assertEqual(readdirSync(directory), ["evolu1-Other.db"]);
+
+  {
+    using driver = await setup.open();
+    driver.exec(sql`create table t (a);`);
+  }
+  assertEqual(await setup.exists(), ok(true));
+});
+
+test("evolu7DatabaseExists reads a database in WAL mode as missing, which the memory database's codec refuses to attach", async (t) => {
+  const setup = setupDriver(setupDirectory(t));
+  await using _run = setup.run;
+  {
+    using driver = await setup.open();
+    driver.exec(sql`pragma journal_mode = wal;`);
+    driver.exec(sql`create table t (a);`);
+  }
+
+  assertEqual(await setup.exists(), ok(false));
+});
+
+test("evolu7DatabaseExists finds a file that isn't a database, and one another connection is writing to", async (t) => {
+  const setup = setupDriver(setupDirectory(t));
+  await using _run = setup.run;
+  const thrown: Array<unknown> = [];
+  const attaching = setupDriver(setupDirectory(t), {
+    ...binding,
+    openMemory: () => {
+      const database = binding.openMemory();
+      // The binding's methods are its prototype's, so a spread has none.
+      return {
+        prepare: (sql) => database.prepare(sql),
+        run: (sql, parameters) => {
+          try {
+            return database.run(sql, parameters);
+          } catch (error) {
+            thrown.push(error);
+            throw error;
+          }
+        },
+        export: () => database.export(),
+        close: () => {
+          database.close();
+        },
+      };
+    },
+  });
+  await using _attachingRun = attaching.run;
+
+  writeFileSync(setup.path, "Not a database. ".repeat(100));
+  assertEqual(await setup.exists(), ok(true));
+
+  using driver = await attaching.open();
+  driver.exec(sql`create table t (a);`);
+  driver.exec(sql`begin exclusive;`);
+  assertEqual(await attaching.exists(), ok(true));
+  driver.exec(sql`commit;`);
+
+  assertEqual(
+    thrown.map(
+      (error) => ((error as Error).cause as NativeSqliteError).extendedCode,
+    ),
+    // SQLITE_BUSY.
+    [5],
+  );
+});
+
+test("evolu7DatabaseExists fails with an UnknownError for a thrown value that isn't SQLite's error, and closes its memory database", async (t) => {
+  const closed: Array<unknown> = [];
+  for (const thrown of [
+    new Error("Unexpected."),
+    new Error("Unexpected.", { cause: { type: "Unexpected" } }),
+    { type: "Unexpected" },
+  ]) {
+    const setup = setupDriver(setupDirectory(t), {
+      ...binding,
+      openMemory: () => {
+        const database = binding.openMemory();
+        return {
+          prepare: (sql) => database.prepare(sql),
+          run: () => {
+            // oxlint-disable-next-line typescript/only-throw-error -- Anything can be thrown.
+            throw thrown;
+          },
+          export: () => database.export(),
+          close: () => {
+            closed.push(thrown);
+            database.close();
+          },
+        };
+      },
+    });
+    await using _run = setup.run;
+
+    assertEqual(await setup.exists(), err(createUnknownError(thrown)));
+  }
+  assertSame(closed.length, 3);
+});
+
+test("evolu7DatabaseExists fails with an UnknownError when the binding fails to open its memory database", async (t) => {
+  const thrown = new Error("Out of memory.");
+  const setup = setupDriver(setupDirectory(t), {
+    ...binding,
+    openMemory: () => {
+      throw thrown;
+    },
+  });
+  await using _run = setup.run;
+
+  assertEqual(await setup.exists(), err(createUnknownError(thrown)));
 });
 
 test("deleteDatabaseFiles deletes an encrypted database's file and its -journal, -wal and -shm, leaves other databases, and succeeds again once they are missing", async (t) => {

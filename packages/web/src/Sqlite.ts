@@ -25,6 +25,7 @@ import {
   type UnknownError,
 } from "@evolu/common";
 import type {
+  Evolu7DatabaseExists,
   DeleteDatabaseFiles,
   WaitForDatabaseRelease,
 } from "@evolu/common/local-first";
@@ -284,19 +285,21 @@ export const createDeleteDatabaseFiles =
   (name) =>
   async (run) => {
     const directory = `.${name}`;
-    const root = await tryAsync(() => deps.opfsRoot.getDirectory());
-    if (!root.ok) return err(createUnknownError(root.error));
+    const root = await tryAsync(
+      () => deps.opfsRoot.getDirectory(),
+      createUnknownError,
+    );
+    if (!root.ok) return root;
     // Opening the pool would create the directory, whose name reveals which
     // owner used the device, so a database without one is deleted already.
     // The database's leader lock keeps any other pool from creating it
     // meanwhile.
-    const found = await tryAsync(() =>
-      root.value.getDirectoryHandle(directory),
+    const found = await tryAsync(
+      () => root.value.getDirectoryHandle(directory),
+      (error): Result<void, UnknownError> =>
+        isNotFoundError(error) ? ok() : err(createUnknownError(error)),
     );
-    if (!found.ok)
-      return isNotFoundError(found.error)
-        ? ok()
-        : err(createUnknownError(found.error));
+    if (!found.ok) return found.error;
 
     const sqliteWasm = await deps.sqliteWasmLoad;
     if (!sqliteWasm.ok) return err(createUnknownError(sqliteWasm.error));
@@ -312,25 +315,71 @@ export const createDeleteDatabaseFiles =
       );
 
     const pool = opened.value;
-    const unlinked = trySync(() => pool.unlink(databasePath));
+    const unlinked = trySync(
+      () => pool.unlink(databasePath),
+      createUnknownError,
+    );
     const disposed = trySync(() => {
       pool[Symbol.dispose]();
-    });
-    if (!unlinked.ok) return err(createUnknownError(unlinked.error));
+    }, createUnknownError);
+    if (!unlinked.ok) return unlinked;
     if (!unlinked.value.ok)
       return err(createUnknownError(unlinked.value.error));
-    if (!disposed.ok) return err(createUnknownError(disposed.error));
+    if (!disposed.ok) return disposed;
 
     // Removing the directory with every slot also removes a free header whose
     // flush failed, which unlink does not report, so the database cannot come
     // back.
-    const removed = await tryAsync(() =>
-      root.value.removeEntry(directory, { recursive: true }),
+    const removed = await tryAsync(
+      () => root.value.removeEntry(directory, { recursive: true }),
+      (error): Result<void, UnknownError> =>
+        isNotFoundError(error) ? ok() : err(createUnknownError(error)),
     );
-    if (!removed.ok && !isNotFoundError(removed.error))
-      return err(createUnknownError(removed.error));
-    return ok();
+    return removed.ok ? ok() : removed.error;
   };
+
+/**
+ * Creates the {@link Evolu7DatabaseExists} of Evolu for the web: whether OPFS
+ * has the directory `.<name>` of the database's pool, which it finds among the
+ * root's entries without creating it, as an open would. A pool's directory
+ * without a database counts, and that database then opens empty. A file of that
+ * name is no pool, so it doesn't.
+ */
+export const createEvolu7DatabaseExists =
+  (deps: OpfsRootWithEntriesDep): Evolu7DatabaseExists =>
+  (name) => {
+    const directory = `.${name}`;
+    return () =>
+      tryAsync(async () => {
+        const root = await deps.opfsRoot.getDirectory();
+        // A file system that folds the case of names, as WebKit's OPFS on
+        // macOS does, would find the directory of an app whose name differs
+        // only in case by looking `.<name>` up, so the entries' own names are
+        // compared.
+        for await (const entry of root.values())
+          if (entry.kind === "directory" && entry.name === directory)
+            return true;
+        return false;
+      }, createUnknownError);
+  };
+
+/**
+ * An OPFS root whose directory lists its entries with their names, which
+ * `navigator.storage` provides.
+ */
+export interface OpfsRootWithEntries {
+  readonly getDirectory: () => Promise<{
+    readonly values: () => AsyncIterable<{
+      readonly kind: "directory" | "file";
+      readonly name: string;
+    }>;
+  }>;
+}
+
+/** Dependency wrapper for {@link OpfsRootWithEntries}. */
+export interface OpfsRootWithEntriesDep {
+  readonly opfsRoot: OpfsRootWithEntries;
+}
 
 const isNotFoundError = (error: unknown): boolean =>
   error instanceof DOMException && error.name === "NotFoundError";

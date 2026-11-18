@@ -47,11 +47,21 @@ const fake = (() => {
     },
   };
   const opfsRootDirectory = {
-    getDirectoryHandle: (name: string) => {
-      state.events.push(`get ${name}`);
+    getDirectoryHandle: (name: string, ...options: Array<unknown>) => {
+      // Options would create a missing directory, which lookups must not.
+      state.events.push(
+        options.length === 0 ? `get ${name}` : `get ${name} with options`,
+      );
       return state.getDirectoryHandleRejects
         ? Promise.reject(state.getDirectoryHandleRejects)
         : Promise.resolve({});
+    },
+    values: async function* () {
+      state.events.push("list OPFS root");
+      // A real iterator yields once it has read the directory.
+      await Promise.resolve();
+      if (state.rootValuesThrows) throw state.rootValuesThrows;
+      yield* state.rootEntries;
     },
     removeEntry: (name: string, options: unknown) => {
       state.events.push(`remove ${name} ${JSON.stringify(options)}`);
@@ -107,6 +117,11 @@ const fake = (() => {
     exportResult: ok(new Uint8Array([1, 2, 3])) as Result<Uint8Array, unknown>,
     getDirectoryHandleRejects: null as Error | null,
     getDirectoryRejects: null as Error | null,
+    rootEntries: [{ kind: "directory", name: ".Test" }] as Array<{
+      readonly kind: "directory" | "file";
+      readonly name: string;
+    }>,
+    rootValuesThrows: null as Error | null,
     poolDeps: [] as Array<Record<string, unknown>>,
     poolOptions: [] as Array<unknown>,
     poolResults: [] as Array<Result<never, unknown>>,
@@ -182,6 +197,7 @@ mock.module("@evolu/sqlite-wasm", {
 });
 
 const {
+  createEvolu7DatabaseExists,
   createDeleteDatabaseFiles,
   createWaitForDatabaseRelease,
   createWasmSqliteDriver,
@@ -587,6 +603,46 @@ describe("createWaitForDatabaseRelease", () => {
 
     assertSame(defect.cause, compileError);
     assertEqual(fake.state.events, []);
+  });
+});
+
+describe("createEvolu7DatabaseExists", () => {
+  const evolu7DatabaseExists = async () => {
+    await using run = testCreateRun();
+    return await run(createEvolu7DatabaseExists(setupDriverDeps())(testName));
+  };
+
+  it("finds the directory .<name> among the root's entries without opening the pool, which would create it", async () => {
+    fake.reset();
+
+    assertEqual(await evolu7DatabaseExists(), ok(true));
+    assertEqual(fake.state.events, ["get OPFS root", "list OPFS root"]);
+  });
+
+  it("finds no database without the directory, with a file of its name, or with a directory whose name differs only in case", async () => {
+    for (const rootEntries of [
+      [],
+      [{ kind: "file", name: ".Test" }],
+      [{ kind: "directory", name: ".test" }],
+    ] as const) {
+      fake.reset();
+      fake.state.rootEntries = [...rootEntries];
+
+      assertEqual(await evolu7DatabaseExists(), ok(false));
+    }
+  });
+
+  it("fails with an UnknownError when OPFS fails", async () => {
+    for (const rejects of [
+      "getDirectoryRejects",
+      "rootValuesThrows",
+    ] as const) {
+      fake.reset();
+      const error = new Error("OPFS failed");
+      fake.state[rejects] = error;
+
+      assertEqual(await evolu7DatabaseExists(), err(createUnknownError(error)));
+    }
   });
 });
 

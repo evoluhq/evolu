@@ -43,6 +43,7 @@ import {
 import {
   startDbWorker,
   type DbWorkerInit,
+  type Evolu7DatabaseExists,
   type OpenDbWorkerInit,
   type DeleteDatabaseFiles,
   type WaitForDatabaseRelease,
@@ -532,6 +533,7 @@ const setupDbWorker = async ({
     encryptionKey: testAppOwner.encryptionKey,
     memoryOnly,
     createFirstAppOwner,
+    evolu7: null,
     gateId: testGateId,
     consoleEntryOrErrorChannelName:
       consoleEntryOrErrorChannelName ?? consoleEntryOrErrorBroadcastChannelName,
@@ -607,6 +609,7 @@ const startDbWorkerUntilDone = async (dbSetup: DbSetup) => {
     encryptionKey: testAppOwner.encryptionKey,
     memoryOnly: true,
     createFirstAppOwner: null,
+    evolu7: null,
     gateId: testGateId,
     consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
     sharedWorkerId: testSharedWorkerId,
@@ -972,7 +975,7 @@ describe("worker startup", () => {
     it("is created by the startup that creates the database", async () => {
       await using setup = await setupDbWorker({
         sqliteSchema: deviceSqliteSchema,
-        createFirstAppOwner: { deviceOwnerId },
+        createFirstAppOwner: { deviceOwnerId, evolu7Name: testName },
       });
 
       const rows = selectAppOwnerRows(setup);
@@ -1011,7 +1014,7 @@ describe("worker startup", () => {
         await using _refused = await setupDbWorker({
           dbSetup,
           sqliteSchema: deviceSqliteSchema,
-          createFirstAppOwner: { deviceOwnerId },
+          createFirstAppOwner: { deviceOwnerId, evolu7Name: testName },
           expectRefused: true,
         });
       }
@@ -1026,7 +1029,7 @@ describe("worker startup", () => {
       await using setup = await setupDbWorker({
         dbSetup,
         sqliteSchema: deviceSqliteSchema,
-        createFirstAppOwner: { deviceOwnerId },
+        createFirstAppOwner: { deviceOwnerId, evolu7Name: testName },
       });
       assertLength(selectAppOwnerRows(setup), 1);
     });
@@ -1037,7 +1040,7 @@ describe("worker startup", () => {
         await using _first = await setupDbWorker({
           dbSetup,
           sqliteSchema: deviceSqliteSchema,
-          createFirstAppOwner: { deviceOwnerId },
+          createFirstAppOwner: { deviceOwnerId, evolu7Name: testName },
         });
       }
       // As after the app deleted every AppOwner.
@@ -1046,7 +1049,7 @@ describe("worker startup", () => {
       await using second = await setupDbWorker({
         dbSetup,
         sqliteSchema: deviceSqliteSchema,
-        createFirstAppOwner: { deviceOwnerId },
+        createFirstAppOwner: { deviceOwnerId, evolu7Name: testName },
       });
 
       assertEqual(selectAppOwnerRows(second), []);
@@ -1137,6 +1140,7 @@ describe("worker startup", () => {
       encryptionKey: testAppOwner.encryptionKey,
       memoryOnly: true,
       createFirstAppOwner: null,
+      evolu7: null,
       gateId: testGateId,
       consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
       sharedWorkerId: testSharedWorkerId,
@@ -8349,6 +8353,7 @@ describe("worker failure", () => {
       encryptionKey: testAppOwner.encryptionKey,
       memoryOnly: true,
       createFirstAppOwner: null,
+      evolu7: null,
       gateId: testGateId,
       consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
       sharedWorkerId: testSharedWorkerId,
@@ -8768,10 +8773,14 @@ describe("database deletion", () => {
     dbSetup,
     lockManager,
     deleteDatabaseFiles,
+    evolu7 = null,
+    evolu7DatabaseExists,
   }: {
     dbSetup: DbSetup;
     lockManager: LockManagerDep["lockManager"];
     deleteDatabaseFiles: DeleteDatabaseFiles;
+    evolu7?: DbWorkerInit["evolu7"];
+    evolu7DatabaseExists?: Evolu7DatabaseExists;
   }) => {
     const sharedWorkerRun = testCreateRun({ lockManager });
     const attemptLock = await sharedWorkerRun.ok(
@@ -8795,6 +8804,7 @@ describe("database deletion", () => {
         return dbSetup.createSqliteDriver(name, options);
       }) satisfies CreateSqliteDriver,
       deleteDatabaseFiles,
+      ...(evolu7DatabaseExists && { evolu7DatabaseExists }),
       time: dbSetup.time,
     });
     const done = run(startDbWorker(self));
@@ -8812,6 +8822,7 @@ describe("database deletion", () => {
       consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
       attemptId: testAttemptId,
       port: channel.port1.native,
+      evolu7,
     });
     return {
       outputs,
@@ -8989,6 +9000,7 @@ describe("database deletion", () => {
       encryptionKey: testAppOwner.encryptionKey,
       memoryOnly: false,
       createFirstAppOwner: null,
+      evolu7: null,
       gateId: testGateId,
       consoleEntryOrErrorChannelName: consoleEntryOrErrorBroadcastChannelName,
       sharedWorkerId: testSharedWorkerId,
@@ -9033,6 +9045,40 @@ describe("database deletion", () => {
     assertFalse(deleted);
     assertEqual(worker.outputs, []);
     assertFalse(worker.isOpened());
+  });
+
+  it("deletes nothing once its attempt ended while it waited for the lock of the AppOwner's Evolu 7 database", async () => {
+    await using dbSetup = await setupDb();
+    const lockManager = testCreateLockManager();
+    // A tab that still runs Evolu 7.
+    const evolu7Name = Name.orThrow("Evolu7");
+    const tabClosed = Promise.withResolvers<void>();
+    const tab = lockManager.request(
+      `evolu-sharedwebworker-${evolu7Name}`,
+      () => tabClosed.promise,
+    );
+    let deleted = false;
+    await using worker = await startDeletingOnlyDbWorker({
+      dbSetup,
+      lockManager,
+      deleteDatabaseFiles: () => () => {
+        deleted = true;
+        return ok();
+      },
+      evolu7: { name: evolu7Name, appOwnerId: testAppOwner.id },
+      evolu7DatabaseExists: () => () => ok(false),
+    });
+    await testWaitForWorkerMessage();
+
+    // A later attempt may open the AppOwner's database and import meanwhile.
+    await worker.endAttempt();
+    tabClosed.resolve();
+    await tab;
+    await worker.done;
+    await testWaitForWorkerMessage();
+
+    assertFalse(deleted);
+    assertEqual(worker.outputs, []);
   });
 
   it("answers a failed deletion of the files with DeleteFailed", async () => {

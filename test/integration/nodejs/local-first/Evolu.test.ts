@@ -9,6 +9,7 @@ import {
   assertNotUndefined,
   assertNonEmptyArray,
   assertNonEmptyReadonlyArray,
+  assertNonNullable,
   assertErr,
   assertOk,
   assertSame,
@@ -19,6 +20,7 @@ import {
   type Entropy32,
   type RandomBytesDep,
 } from "../../../../packages/common/src/Crypto.ts";
+import { bytesToHex } from "../../../../packages/common/src/Bytes.ts";
 import { once } from "node:events";
 import { connect, createServer, type AddressInfo, type Socket } from "node:net";
 import { describe, it } from "node:test";
@@ -42,7 +44,10 @@ import {
   testGlobalUnhandledRejections,
   type ReloadApp,
 } from "../../../../packages/common/src/Platform.ts";
-import { startDbWorker } from "../../../../packages/common/src/local-first/Db.ts";
+import {
+  startDbWorker,
+  type Evolu7DatabaseExists,
+} from "../../../../packages/common/src/local-first/Db.ts";
 import {
   AppName,
   createEvolu,
@@ -71,6 +76,7 @@ import {
   createOwnerWebSocketTransport,
   createShardOwner,
   mnemonicToOwnerSecret,
+  ownerIdToOwnerIdBytes,
   deriveShardOwner,
   OwnerSecret,
   RelayUrl,
@@ -116,6 +122,7 @@ import {
 import type { ReadonlyStore } from "../../../../packages/common/src/Store.ts";
 import {
   createSqlite,
+  databaseHeldTimeout,
   getSqliteSnapshot,
   sql,
   SqliteBoolean,
@@ -123,6 +130,7 @@ import {
   type SqliteDriverOptions,
   type SqliteDriver,
   type SqliteQuery,
+  type SqliteRow,
 } from "../../../../packages/common/src/Sqlite.ts";
 import {
   testCreateDeps,
@@ -139,6 +147,7 @@ import {
   type DateIso,
   id,
   idToIdBytes,
+  Mnemonic,
   Name,
   NonEmptyTrimmedString100,
   nullOr,
@@ -170,6 +179,7 @@ import {
   testWaitForWorkerMessage,
 } from "../../../../packages/common/src/Worker.ts";
 import { testCreateSqliteDep } from "../_deps.ts";
+import { evolu7StartAt, setupEvolu7 } from "./_evolu7.ts";
 
 installPolyfills();
 
@@ -222,16 +232,21 @@ describe("Evolu integration", () => {
     seed,
     // The default database is in memory, so there are no files to delete.
     deleteDatabaseFiles = () => () => ok(),
+    evolu7DatabaseExists,
     reloadApp = constVoid,
     waitForDatabaseRelease,
+    workerTime,
     devicePersistence = "Unknown",
     requestPersistentStorage,
   }: {
     time?: TestTime;
+    /** The DbWorkers' time, which defaults to a test time of their own. */
+    workerTime?: TestTime;
     devicePersistence?: DevicePersistence;
     requestPersistentStorage?: () => void;
     createSqliteDriver?: CreateSqliteDriver;
     createWebSocket?: CreateWebSocket;
+    evolu7DatabaseExists?: Evolu7DatabaseExists;
     deleteDatabaseFiles?: DeleteDatabaseFiles;
     reloadApp?: ReloadApp;
     waitForDatabaseRelease?: WaitForDatabaseRelease;
@@ -300,7 +315,9 @@ describe("Evolu integration", () => {
         lockManager,
         createSqliteDriver: createSqliteDriver ?? createSharedSqliteDriver,
         deleteDatabaseFiles,
+        ...(evolu7DatabaseExists && { evolu7DatabaseExists }),
         ...(waitForDatabaseRelease && { waitForDatabaseRelease }),
+        ...(workerTime && { time: workerTime }),
       }),
     );
 
@@ -408,6 +425,11 @@ describe("Evolu integration", () => {
     createSqliteDriver?: CreateSqliteDriver;
     /** Distinct per device, so each device's session has its own node ID. */
     seed: string;
+    /** The tab's time and the DbWorkers', each a test time of its own without. */
+    time?: TestTime;
+    workerTime?: TestTime;
+    evolu7DatabaseExists?: Evolu7DatabaseExists;
+    deleteDatabaseFiles?: DeleteDatabaseFiles;
   }) => {
     let constructedCount = 0;
     let closedCount = 0;
@@ -1760,6 +1782,11 @@ describe("Evolu integration", () => {
   const createSqliteDriverPerName = () => {
     const driversByName = new Map<Name, SqliteDriver>();
     let statementHook: ((statement: string) => void) | null = null;
+    let rowHook: ((row: SqliteRow) => void) | null = null;
+    const closeHoldsByName = new Map<
+      Name,
+      { readonly started: () => void; readonly released: Promise<void> }
+    >();
     const createSqliteDriver: CreateSqliteDriver = (name) => async (run) => {
       let driver = driversByName.get(name);
       if (!driver) {
@@ -1772,14 +1799,18 @@ describe("Evolu integration", () => {
       return ok({
         exec: (query) => {
           statementHook?.(query.sql);
-          return kept.exec(query);
+          const result = kept.exec(query);
+          for (const row of result.rows) rowHook?.(row);
+          return result;
         },
         prepare: (sql) => {
           const statement = kept.prepare(sql);
           return {
             exec: (parameters) => {
               statementHook?.(sql);
-              return statement.exec(parameters);
+              const result = statement.exec(parameters);
+              for (const row of result.rows) rowHook?.(row);
+              return result;
             },
             [Symbol.dispose]: () => {
               statement[Symbol.dispose]();
@@ -1788,11 +1819,23 @@ describe("Evolu integration", () => {
         },
         iterate: (query, onRow) => {
           statementHook?.(query.sql);
-          kept.iterate(query, onRow);
+          kept.iterate(query, (row) => {
+            rowHook?.(row);
+            return onRow(row);
+          });
         },
         export: () => kept.export(),
         deleteDatabase: () => kept.deleteDatabase(),
         [Symbol.dispose]: constVoid,
+        // Taken over Symbol.dispose by the AsyncDisposableStack of the
+        // database, so a test can hold its close.
+        [Symbol.asyncDispose]: async () => {
+          const hold = closeHoldsByName.get(name);
+          if (!hold) return;
+          closeHoldsByName.delete(name);
+          hold.started();
+          await hold.released;
+        },
       });
     };
     const driverWith = (table: string): SqliteDriver | undefined =>
@@ -1803,19 +1846,24 @@ describe("Evolu integration", () => {
           `).rows.length > 0,
       );
     let failNextDeletion = false;
+    const failNextDeletionsOf = new Set<Name>();
     let deletionHold: Promise<void> | null = null;
     const deletedNames: Array<Name> = [];
     const deletionListeners = new Set<() => void>();
     const deletionStarts = new Set<() => void>();
+    const deletionHooksByName = new Map<Name, () => void>();
     // Deleting a database's files drops its SQLite database, so the next
     // open of its name starts empty.
     const deleteDatabaseFiles: DeleteDatabaseFiles = (name) => async () => {
       for (const started of deletionStarts) started();
       deletionStarts.clear();
+      const deletionHook = deletionHooksByName.get(name);
+      deletionHooksByName.delete(name);
+      deletionHook?.();
       const hold = deletionHold;
       deletionHold = null;
       await hold;
-      if (failNextDeletion) {
+      if (failNextDeletion || failNextDeletionsOf.delete(name)) {
         failNextDeletion = false;
         return err(createUnknownError(new Error("Deletion failed.")));
       }
@@ -1825,11 +1873,25 @@ describe("Evolu integration", () => {
       for (const listener of deletionListeners) listener();
       return ok();
     };
+    const evolu7DatabaseExists: Evolu7DatabaseExists = (name) => () =>
+      ok(driversByName.has(name));
     return {
       createSqliteDriver,
+      evolu7DatabaseExists,
       deleteDatabaseFiles,
       failNextDeletion: () => {
         failNextDeletion = true;
+      },
+      /** Fails the next deletion of the database `name`. */
+      failNextDeletionOf: (name: Name) => {
+        failNextDeletionsOf.add(name);
+      },
+      /**
+       * Calls `callback` once, as the next deletion of the database `name`
+       * starts.
+       */
+      onNextDeletionOf: (name: Name, callback: () => void): void => {
+        deletionHooksByName.set(name, callback);
       },
       /** Resolves once the next deletion of database files starts. */
       waitForDeletionStart: (): Promise<void> =>
@@ -1850,6 +1912,32 @@ describe("Evolu integration", () => {
         statementHook = (statement) => {
           if (!predicate(statement)) return;
           statementHook = null;
+          callback();
+        };
+      },
+      /**
+       * Holds the next close of the database `name` until `release` is called;
+       * `started` resolves once it starts.
+       */
+      holdNextClose: (
+        name: Name,
+      ): { readonly started: Promise<void>; readonly release: () => void } => {
+        const started = Promise.withResolvers<void>();
+        const released = Promise.withResolvers<void>();
+        closeHoldsByName.set(name, {
+          started: started.resolve,
+          released: released.promise,
+        });
+        return { started: started.promise, release: released.resolve };
+      },
+      /** Calls `callback` once, at the next returned row matching `predicate`. */
+      onNextRow: (
+        predicate: (row: SqliteRow) => boolean,
+        callback: () => void,
+      ): void => {
+        rowHook = (row) => {
+          if (!predicate(row)) return;
+          rowHook = null;
           callback();
         };
       },
@@ -1875,6 +1963,18 @@ describe("Evolu integration", () => {
       selectAll: (table: string): ReadonlyArray<unknown> =>
         driverWith(table)?.exec(sql`select * from ${sql.identifier(table)};`)
           .rows ?? [],
+      /** The rows of a table in the database `name`. */
+      selectAllIn: (name: Name, table: string): ReadonlyArray<unknown> => {
+        const driver = driversByName.get(name);
+        assertNotUndefined(driver);
+        return driver.exec(sql`select * from ${sql.identifier(table)};`).rows;
+      },
+      /** Runs a query in the database `name`, behind the back of every instance. */
+      execIn: (name: Name, query: SqliteQuery): void => {
+        const driver = driversByName.get(name);
+        assertNotUndefined(driver);
+        driver.exec(query);
+      },
       /**
        * Runs a query in the one database that has the table, behind the back of
        * every instance, which neither sees nor refreshes it.
@@ -7562,6 +7662,1914 @@ describe("Evolu integration", () => {
     await first[Symbol.asyncDispose]();
     assertEqual(await secondLoad, []);
     assertEqual(await firstLoad, []);
+  });
+
+  describe("Evolu 7 migration", () => {
+    const todosQuery = createQuery((db) =>
+      db
+        .selectFrom("todo")
+        .select(["title", "isCompleted", "isDeleted", "createdAt", "updatedAt"])
+        .orderBy("title"),
+    );
+
+    /**
+     * Drivers by name with what the DbWorkers need to find a database, for an
+     * app with a name of its own: Evolu 7 keeps an instance per name while the
+     * process lives, so a test must not reuse another's.
+     */
+    const setupMigration = async (
+      name: string,
+      {
+        startedBefore,
+        startAt = evolu7StartAt + 60_000,
+        evolu7DatabaseExists,
+        waitForDatabaseRelease,
+      }: {
+        /**
+         * An earlier start of the app, whose databases this one opens, as after
+         * a reload. It owns them, so it is disposed last.
+         */
+        startedBefore?: {
+          readonly drivers: ReturnType<typeof createSqliteDriverPerName>;
+        };
+        /**
+         * The device's time at the start, by default a minute after Evolu 7
+         * started, so Evolu 7's changes are not from the future.
+         */
+        startAt?: number;
+        /** In place of the drivers' own. */
+        evolu7DatabaseExists?: Evolu7DatabaseExists;
+        waitForDatabaseRelease?: WaitForDatabaseRelease;
+      } = {},
+    ) => {
+      const appName = AppName.orThrow(name);
+      const drivers = startedBefore?.drivers ?? createSqliteDriverPerName();
+      // The tab and the workers read one device's time.
+      const time = testCreateTime({ startAt: Millis.orThrow(startAt) });
+      const dbWorkerOpens: Array<Name> = [];
+      const setup = await setupRunWithEvoluDeps({
+        createSqliteDriver: (name, options) => {
+          dbWorkerOpens.push(name);
+          return drivers.createSqliteDriver(name, options);
+        },
+        evolu7DatabaseExists:
+          evolu7DatabaseExists ?? drivers.evolu7DatabaseExists,
+        deleteDatabaseFiles: drivers.deleteDatabaseFiles,
+        ...(waitForDatabaseRelease && { waitForDatabaseRelease }),
+        time,
+        workerTime: time,
+      });
+      return {
+        appName,
+        /** The Evolu 7 database an app finds without `evolu7Name`. */
+        evolu7Name: Name.orThrow(appName),
+        instantStartConfig: {
+          appName,
+          auth: { type: "InstantStart" },
+          createFirstAppOwner: true,
+          transports: [],
+        } as const,
+        drivers,
+        /** The databases the DbWorkers opened, in order. */
+        dbWorkerOpens,
+        run: setup.run,
+        dbWorkerTime: setup.dbWorkerTime,
+        tabErrors: setup.tabErrors,
+        waitForTabError: setup.waitForTabError,
+        /** Evolu 7 on the database `name`, which it creates. */
+        setupEvolu7: async (
+          name: Name,
+          options?: Omit<Parameters<typeof setupEvolu7>[1], "name">,
+        ) =>
+          setupEvolu7(
+            getOrThrow(await setup.run(drivers.createSqliteDriver(name))),
+            { name, ...options },
+          ),
+        [Symbol.asyncDispose]: async () => {
+          await setup[Symbol.asyncDispose]();
+          if (!startedBefore) drivers[Symbol.dispose]();
+        },
+      };
+    };
+
+    it("starts createEvoluApp with the owner and the data of the Evolu 7 database named as the app, and deletes that database", async () => {
+      await using setup = await setupMigration("Evolu7Default");
+      const { run, drivers, evolu7Name, instantStartConfig } = setup;
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name);
+      const updated = evolu7.evolu.insert("todo", { title: "updated" });
+      assert(updated.ok, "Evolu 7 inserts the todo.");
+      evolu7.evolu.insert("todo", { title: "completed", isCompleted: 1 });
+      const deleted = evolu7.evolu.insert("todo", { title: "deleted" });
+      assert(deleted.ok, "Evolu 7 inserts the todo.");
+      await evolu7.settled();
+      evolu7.evolu.update("todo", { id: updated.value.id, isCompleted: 0 });
+      evolu7.evolu.update("todo", { id: deleted.value.id, isDeleted: 1 });
+      await evolu7.settled();
+
+      await using app = await run.orThrow(
+        createEvoluApp(Schema, instantStartConfig),
+      );
+
+      const appOwners = app.appOwners.get();
+      assertNonEmptyReadonlyArray(appOwners);
+      assertLength(appOwners, 1);
+      assertSame(appOwners[0].id, evolu7.appOwner.id);
+      const current = app.current.get();
+      assertNotNull(current);
+      assertSame(current.appOwner.mnemonic, evolu7.appOwner.mnemonic);
+
+      const evolu = await current.evolu;
+      const rows = await evolu.loadQuery(todosQuery);
+      assertEqual(
+        rows.map(({ title, isCompleted, isDeleted }) => ({
+          title,
+          isCompleted,
+          isDeleted,
+        })),
+        [
+          { title: "completed", isCompleted: 1, isDeleted: null },
+          { title: "deleted", isCompleted: null, isDeleted: 1 },
+          { title: "updated", isCompleted: 0, isDeleted: null },
+        ],
+      );
+      // A row's time columns come from its changes, as for synced changes.
+      const [completed, , updatedRow] = rows;
+      assertNotUndefined(completed);
+      assertNotUndefined(updatedRow);
+      assertSame(completed.updatedAt, null);
+      assertNotNull(updatedRow.updatedAt);
+      assertTrue(updatedRow.createdAt <= updatedRow.updatedAt);
+
+      assertFalse(drivers.names().includes(evolu7Name));
+      assertSame(drivers.deletions(evolu7Name), 1);
+    });
+
+    it("takes Evolu 7's clock, so a change after the migration is later than the imported ones on a device whose time went back", async () => {
+      await using setup = await setupMigration("Evolu7Clock", {
+        // A minute before Evolu 7's changes, within the allowed drift.
+        startAt: evolu7StartAt - 60_000,
+      });
+      const { run, appName, evolu7Name } = setup;
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      evolu7.evolu.insert("todo", { title: "Evolu 7" });
+      await evolu7.settled();
+
+      await using evolu = await run.ok(
+        createEvolu(Schema, {
+          appName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+      const [imported] = await evolu.loadQuery(todoByCreatedAtQuery);
+      assertNotUndefined(imported);
+      evolu.update("todo", {
+        id: imported.id,
+        title: NonEmptyTrimmedString100.orThrow("Evolu 8"),
+      });
+
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), [
+        { title: "Evolu 8" },
+      ]);
+    });
+
+    it("starts createEvoluApp with the owner and the data of the Evolu 7 database evolu7Name names", async () => {
+      await using setup = await setupMigration("Evolu7DefaultName");
+      const { run, drivers, instantStartConfig } = setup;
+      // The name of an Evolu 7 app that set none.
+      const name = Name.orThrow("Evolu");
+
+      const evolu7 = await setup.setupEvolu7(name);
+      evolu7.evolu.insert("todo", { title: "todo" });
+      await evolu7.settled();
+
+      await using app = await run.orThrow(
+        createEvoluApp(Schema, { ...instantStartConfig, evolu7Name: name }),
+      );
+
+      assertEqual(
+        app.appOwners.get().map(({ id }) => id as string),
+        [evolu7.appOwner.id],
+      );
+      const current = app.current.get();
+      assertNotNull(current);
+      assertEqual(await (await current.evolu).loadQuery(todoTitlesQuery), [
+        { title: "todo" },
+      ]);
+      assertFalse(drivers.names().includes(name));
+    });
+
+    it("imports into createEvolu the Evolu 7 database evolu7Name names: every owner's changes, tables its schema lacks into quarantine, and local-only tables", async () => {
+      await using setup = await setupMigration("Evolu7OwnOwner");
+      const { run, drivers, appName } = setup;
+      // As an app that names its database after its mnemonic.
+      const name = Name.orThrow("linky-4cc788f4");
+      const shardOwner = deriveShardOwner(testAppOwner, ["shard", 1]);
+
+      const evolu7 = await setup.setupEvolu7(name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      assertSame(evolu7.appOwner.id, testAppOwner.id);
+      evolu7.evolu.insert("todo", { title: "app" });
+      evolu7.evolu.insert(
+        "todo",
+        { title: "shard" },
+        { ownerId: shardOwner.id as never },
+      );
+      evolu7.evolu.insert("legacy", { name: "kept" });
+      evolu7.evolu.insert("_note", { text: "local" });
+      await evolu7.settled();
+      // Columns the app added outside its schema, one with a number that isn't
+      // finite, which Evolu 7 accepted.
+      drivers.execIn(name, sql`alter table "_note" add column "count" any;`);
+      drivers.execIn(name, sql`alter table "_note" add column "huge" any;`);
+      drivers.execIn(
+        name,
+        sql`
+          update "_note"
+          set
+            "count" = 2,
+            "huge" = 9e999;
+        `,
+      );
+
+      /** The timestamps of a database's history and quarantine. */
+      const timestamps = (databaseName: Name): ReadonlyArray<string> =>
+        (
+          [
+            ...drivers.selectAllIn(databaseName, "evolu_history"),
+            ...drivers.selectAllIn(databaseName, "evolu_message_quarantine"),
+          ] as ReadonlyArray<{ timestamp: Uint8Array }>
+        )
+          .map(({ timestamp }) => bytesToHex(timestamp))
+          .toSorted((a, b) => a.localeCompare(b));
+      const evolu7Timestamps = timestamps(name);
+
+      await using evolu = await run.ok(
+        createEvolu(Schema, {
+          appName,
+          appOwner: testAppOwner,
+          evolu7Name: name,
+          transports: [],
+        }),
+      );
+
+      assertEqual(
+        await evolu.loadQuery(
+          createQuery((db) =>
+            db.selectFrom("todo").select(["title", "ownerId"]).orderBy("title"),
+          ),
+        ),
+        [
+          { title: "app", ownerId: testAppOwner.id },
+          { title: "shard", ownerId: shardOwner.id },
+        ],
+      );
+      // As if a relay had delivered them, so a relay that has them sends
+      // nothing again.
+      assertEqual(timestamps(evolu.name), evolu7Timestamps);
+      // Only the imported database is left, so these tables are its.
+      assertEqual(
+        (
+          drivers.selectAll("evolu_message_quarantine") as ReadonlyArray<{
+            table: string;
+            column: string;
+          }>
+        )
+          .map(({ table, column }) => `${table}.${column}`)
+          .toSorted(),
+        ["legacy.createdAt", "legacy.name"],
+      );
+      assertEqual(
+        (
+          drivers.selectAll("_note") as ReadonlyArray<{
+            text: string;
+            ownerId: string;
+            count: number;
+            huge: number | null;
+            createdAt: string | null;
+          }>
+        ).map(({ text, ownerId, count, huge, createdAt }) => ({
+          text,
+          ownerId,
+          count,
+          huge,
+          hasCreatedAt: createdAt != null,
+        })),
+        [
+          {
+            text: "local",
+            ownerId: testAppOwner.id,
+            count: 2,
+            huge: null,
+            hasCreatedAt: true,
+          },
+        ],
+      );
+      assertEqual(drivers.names(), [evolu.name]);
+      assertSame(drivers.deletions(name), 1);
+    });
+
+    it("starts createEvoluApp of a DeviceSecret with a new AppOwner and leaves the Evolu 7 database as it is", async () => {
+      await using setup = await setupMigration("Evolu7DeviceSecret");
+      const { run, drivers, evolu7Name, instantStartConfig } = setup;
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name);
+      evolu7.evolu.insert("todo", { title: "Evolu 7's" });
+      await evolu7.settled();
+
+      // Evolu 7 kept its owner's secret unprotected, and an AppOwner never
+      // moves between modes.
+      await using app = await run.orThrow(
+        createEvoluApp(Schema, {
+          ...instantStartConfig,
+          auth: {
+            type: "DeviceSecret",
+            secret: createDeviceSecret(testCreateDeps({ seed: "device" })),
+          },
+        }),
+      );
+
+      const appOwners = app.appOwners.get();
+      assertLength(appOwners, 1);
+      assertFalse(appOwners[0].id === (evolu7.appOwner.id as string));
+      const current = app.current.get();
+      assertNotNull(current);
+      assertEqual(await (await current.evolu).loadQuery(todoTitlesQuery), []);
+      assertTrue(drivers.names().includes(evolu7Name));
+      assertSame(drivers.deletions(evolu7Name), 0);
+
+      // Nor does removing that AppOwner delete it.
+      assertOk(await app.remove(appOwners[0].id));
+      assertTrue(drivers.names().includes(evolu7Name));
+      assertSame(drivers.deletions(evolu7Name), 0);
+    });
+
+    it("leaves an Evolu 7 database of another owner as it is", async () => {
+      await using setup = await setupMigration("Evolu7AnotherOwner");
+      const { run, drivers, appName, evolu7Name } = setup;
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name);
+      evolu7.evolu.insert("todo", { title: "another owner's" });
+      await evolu7.settled();
+
+      await using evolu = await run.ok(
+        createEvolu(Schema, {
+          appName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), []);
+      assertTrue(drivers.names().includes(evolu7Name));
+      assertSame(drivers.deletions(evolu7Name), 0);
+      assertLength(drivers.selectAllIn(evolu7Name, "evolu_history"), 2);
+    });
+
+    it("releases the Evolu 7 database of another owner before it deletes a database, so it keeps no migration of that owner waiting", async () => {
+      await using setup = await setupMigration("Evolu7DeleteAnotherOwner");
+      const { run, drivers, appName, evolu7Name } = setup;
+      const { lockManager } = run.deps;
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name);
+      await evolu7.settled();
+      await using evolu = await run.ok(
+        createEvolu(Schema, {
+          appName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+
+      const deleting = drivers.waitForDeletionStart();
+      const deleteNow = drivers.holdNextDeletion();
+      using _deleteNow = { [Symbol.dispose]: deleteNow };
+      const deleted = evolu.deleteDatabase();
+      await deleting;
+      const { held = [] } = await lockManager.query();
+      deleteNow();
+      assertOk(await deleted);
+
+      assertFalse(
+        held.some(
+          (lock) => lock.name === `evolu-sharedwebworker-${evolu7Name}`,
+        ),
+      );
+      assertTrue(drivers.names().includes(evolu7Name));
+    });
+
+    it("imports the history Evolu 7.2.2 and earlier stored, without updatedAt rows and the quarantine table", async () => {
+      await using setup = await setupMigration("Evolu7OldHistory");
+      const { run, drivers, evolu7Name, instantStartConfig } = setup;
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name);
+      const todo = evolu7.evolu.insert("todo", { title: "todo" });
+      assert(todo.ok, "Evolu 7 inserts the todo.");
+      await evolu7.settled();
+      evolu7.evolu.update("todo", { id: todo.value.id, isCompleted: 1 });
+      await evolu7.settled();
+      // Only the Evolu 7 database exists yet.
+      drivers.execWhere(
+        "evolu_config",
+        sql`delete from evolu_history where "column" = 'updatedAt';`,
+      );
+      drivers.execWhere(
+        "evolu_config",
+        sql`drop table evolu_message_quarantine;`,
+      );
+
+      await using app = await run.orThrow(
+        createEvoluApp(Schema, instantStartConfig),
+      );
+      const current = app.current.get();
+      assertNotNull(current);
+      const evolu = await current.evolu;
+
+      const [row] = await evolu.loadQuery(todosQuery);
+      assertNotUndefined(row);
+      assertSame(row.isCompleted, 1);
+      assertNotNull(row.updatedAt);
+      assertTrue(row.createdAt < row.updatedAt);
+    });
+
+    it("imports a change whose columns Evolu 7 kept partly in its history and partly in its quarantine", async () => {
+      await using setup = await setupMigration("Evolu7Quarantine");
+      const { run, drivers, appName, evolu7Name } = setup;
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      evolu7.evolu.insert("todo", { title: "split", isCompleted: 1 });
+      await evolu7.settled();
+      // As for a column Evolu 7's schema lacked when it received the change.
+      drivers.execIn(
+        evolu7Name,
+        sql`
+          insert into evolu_message_quarantine
+            ("ownerId", "timestamp", "table", "id", "column", "value")
+          select "ownerId", "timestamp", "table", "id", "column", "value"
+          from evolu_history
+          where "column" = 'title';
+        `,
+      );
+      drivers.execIn(
+        evolu7Name,
+        sql`delete from evolu_history where "column" = 'title';`,
+      );
+      // A later change, whose rows the history holds between the split one's.
+      evolu7.evolu.insert("todo", { title: "whole" });
+      await evolu7.settled();
+
+      await using evolu = await run.ok(
+        createEvolu(Schema, {
+          appName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+
+      assertEqual(
+        await evolu.loadQuery(
+          createQuery((db) =>
+            db
+              .selectFrom("todo")
+              .select(["title", "isCompleted"])
+              .orderBy("title"),
+          ),
+        ),
+        [
+          { title: "split", isCompleted: 1 },
+          { title: "whole", isCompleted: null },
+        ],
+      );
+    });
+
+    it("imports nothing into a database in memory, and leaves the Evolu 7 database unopened", async () => {
+      await using setup = await setupMigration("Evolu7Memory");
+      const { run, drivers, appName, evolu7Name } = setup;
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      evolu7.evolu.insert("todo", { title: "todo" });
+      await evolu7.settled();
+
+      await using evolu = await run.ok(
+        createEvolu(Schema, {
+          appName,
+          appOwner: testAppOwner,
+          memoryOnly: true,
+          transports: [],
+        }),
+      );
+
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), []);
+      assertFalse(setup.dbWorkerOpens.includes(evolu7Name));
+      assertSame(drivers.deletions(evolu7Name), 0);
+    });
+
+    it("keeps the AppOwner of a device that already ran Evolu 8, whose device database doesn't look at Evolu 7's, and imports that database once its owner is added", async () => {
+      await using setup = await setupMigration("Evolu7AfterEvolu8");
+      const { drivers, evolu7Name, instantStartConfig } = setup;
+      let firstAppOwnerId: OwnerId;
+      {
+        await using app = await setup.run.orThrow(
+          createEvoluApp(Schema, instantStartConfig),
+        );
+        const appOwners = app.appOwners.get();
+        assertLength(appOwners, 1);
+        firstAppOwnerId = appOwners[0].id;
+      }
+      // The device already has its first AppOwner when it finds the database.
+      const evolu7 = await setup.setupEvolu7(evolu7Name);
+      evolu7.evolu.insert("todo", { title: "Evolu 7" });
+      await evolu7.settled();
+
+      await using later = await setupMigration("Evolu7AfterEvolu8", {
+        startedBefore: setup,
+      });
+      await using app = await later.run.orThrow(
+        createEvoluApp(Schema, instantStartConfig),
+      );
+      const kept = app.current.get();
+      assertNotNull(kept);
+      assertSame(kept.appOwner.id, firstAppOwnerId);
+      assertEqual(await (await kept.evolu).loadQuery(todoTitlesQuery), []);
+      // Only the AppOwner's database looked at it, and left it.
+      assertLength(
+        later.dbWorkerOpens.filter((name) => name === evolu7Name),
+        1,
+      );
+      assertSame(drivers.deletions(evolu7Name), 0);
+
+      // The user restores the Evolu 7 owner from its mnemonic.
+      assertNonNullable(evolu7.appOwner.mnemonic);
+      const added = await app.add(
+        mnemonicToOwnerSecret(Mnemonic.orThrow(evolu7.appOwner.mnemonic)),
+      );
+      assertOk(added);
+      assertSame(added.value as string, evolu7.appOwner.id);
+      const restored = app.current.get();
+      assertNotNull(restored);
+      assertSame(restored.appOwner.id, added.value);
+
+      assertEqual(await (await restored.evolu).loadQuery(todoTitlesQuery), [
+        { title: "Evolu 7" },
+      ]);
+      assertFalse(drivers.names().includes(evolu7Name));
+    });
+
+    for (const [name, description, mnemonic] of [
+      ["Evolu7NoMnemonic", "no mnemonic", null],
+      [
+        "Evolu7OtherMnemonic",
+        "the mnemonic of another owner",
+        testAppOwner.mnemonic,
+      ],
+      [
+        "Evolu7BadMnemonic",
+        "a mnemonic Evolu 8 doesn't take",
+        "not a mnemonic",
+      ],
+    ] as const)
+      it(`starts createEvoluApp with a new AppOwner when the Evolu 7 database holds ${description}, and leaves that database as it is`, async () => {
+        await using setup = await setupMigration(name);
+        const { run, drivers, evolu7Name, instantStartConfig } = setup;
+
+        const evolu7 = await setup.setupEvolu7(evolu7Name);
+        evolu7.evolu.insert("todo", { title: "todo" });
+        await evolu7.settled();
+        // As for an owner the app gave Evolu 7.
+        drivers.execIn(
+          evolu7Name,
+          sql`update evolu_config set "appOwnerMnemonic" = ${mnemonic};`,
+        );
+
+        await using app = await run.orThrow(
+          createEvoluApp(Schema, instantStartConfig),
+        );
+
+        const appOwners = app.appOwners.get();
+        assertLength(appOwners, 1);
+        assertFalse(
+          [evolu7.appOwner.id as string, testAppOwner.id].includes(
+            appOwners[0].id,
+          ),
+        );
+        // Once the AppOwner's database has started too.
+        const current = app.current.get();
+        assertNotNull(current);
+        assertEqual(await (await current.evolu).loadQuery(todoTitlesQuery), []);
+        assertTrue(drivers.names().includes(evolu7Name));
+        assertSame(drivers.deletions(evolu7Name), 0);
+      });
+
+    it("imports into createEvolu an Evolu 7 database whose stored mnemonic Evolu 8 doesn't take, which it doesn't read", async () => {
+      await using setup = await setupMigration("Evolu7UnreadMnemonic");
+      const { run, drivers, appName, evolu7Name } = setup;
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      evolu7.evolu.insert("todo", { title: "todo" });
+      await evolu7.settled();
+      drivers.execIn(
+        evolu7Name,
+        sql`update evolu_config set "appOwnerMnemonic" = 'not a mnemonic';`,
+      );
+      // Its DbWorker logs the rows of its queries at the trace level, so no
+      // query may return the mnemonic.
+      let isMnemonicRead = false;
+      drivers.onNextRow(
+        (row) => Object.values(row).includes("not a mnemonic"),
+        () => {
+          isMnemonicRead = true;
+        },
+      );
+
+      await using evolu = await run.ok(
+        createEvolu(Schema, {
+          appName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), [{ title: "todo" }]);
+      assertFalse(drivers.names().includes(evolu7Name));
+      assertFalse(isMnemonicRead);
+    });
+
+    it("leaves a database that Evolu 7 didn't write as it is, also an empty one, which a deletion that removed only some of its files leaves", async () => {
+      await using setup = await setupMigration("Evolu7NotEvolu7");
+      const { run, drivers, appName, evolu7Name } = setup;
+      const config = { appName, appOwner: testAppOwner, transports: [] };
+
+      // Empty, as the open of a pool's directory without a database creates.
+      getOrThrow(await run(drivers.createSqliteDriver(evolu7Name)));
+      {
+        await using evolu = await run.ok(createEvolu(Schema, config));
+        assertEqual(await evolu.loadQuery(todoTitlesQuery), []);
+        assertEqual(setup.tabErrors, []);
+      }
+      assertEqual(drivers.selectAllIn(evolu7Name, "sqlite_master"), []);
+
+      drivers.execIn(evolu7Name, sql`create table "another" ("a" any);`);
+      drivers.execIn(evolu7Name, sql`insert into "another" values (1);`);
+      await using later = await setupMigration("Evolu7NotEvolu7", {
+        startedBefore: setup,
+      });
+      await using evolu = await later.run.ok(createEvolu(Schema, config));
+
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), []);
+      assertEqual(later.tabErrors, []);
+      assertEqual(drivers.selectAllIn(evolu7Name, "another"), [{ a: 1 }]);
+      assertSame(drivers.deletions(evolu7Name), 0);
+    });
+
+    it("refuses a database when it can't tell whether the Evolu 7 database exists, opening only its own", async () => {
+      const error = createUnknownError(new Error("The lookup failed."));
+      await using setup = await setupMigration("Evolu7LookupFails", {
+        evolu7DatabaseExists: () => () => err(error),
+      });
+      const { run, appName } = setup;
+
+      const reported = setup.waitForTabError();
+      await using evolu = await run.ok(
+        createEvolu(Schema, {
+          appName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+      await reported;
+
+      assertEqual(setup.tabErrors, [error]);
+      assertEqual(setup.dbWorkerOpens, [evolu.name]);
+    });
+
+    /**
+     * An Evolu 7 device and an Evolu 8 device of one owner on a relay. The
+     * Evolu 8 device's time is `ahead` of the Evolu 7 device's.
+     */
+    const setupMixedDevices = async (name: string, ahead: number) => {
+      await using disposer = new AsyncDisposableStack();
+      const relays = disposer.use(await setupRelays(`${name}-relay`));
+      const relayUrl = `ws://127.0.0.1:${relays.relayA.port}/`;
+      const drivers = disposer.use(createSqliteDriverPerName());
+      const time = testCreateTime({
+        startAt: Millis.orThrow(evolu7StartAt + ahead),
+      });
+      const device = disposer.use(
+        await setupDevice({ seed: name, time, workerTime: time }),
+      );
+      const { run } = device.setup;
+
+      const evolu7Name = Name.orThrow(name);
+      const evolu7 = await setupEvolu7(
+        getOrThrow(await run(drivers.createSqliteDriver(evolu7Name))),
+        { name: evolu7Name, mnemonic: testAppOwner.mnemonic, relayUrl },
+      );
+      disposer.defer(evolu7.closeSockets);
+      const evolu = disposer.use(
+        await run.ok(device.setup.createIntegrationEvolu),
+      );
+      evolu.useOwner(testAppOwner, [
+        createOwnerWebSocketTransport({
+          url: RelayUrl.orThrow(relayUrl),
+          ownerId: testAppOwner.id,
+        }),
+      ]);
+
+      let evolu7Reads = 0;
+      const disposables = disposer.move();
+      return {
+        evolu7,
+        evolu,
+        /** Evolu 7's todo titles. */
+        evolu7Titles: async (): Promise<ReadonlyArray<string>> => {
+          // A query of its own each time, as Evolu 7 keeps a loaded one's
+          // rows.
+          evolu7Reads++;
+          const rows = await evolu7.evolu.loadQuery(
+            evolu7.evolu.createQuery((db) =>
+              db
+                .selectFrom("todo")
+                .select("title")
+                .orderBy("title")
+                .limit(1000 + evolu7Reads),
+            ),
+          );
+          return rows.map((row) => row.title as string);
+        },
+        /** Evolu 8's todo titles. */
+        titles: async (): Promise<ReadonlyArray<string | null>> =>
+          (await evolu.loadQuery(todoTitlesQuery, { cache: false })).map(
+            ({ title }) => title,
+          ),
+        /** Waits until `read` returns `expected`, and fails with what it reads. */
+        waitFor: async <T>(
+          read: () => Promise<T>,
+          expected: T,
+        ): Promise<void> => {
+          const deadline = performance.now() + 5000;
+          for (;;) {
+            const actual = await read();
+            if (performance.now() > deadline) assertEqual(actual, expected);
+            if (JSON.stringify(actual) === JSON.stringify(expected)) return;
+            await new Promise<void>((resolve) => {
+              setTimeout(resolve, 20);
+            });
+          }
+        },
+        [Symbol.asyncDispose]: () => disposables.disposeAsync(),
+      };
+    };
+
+    it("syncs an Evolu 7 device and an Evolu 8 device of one owner through a relay, in both directions", async () => {
+      // A minute ahead, within what Evolu 7 allows.
+      await using devices = await setupMixedDevices("Evolu7Sync", 60_000);
+      const { evolu7, evolu, waitFor } = devices;
+
+      evolu7.evolu.insert("todo", { title: "from Evolu 7" });
+      await waitFor(devices.titles, ["from Evolu 7"]);
+
+      evolu.insert("todo", {
+        title: NonEmptyTrimmedString100.orThrow("from Evolu 8"),
+      });
+      await waitFor(devices.evolu7Titles, ["from Evolu 7", "from Evolu 8"]);
+      assertEqual(evolu7.errors, []);
+    });
+
+    it("an Evolu 7 device refuses the changes of an Evolu 8 device whose time is more than five minutes ahead of its own, and receives none", async () => {
+      await using devices = await setupMixedDevices("Evolu7Drift", 6 * 60_000);
+      const { evolu7, evolu, waitFor } = devices;
+
+      evolu7.evolu.insert("todo", { title: "from Evolu 7" });
+      await waitFor(devices.titles, ["from Evolu 7"]);
+
+      evolu.insert("todo", {
+        title: NonEmptyTrimmedString100.orThrow("from Evolu 8"),
+      });
+      await waitFor(
+        () => Promise.resolve(evolu7.errors.at(0)?.type),
+        "TimestampDriftError",
+      );
+      assertEqual(await devices.evolu7Titles(), ["from Evolu 7"]);
+    });
+
+    it("imports every change of two owners with more changes than one batch takes", async () => {
+      await using setup = await setupMigration("Evolu7Batches");
+      const { run, drivers, appName, evolu7Name } = setup;
+      const shardOwner = deriveShardOwner(testAppOwner, ["shard", 1]);
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      evolu7.evolu.insert("todo", { title: "app" });
+      evolu7.evolu.insert(
+        "todo",
+        { title: "shard" },
+        { ownerId: shardOwner.id as never },
+      );
+      await evolu7.settled();
+      // More changes than a batch of 1000 takes, of each owner, written as
+      // Evolu 7 stores an insert: its title and its time row.
+      for (const [ownerId, count] of [
+        [testAppOwner.id, 2500],
+        [shardOwner.id, 1500],
+      ] as const)
+        for (const [column, value] of [
+          ["title", sql.raw("'todo ' || i")],
+          ["createdAt", sql.raw("'2025-12-31T00:00:00.000Z'")],
+        ] as const)
+          drivers.execIn(
+            evolu7Name,
+            sql`
+              with recursive
+                n(i) as (
+                  select 1
+                  union all
+                  select i + 1 from n where i < ${count}
+                )
+              insert into evolu_history
+                ("ownerId", "table", "id", "column", "timestamp", "value")
+              select
+                ${ownerIdToOwnerIdBytes(ownerId)},
+                'todo',
+                unhex(printf('%032x', i)),
+                ${column},
+                unhex(
+                  printf('%012x', ${evolu7StartAt - 10_000} + i) ||
+                    '0000aabbccddeeff0011'
+                ),
+                ${value}
+              from n;
+            `,
+          );
+
+      await using evolu = await run.ok(
+        createEvolu(Schema, {
+          appName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+
+      assertEqual(
+        await evolu.loadQuery(
+          createQuery((db) =>
+            db
+              .selectFrom("todo")
+              .select(["ownerId", (eb) => eb.fn.countAll<number>().as("count")])
+              .groupBy("ownerId")
+              .orderBy("count"),
+          ),
+        ),
+        [
+          { ownerId: shardOwner.id, count: 1501 },
+          { ownerId: testAppOwner.id, count: 2501 },
+        ],
+      );
+      assertFalse(drivers.names().includes(evolu7Name));
+    });
+
+    it("drops a value Evolu 8 can't store, a number that isn't finite, keeping its change's other columns, and skips a change it can't store at all", async () => {
+      await using setup = await setupMigration("Evolu7Infinity");
+      const { run, drivers, appName, evolu7Name } = setup;
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      evolu7.evolu.insert("todo", { title: "stored" });
+      await evolu7.settled();
+      // Written into Evolu 7's history directly: an insert with a number
+      // that isn't finite, as a column of Evolu 7's Number Type stored it,
+      // and one marked deleted with one, which can't be dropped as a value.
+      for (const [id, column, value] of [
+        [1, "title", sql.raw("'kept'")],
+        [1, "isCompleted", sql.raw("9e999")],
+        [1, "createdAt", sql.raw("'2025-12-31T00:00:00.000Z'")],
+        [2, "title", sql.raw("'skipped'")],
+        [2, "isDeleted", sql.raw("9e999")],
+        [2, "createdAt", sql.raw("'2025-12-31T00:00:00.000Z'")],
+      ] as const)
+        drivers.execIn(
+          evolu7Name,
+          sql`
+            insert into evolu_history
+              ("ownerId", "table", "id", "column", "timestamp", "value")
+            values
+              (
+                ${ownerIdToOwnerIdBytes(testAppOwner.id)},
+                'todo',
+                unhex(printf('%032x', ${id})),
+                ${column},
+                unhex(
+                  printf('%012x', ${evolu7StartAt - 10_000} + ${id}) ||
+                    '0000aabbccddeeff0011'
+                ),
+                ${value}
+              );
+          `,
+        );
+
+      await using evolu = await run.ok(
+        createEvolu(Schema, {
+          appName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+
+      assertEqual(
+        await evolu.loadQuery(
+          createQuery((db) =>
+            db
+              .selectFrom("todo")
+              .select(["title", "isCompleted"])
+              .orderBy("title"),
+          ),
+        ),
+        [
+          { title: "kept", isCompleted: null },
+          { title: "stored", isCompleted: null },
+        ],
+      );
+      assertEqual(setup.tabErrors, []);
+      assertFalse(drivers.names().includes(evolu7Name));
+    });
+
+    it("shows the imported data on a device whose time went back by more than the allowed drift since Evolu 7 stored it", async () => {
+      await using setup = await setupMigration("Evolu7ClockFarBack", {
+        // Two hours before Evolu 7's changes, far beyond the five minutes.
+        startAt: evolu7StartAt - 2 * 60 * 60_000,
+      });
+      const { run, drivers, appName, evolu7Name } = setup;
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      evolu7.evolu.insert("todo", { title: "Evolu 7" });
+      await evolu7.settled();
+
+      await using evolu = await run.ok(
+        createEvolu(Schema, {
+          appName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), [
+        { title: "Evolu 7" },
+      ]);
+      assertEqual(
+        drivers.selectAllIn(evolu.name, "evolu_message_quarantine"),
+        [],
+      );
+      assertFalse(drivers.names().includes(evolu7Name));
+    });
+
+    it("refuses a database whose import fails, at every start, and leaves it empty and the Evolu 7 database as it was", async () => {
+      await using setup = await setupMigration("Evolu7ImportFails");
+      const { drivers, appName, evolu7Name } = setup;
+      const config = { appName, appOwner: testAppOwner, transports: [] };
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      evolu7.evolu.insert("todo", { title: "todo" });
+      await evolu7.settled();
+      // An ID that isn't one, after the valid change.
+      drivers.execIn(
+        evolu7Name,
+        sql`
+          insert into evolu_history
+            ("ownerId", "table", "id", "column", "timestamp", "value")
+          select
+            "ownerId",
+            "table",
+            x'00',
+            "column",
+            x'ffffffffffff0000aabbccddeeff0011',
+            "value"
+          from evolu_history
+          where "column" = 'title';
+        `,
+      );
+      const evolu7History = drivers.selectAllIn(evolu7Name, "evolu_history");
+
+      const starts = [
+        setup,
+        await setupMigration("Evolu7ImportFails", { startedBefore: setup }),
+      ];
+      await using _later = starts[1];
+      for (const start of starts) {
+        const reported = start.waitForTabError();
+        await using refused = await start.run.ok(createEvolu(Schema, config));
+        await reported;
+        assertLength(start.tabErrors, 1);
+        assertSame(start.tabErrors[0]?.type, "UnknownError");
+        // The startup transaction rolled back.
+        assertEqual(drivers.selectAllIn(refused.name, "sqlite_master"), []);
+        assertEqual(
+          drivers.selectAllIn(evolu7Name, "evolu_history"),
+          evolu7History,
+        );
+        assertSame(drivers.deletions(evolu7Name), 0);
+      }
+    });
+
+    it("opens no database of the Evolu 7 name when none exists", async () => {
+      await using setup = await setupMigration("Evolu7None");
+      const { run, drivers, appName, evolu7Name } = setup;
+
+      await using evolu = await run.ok(
+        createEvolu(Schema, {
+          appName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), []);
+      assertEqual(setup.dbWorkerOpens, [evolu.name]);
+      assertFalse(drivers.names().includes(evolu7Name));
+    });
+
+    it("keeps Evolu 7's clock for the next start, whose change is later than the imported ones on a device whose time went back", async () => {
+      const startAt = evolu7StartAt - 60_000;
+      await using setup = await setupMigration("Evolu7ClockKept", { startAt });
+      const { appName, evolu7Name } = setup;
+      const config = { appName, appOwner: testAppOwner, transports: [] };
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      evolu7.evolu.insert("todo", { title: "Evolu 7" });
+      await evolu7.settled();
+      {
+        await using evolu = await setup.run.ok(createEvolu(Schema, config));
+        assertEqual(await evolu.loadQuery(todoTitlesQuery), [
+          { title: "Evolu 7" },
+        ]);
+      }
+
+      await using later = await setupMigration("Evolu7ClockKept", {
+        startedBefore: setup,
+        startAt,
+      });
+      await using evolu = await later.run.ok(createEvolu(Schema, config));
+      const [imported] = await evolu.loadQuery(todoByCreatedAtQuery);
+      assertNotUndefined(imported);
+      evolu.update("todo", {
+        id: imported.id,
+        title: NonEmptyTrimmedString100.orThrow("Evolu 8"),
+      });
+
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), [
+        { title: "Evolu 8" },
+      ]);
+    });
+
+    it("uploads to a relay the changes the Evolu 7 database had not synced", async () => {
+      await using relays = await setupRelays("evolu7-upload");
+      using drivers = createSqliteDriverPerName();
+      const time = testCreateTime({
+        startAt: Millis.orThrow(evolu7StartAt + 60_000),
+      });
+      await using device = await setupDevice({
+        seed: "evolu7-upload",
+        time,
+        workerTime: time,
+        createSqliteDriver: drivers.createSqliteDriver,
+        evolu7DatabaseExists: drivers.evolu7DatabaseExists,
+        deleteDatabaseFiles: drivers.deleteDatabaseFiles,
+      });
+      const { run } = device.setup;
+      const appName = AppName.orThrow("Evolu7Upload");
+      const evolu7Name = Name.orThrow(appName);
+
+      // Evolu 7 never reached a relay.
+      const evolu7 = await setupEvolu7(
+        getOrThrow(await run(drivers.createSqliteDriver(evolu7Name))),
+        { name: evolu7Name, mnemonic: testAppOwner.mnemonic },
+      );
+      evolu7.evolu.insert("todo", { title: "first" });
+      evolu7.evolu.insert("todo", { title: "second" });
+      await evolu7.settled();
+
+      await using evolu = await run.ok(
+        createEvolu(Schema, {
+          appName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+      assertLength(await evolu.loadQuery(todoTitlesQuery), 2);
+      evolu.useOwner(testAppOwner, [
+        createOwnerWebSocketTransport({
+          url: RelayUrl.orThrow(`ws://127.0.0.1:${relays.relayA.port}/`),
+          ownerId: testAppOwner.id,
+        }),
+      ]);
+
+      const deadline = performance.now() + 5000;
+      while (
+        relays.relayA.getTimestamps().length < 2 &&
+        performance.now() < deadline
+      )
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 20);
+        });
+      assertLength(relays.relayA.getTimestamps(), 2);
+    });
+
+    it("deletes with an AppOwner that never opened the Evolu 7 database that holds its owner, so adding it again starts empty, and keeps the AppOwner when that deletion fails", async () => {
+      await using setup = await setupMigration("Evolu7Removed");
+      const { run, drivers, instantStartConfig } = setup;
+      // Another name than the app's, which the removal must find too.
+      const evolu7Name = Name.orThrow("Evolu7RemovedLegacy");
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name);
+      evolu7.evolu.insert("todo", { title: "unsynced" });
+      await evolu7.settled();
+
+      await using app = await run.orThrow(
+        createEvoluApp(Schema, {
+          ...instantStartConfig,
+          evolu7Name,
+          startAppOwnerId: null,
+        }),
+      );
+      const [appOwner] = app.appOwners.get();
+      assertNotUndefined(appOwner);
+      assertSame(appOwner.id as string, evolu7.appOwner.id);
+      assertSame(app.current.get(), null);
+
+      drivers.failNextDeletionOf(evolu7Name);
+      const failed = await app.remove(appOwner.id);
+      assertErr(failed);
+      assertSame(failed.error.type, "UnknownError");
+      assertEqual(
+        app.appOwners.get().map(({ id }) => id),
+        [appOwner.id],
+      );
+      assertTrue(drivers.names().includes(evolu7Name));
+
+      assertOk(await app.remove(appOwner.id));
+      assertEqual(app.appOwners.get(), []);
+      assertFalse(drivers.names().includes(evolu7Name));
+      assertSame(drivers.deletions(evolu7Name), 1);
+
+      assertNonNullable(evolu7.appOwner.mnemonic);
+      assertOk(
+        await app.add(
+          mnemonicToOwnerSecret(Mnemonic.orThrow(evolu7.appOwner.mnemonic)),
+        ),
+      );
+      const current = app.current.get();
+      assertNotNull(current);
+      assertEqual(await (await current.evolu).loadQuery(todoTitlesQuery), []);
+    });
+
+    it("keeps the Evolu 7 database of an AppOwner whose removal ended while its own database was being deleted, so the AppOwner imports it again", async () => {
+      await using setup = await setupMigration("Evolu7RemovalEnded");
+      const { run, drivers, evolu7Name, instantStartConfig } = setup;
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name);
+      evolu7.evolu.insert("todo", { title: "unsynced" });
+      await evolu7.settled();
+
+      await using app = await run.orThrow(
+        createEvoluApp(Schema, {
+          ...instantStartConfig,
+          startAppOwnerId: null,
+        }),
+      );
+      const [appOwner] = app.appOwners.get();
+      assertNotUndefined(appOwner);
+
+      const releaseDeletion = drivers.holdNextDeletion();
+      using _releaseDeletion = { [Symbol.dispose]: releaseDeletion };
+      const deleting = drivers.waitForDeletionStart();
+      const removing = app.remove(appOwner.id);
+      await deleting;
+      setup.dbWorkerTime.advance("30s");
+      const failed = await removing;
+      assertErr(failed);
+      assertSame(failed.error.type, "DatabaseHeldError");
+
+      // The deleting DbWorker goes on with the deletion it started.
+      releaseDeletion();
+      await testWaitForWorkerMessage();
+      assertEqual(
+        app.appOwners.get().map(({ id }) => id),
+        [appOwner.id],
+      );
+      assertTrue(drivers.names().includes(evolu7Name));
+
+      app.open(appOwner.id);
+      const current = app.current.get();
+      assertNotNull(current);
+      assertEqual(await (await current.evolu).loadQuery(todoTitlesQuery), [
+        { title: "unsynced" },
+      ]);
+      assertFalse(drivers.names().includes(evolu7Name));
+    });
+
+    it("keeps the Evolu 7 database of an AppOwner whose removal ended while that database was closing, so the AppOwner imports it again", async () => {
+      await using setup = await setupMigration("Evolu7RemovalEndedClosing");
+      const { run, drivers, evolu7Name, instantStartConfig } = setup;
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name);
+      evolu7.evolu.insert("todo", { title: "unsynced" });
+      await evolu7.settled();
+
+      await using app = await run.orThrow(
+        createEvoluApp(Schema, {
+          ...instantStartConfig,
+          startAppOwnerId: null,
+        }),
+      );
+      const [appOwner] = app.appOwners.get();
+      assertNotUndefined(appOwner);
+
+      // The deleting DbWorker closes it to delete it.
+      const close = drivers.holdNextClose(evolu7Name);
+      using _releaseClose = { [Symbol.dispose]: close.release };
+      const removing = app.remove(appOwner.id);
+      await close.started;
+      setup.dbWorkerTime.advance("30s");
+      const failed = await removing;
+      assertErr(failed);
+      assertSame(failed.error.type, "DatabaseHeldError");
+
+      close.release();
+      await testWaitForWorkerMessage();
+      assertTrue(drivers.names().includes(evolu7Name));
+
+      app.open(appOwner.id);
+      const current = app.current.get();
+      assertNotNull(current);
+      assertEqual(await (await current.evolu).loadQuery(todoTitlesQuery), [
+        { title: "unsynced" },
+      ]);
+    });
+
+    it("fails a removal while the database at the Evolu 7 name can't be read, or can't be looked up, and deletes nothing", async () => {
+      let isLookupFailing = false;
+      const failingOrNot =
+        (
+          drivers: ReturnType<typeof createSqliteDriverPerName>,
+        ): Evolu7DatabaseExists =>
+        (name) =>
+        (run) =>
+          isLookupFailing
+            ? err(createUnknownError(new Error("Lookup failed.")))
+            : run(drivers.evolu7DatabaseExists(name));
+      using drivers = createSqliteDriverPerName();
+      await using setup = await setupMigration("Evolu7Unreadable", {
+        startedBefore: { drivers },
+        evolu7DatabaseExists: failingOrNot(drivers),
+      });
+      const { run, evolu7Name, instantStartConfig } = setup;
+
+      await using app = await run.orThrow(
+        createEvoluApp(Schema, {
+          ...instantStartConfig,
+          startAppOwnerId: null,
+        }),
+      );
+      const [appOwner] = app.appOwners.get();
+      assertNotUndefined(appOwner);
+      // Evolu 7's configuration without its row.
+      getOrThrow(await run(drivers.createSqliteDriver(evolu7Name)));
+      drivers.execIn(
+        evolu7Name,
+        sql`create table evolu_config ("clock" blob, "appOwnerId" text);`,
+      );
+
+      const unreadable = await app.remove(appOwner.id);
+      assertErr(unreadable);
+      assertSame(unreadable.error.type, "UnknownError");
+
+      isLookupFailing = true;
+      const notLookedUp = await app.remove(appOwner.id);
+      assertErr(notLookedUp);
+      assertSame(notLookedUp.error.type, "UnknownError");
+
+      assertEqual(
+        app.appOwners.get().map(({ id }) => id),
+        [appOwner.id],
+      );
+      assertTrue(drivers.names().includes(evolu7Name));
+      assertSame(drivers.deletions(evolu7Name), 0);
+    });
+
+    it("holds Evolu 7's lock while a removal deletes the Evolu 7 database", async () => {
+      await using setup = await setupMigration("Evolu7RemovalLock");
+      const { run, drivers, evolu7Name, instantStartConfig } = setup;
+      const { lockManager } = run.deps;
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name);
+      await evolu7.settled();
+      await using app = await run.orThrow(
+        createEvoluApp(Schema, {
+          ...instantStartConfig,
+          startAppOwnerId: null,
+        }),
+      );
+      const [appOwner] = app.appOwners.get();
+      assertNotUndefined(appOwner);
+
+      // The lock manager answers with the locks of the moment it is asked.
+      const duringDeletion: Array<Promise<LockManagerSnapshot>> = [];
+      drivers.onNextDeletionOf(evolu7Name, () => {
+        duringDeletion.push(lockManager.query());
+      });
+      assertOk(await app.remove(appOwner.id));
+
+      assertLength(duringDeletion, 1);
+      const { held = [] } = await duringDeletion[0];
+      assertTrue(
+        held.some(
+          (lock) => lock.name === `evolu-sharedwebworker-${evolu7Name}`,
+        ),
+      );
+      assertFalse(drivers.names().includes(evolu7Name));
+    });
+
+    it("keeps the values, the time and the deletion of a local-only row this database has, also a column without a value, which may have been cleared, and takes Evolu 7's values only for the columns it lacked", async () => {
+      await using setup = await setupMigration("Evolu7LocalOnlyMerge");
+      const { run, drivers, appName, evolu7Name } = setup;
+      const NoteSchema = {
+        ...Schema,
+        _note: {
+          id: id("Note"),
+          theme: NonEmptyTrimmedString100,
+          text: NonEmptyTrimmedString100,
+          subtitle: nullOr(NonEmptyTrimmedString100),
+        },
+      };
+      const config = { appName, appOwner: testAppOwner, transports: [] };
+      const noteId = createIdFromString<"Note">("note");
+
+      // An earlier Evolu 8 release, which stored the row first.
+      let evolu8CreatedAt: unknown;
+      {
+        await using evolu = await run.ok(createEvolu(NoteSchema, config));
+        evolu.upsert("_note", {
+          id: noteId,
+          theme: NonEmptyTrimmedString100.orThrow("dark"),
+          text: NonEmptyTrimmedString100.orThrow("Evolu 8"),
+        });
+        const [stored] = await evolu.loadQuery(
+          createQueryBuilder(NoteSchema)((db) =>
+            db.selectFrom("_note").select("createdAt"),
+          ),
+        );
+        assertNotUndefined(stored);
+        evolu8CreatedAt = stored.createdAt;
+      }
+      // The Evolu 7 database, still on the device, has the row too.
+      const evolu7 = await setup.setupEvolu7(evolu7Name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      await evolu7.settled();
+      drivers.execIn(
+        evolu7Name,
+        sql`alter table "_note" add column "mood" any;`,
+      );
+      drivers.execIn(
+        evolu7Name,
+        sql`alter table "_note" add column "subtitle" any;`,
+      );
+      drivers.execIn(
+        evolu7Name,
+        sql`
+          insert into "_note"
+            (
+              "ownerId",
+              "id",
+              "text",
+              "mood",
+              "subtitle",
+              "isDeleted",
+              "createdAt"
+            )
+          values
+            (
+              ${testAppOwner.id},
+              ${noteId},
+              'Evolu 7',
+              'happy',
+              'Evolu 7',
+              1,
+              '2025-12-31T00:00:00.000Z'
+            );
+        `,
+      );
+
+      await using later = await setupMigration("Evolu7LocalOnlyMerge", {
+        startedBefore: setup,
+      });
+      await using evolu = await later.run.ok(createEvolu(NoteSchema, config));
+      // Once its DbWorker has started.
+      assertLength(
+        await evolu.loadQuery(
+          createQueryBuilder(NoteSchema)((db) =>
+            db.selectFrom("_note").select("theme"),
+          ),
+        ),
+        1,
+      );
+
+      const [note] = drivers.selectAllIn(evolu.name, "_note") as ReadonlyArray<{
+        theme: string;
+        text: string;
+        mood: string | null;
+        subtitle: string | null;
+        isDeleted: number | null;
+        createdAt: string;
+      }>;
+      assertNotUndefined(note);
+      assertEqual(
+        {
+          theme: note.theme,
+          text: note.text,
+          mood: note.mood,
+          subtitle: note.subtitle,
+          isDeleted: note.isDeleted,
+          createdAt: note.createdAt,
+        },
+        {
+          theme: "dark",
+          text: "Evolu 8",
+          mood: "happy",
+          subtitle: null,
+          isDeleted: null,
+          createdAt: evolu8CreatedAt,
+        },
+      );
+      assertFalse(drivers.names().includes(evolu7Name));
+    });
+
+    it("copies a local-only table into the schema's table and column whose names differ only in letter case", async () => {
+      await using setup = await setupMigration("Evolu7LocalOnlyCase");
+      const { run, appName, evolu7Name } = setup;
+      const CaseSchema = {
+        ...Schema,
+        _Note: { id: id("Note"), Text: NonEmptyTrimmedString100 },
+      };
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      evolu7.evolu.insert("_note", { text: "local" });
+      await evolu7.settled();
+
+      await using evolu = await run.ok(
+        createEvolu(CaseSchema, {
+          appName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+
+      assertEqual(
+        await evolu.loadQuery(
+          createQueryBuilder(CaseSchema)((db) =>
+            db.selectFrom("_Note").select("Text"),
+          ),
+        ),
+        [{ Text: "local" }],
+      );
+      assertEqual(setup.tabErrors, []);
+    });
+
+    it("copies a local-only column whose name differs from the schema's only in the case of a letter that isn't ASCII, which SQLite doesn't fold, as a column of its own", async () => {
+      await using setup = await setupMigration("Evolu7LocalOnlyUnicodeCase");
+      const { run, drivers, appName, evolu7Name } = setup;
+      const NoteSchema = {
+        ...Schema,
+        _note: {
+          id: id("Note"),
+          text: NonEmptyTrimmedString100,
+          ä: nullOr(NonEmptyTrimmedString100),
+        },
+      };
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      evolu7.evolu.insert("_note", { text: "local" });
+      await evolu7.settled();
+      drivers.execIn(evolu7Name, sql`alter table "_note" add column "Ä" any;`);
+      drivers.execIn(evolu7Name, sql`update "_note" set "Ä" = 'upper';`);
+
+      await using evolu = await run.ok(
+        createEvolu(NoteSchema, {
+          appName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+
+      assertEqual(
+        await evolu.loadQuery(
+          createQueryBuilder(NoteSchema)((db) =>
+            db.selectFrom("_note").select(["text", "ä"]),
+          ),
+        ),
+        [{ text: "local", ä: null }],
+      );
+      const [note] = drivers.selectAllIn(evolu.name, "_note") as ReadonlyArray<
+        Record<string, unknown>
+      >;
+      assertNotUndefined(note);
+      assertSame(note["Ä"], "upper");
+      assertEqual(setup.tabErrors, []);
+    });
+
+    it("gives a local-only row that an Evolu 7 update created, which Evolu 7 left without createdAt, its updatedAt as createdAt", async () => {
+      await using setup = await setupMigration("Evolu7LocalOnlyCreatedAt");
+      const { run, drivers, appName, evolu7Name } = setup;
+      const NoteSchema = {
+        ...Schema,
+        _note: { id: id("Note"), text: NonEmptyTrimmedString100 },
+      };
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      evolu7.evolu.update("_note", {
+        id: createIdFromString<"Note">("note"),
+        text: "updated",
+      });
+      await evolu7.settled();
+      const [evolu7Note] = drivers.selectAllIn(
+        evolu7Name,
+        "_note",
+      ) as ReadonlyArray<{ createdAt: string | null; updatedAt: string }>;
+      assertNotUndefined(evolu7Note);
+      assertSame(evolu7Note.createdAt, null);
+
+      await using evolu = await run.ok(
+        createEvolu(NoteSchema, {
+          appName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+
+      assertEqual(
+        await evolu.loadQuery(
+          createQueryBuilder(NoteSchema)((db) =>
+            db.selectFrom("_note").select(["text", "createdAt", "updatedAt"]),
+          ),
+        ),
+        [
+          {
+            text: "updated",
+            createdAt: evolu7Note.updatedAt,
+            updatedAt: evolu7Note.updatedAt,
+          },
+        ],
+      );
+    });
+
+    it("fails a removal with DatabaseHeldError while a tab runs Evolu 7, and deletes nothing", async () => {
+      await using setup = await setupMigration("Evolu7RemovalHeld");
+      const { run, drivers, evolu7Name, instantStartConfig } = setup;
+      const { lockManager } = run.deps;
+
+      await using app = await run.orThrow(
+        createEvoluApp(Schema, instantStartConfig),
+      );
+      const current = app.current.get();
+      assertNotNull(current);
+      const evolu = await current.evolu;
+      evolu.insert("todo", {
+        title: NonEmptyTrimmedString100.orThrow("unsynced"),
+      });
+      assertLength(await evolu.loadQuery(todoTitlesQuery), 1);
+      // A tab that still runs Evolu 7, whose database the removal would
+      // delete too.
+      const evolu7Lock = `evolu-sharedwebworker-${evolu7Name}`;
+      const tabClosed = Promise.withResolvers<void>();
+      const tab = lockManager.request(evolu7Lock, () => tabClosed.promise);
+
+      const removing = app.remove(current.appOwner.id);
+      const isLockRequested = async () =>
+        (await lockManager.query()).pending?.some(
+          (lock) => lock.name === evolu7Lock,
+        ) === true;
+      while (!(await isLockRequested())) await testWaitForWorkerMessage();
+      setup.dbWorkerTime.advance(databaseHeldTimeout);
+
+      assertEqual(
+        await removing,
+        err({ type: "DatabaseHeldError", name: evolu7Name }),
+      );
+      assertSame(drivers.deletions(evolu.name), 0);
+      assertEqual(
+        app.appOwners.get().map(({ id }) => id),
+        [current.appOwner.id],
+      );
+      tabClosed.resolve();
+      await tab;
+    });
+
+    it("deletes with a refused database the Evolu 7 database it would import", async () => {
+      await using setup = await setupMigration("Evolu7DeleteRefused");
+      const { run, drivers, appName, evolu7Name } = setup;
+      const { lockManager } = run.deps;
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      evolu7.evolu.insert("todo", { title: "todo" });
+      await evolu7.settled();
+      // Refused while a tab still ran Evolu 7, which then closed.
+      const evolu7Lock = `evolu-sharedwebworker-${evolu7Name}`;
+      const tabClosed = Promise.withResolvers<void>();
+      const tab = lockManager.request(evolu7Lock, () => tabClosed.promise);
+      const reported = setup.waitForTabError();
+      await using evolu = await run.ok(
+        createEvolu(Schema, {
+          appName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+      const isLockRequested = async () =>
+        (await lockManager.query()).pending?.some(
+          (lock) => lock.name === evolu7Lock,
+        ) === true;
+      while (!(await isLockRequested())) await testWaitForWorkerMessage();
+      setup.dbWorkerTime.advance(databaseHeldTimeout);
+      await reported;
+      tabClosed.resolve();
+      await tab;
+
+      assertOk(await evolu.deleteDatabase());
+
+      assertFalse(drivers.names().includes(evolu7Name));
+      assertSame(drivers.deletions(evolu7Name), 1);
+    });
+
+    it("refuses a database with DatabaseHeldError while a tab runs Evolu 7, importing nothing, and imports once the app starts without that tab", async () => {
+      await using setup = await setupMigration("Evolu7TabRuns");
+      const { run, drivers, appName, evolu7Name } = setup;
+      const { lockManager } = run.deps;
+      const config = { appName, appOwner: testAppOwner, transports: [] };
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      evolu7.evolu.insert("todo", { title: "todo" });
+      await evolu7.settled();
+      // Evolu 7 on the web runs its worker in the tab that holds this lock.
+      const evolu7Lock = `evolu-sharedwebworker-${evolu7Name}`;
+      const tabClosed = Promise.withResolvers<void>();
+      const tab = lockManager.request(evolu7Lock, () => tabClosed.promise);
+
+      const reported = setup.waitForTabError();
+      await using refused = await run.ok(createEvolu(Schema, config));
+      const isLockRequested = async () =>
+        (await lockManager.query()).pending?.some(
+          (lock) => lock.name === evolu7Lock,
+        ) === true;
+      while (!(await isLockRequested())) await testWaitForWorkerMessage();
+      assertSame(databaseHeldTimeout, "10s");
+      setup.dbWorkerTime.advance("9s");
+      setup.dbWorkerTime.advance("999ms");
+      await testWaitForWorkerMessage();
+      assertEqual(setup.tabErrors, []);
+
+      setup.dbWorkerTime.advance("1ms");
+      await reported;
+      assertEqual(setup.tabErrors, [
+        { type: "DatabaseHeldError", name: evolu7Name },
+      ]);
+      assertTrue(drivers.names().includes(evolu7Name));
+      assertSame(drivers.deletions(evolu7Name), 0);
+      // Evolu 7's lock comes before Evolu 7's database, so the worker opened
+      // only its own.
+      assertEqual(setup.dbWorkerOpens, [refused.name]);
+      // The refused worker releases the database's lock last, and by then it
+      // stopped asking for Evolu 7's, so it doesn't take it once the tab
+      // closes. Node.js lists an aborted request as pending until then.
+      await (
+        await run.ok(acquireLeaderLock(refused.name))
+      )[Symbol.asyncDispose]();
+      tabClosed.resolve();
+      await tab;
+      await testWaitForWorkerMessage();
+      const locks = await lockManager.query();
+      assertEqual(
+        [...(locks.held ?? []), ...(locks.pending ?? [])].filter(
+          (lock) => lock.name === evolu7Lock,
+        ),
+        [],
+      );
+
+      await using later = await setupMigration("Evolu7TabRuns", {
+        startedBefore: setup,
+      });
+      await using evolu = await later.run.ok(createEvolu(Schema, config));
+
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), [{ title: "todo" }]);
+      assertFalse(drivers.names().includes(evolu7Name));
+    });
+
+    it("holds Evolu 7's lock while it imports and deletes the Evolu 7 database, and releases it then", async () => {
+      await using setup = await setupMigration("Evolu7LockHeld");
+      const { run, drivers, appName, evolu7Name } = setup;
+      const { lockManager } = run.deps;
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      evolu7.evolu.insert("todo", { title: "todo" });
+      await evolu7.settled();
+      const isLockHeld = async (
+        locks: Promise<LockManagerSnapshot>,
+      ): Promise<boolean> =>
+        (await locks).held?.some(
+          (lock) => lock.name === `evolu-sharedwebworker-${evolu7Name}`,
+        ) === true;
+      // The lock manager answers with the locks of the moment it is asked, so
+      // asking inside the startup transaction tells what is held during it.
+      const duringImport: Array<Promise<LockManagerSnapshot>> = [];
+      drivers.onNextStatement(
+        (statement) => statement.includes("from evolu_message_quarantine"),
+        () => {
+          duringImport.push(lockManager.query());
+        },
+      );
+      const deleting = drivers.waitForDeletionStart();
+      const deleteNow = drivers.holdNextDeletion();
+
+      const starting = run.ok(
+        createEvolu(Schema, {
+          appName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+      await deleting;
+      const duringDeletion = lockManager.query();
+      // Before the assertions, so a failed one doesn't leave the deletion
+      // held and the test waiting.
+      deleteNow();
+      await using evolu = await starting;
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), [{ title: "todo" }]);
+
+      assertLength(duringImport, 1);
+      assertTrue(await isLockHeld(duringImport[0]));
+      assertTrue(await isLockHeld(duringDeletion));
+      assertFalse(await isLockHeld(lockManager.query()));
+    });
+
+    it("releases Evolu 7's lock before its startup transaction when it imports nothing, so a slow start keeps no other database of the app waiting", async () => {
+      await using setup = await setupMigration("Evolu7LockReleased");
+      const { run, drivers, appName, evolu7Name } = setup;
+      const { lockManager } = run.deps;
+
+      // Another owner's, so the worker reads the database and leaves it.
+      const evolu7 = await setup.setupEvolu7(evolu7Name);
+      evolu7.evolu.insert("todo", { title: "another owner's" });
+      await evolu7.settled();
+      const duringStartup: Array<Promise<LockManagerSnapshot>> = [];
+      // The first statement of the startup transaction.
+      drivers.onNextStatement(
+        (statement) => statement.includes("pragma_table_info('evolu_version')"),
+        () => {
+          duringStartup.push(lockManager.query());
+        },
+      );
+
+      await using evolu = await run.ok(
+        createEvolu(Schema, {
+          appName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), []);
+
+      assertLength(duringStartup, 1);
+      assertEqual(
+        ((await duringStartup[0]).held ?? []).filter(
+          (lock) => lock.name === `evolu-sharedwebworker-${evolu7Name}`,
+        ),
+        [],
+      );
+    });
+
+    it("refuses a database that failed to delete the Evolu 7 database it imported, and the next start imports again, which changes nothing, and deletes", async () => {
+      await using setup = await setupMigration("Evolu7DeletionFails");
+      const { run, drivers, appName, evolu7Name } = setup;
+      const config = { appName, appOwner: testAppOwner, transports: [] };
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name, {
+        mnemonic: testAppOwner.mnemonic,
+      });
+      const todo = evolu7.evolu.insert("todo", { title: "todo" });
+      assert(todo.ok, "Evolu 7 inserts the todo.");
+      evolu7.evolu.insert("_note", { text: "Evolu 7" });
+      await evolu7.settled();
+      evolu7.evolu.update("todo", { id: todo.value.id, isCompleted: 1 });
+      await evolu7.settled();
+
+      drivers.failNextDeletion();
+      const reported = setup.waitForTabError();
+      await using refused = await run.ok(createEvolu(Schema, config));
+      await reported;
+      assertLength(setup.tabErrors, 1);
+      assertSame(setup.tabErrors[0]?.type, "UnknownError");
+      assertTrue(drivers.names().includes(evolu7Name));
+      // The import committed before the deletion failed.
+      const todos = drivers.selectAllIn(refused.name, "todo");
+      assertLength(todos, 1);
+      const history = drivers.selectAllIn(refused.name, "evolu_history");
+      assertTrue(history.length > 0);
+      // A local-only row this database has already stays as it is.
+      drivers.execIn(refused.name, sql`update "_note" set "text" = 'Evolu 8';`);
+
+      await using later = await setupMigration("Evolu7DeletionFails", {
+        startedBefore: setup,
+      });
+      await using evolu = await later.run.ok(createEvolu(Schema, config));
+
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), [{ title: "todo" }]);
+      assertSame(evolu.name, refused.name);
+      assertEqual(drivers.selectAllIn(evolu.name, "todo"), todos);
+      assertEqual(drivers.selectAllIn(evolu.name, "evolu_history"), history);
+      assertEqual(
+        (
+          drivers.selectAllIn(evolu.name, "_note") as ReadonlyArray<{
+            text: string;
+          }>
+        ).map(({ text }) => text),
+        ["Evolu 8"],
+      );
+      assertEqual(later.tabErrors, []);
+      assertFalse(drivers.names().includes(evolu7Name));
+      assertSame(drivers.deletions(evolu7Name), 1);
+    });
+
+    it("creates no first AppOwner while the files of the Evolu 7 database stay held, and starts with its owner once they are released", async () => {
+      const waitedNames: Array<Name> = [];
+      await using setup = await setupMigration("Evolu7FilesHeld", {
+        waitForDatabaseRelease: (name) => () => {
+          waitedNames.push(name);
+          return name === "Evolu7FilesHeld"
+            ? err({ type: "DatabaseHeldError", name })
+            : ok();
+        },
+      });
+      const { run, drivers, evolu7Name, instantStartConfig } = setup;
+
+      const evolu7 = await setup.setupEvolu7(evolu7Name);
+      evolu7.evolu.insert("todo", { title: "todo" });
+      await evolu7.settled();
+
+      const refused = await run(createEvoluApp(Schema, instantStartConfig));
+      assertEqual(
+        refused,
+        err(
+          createUnknownError({ type: "DatabaseHeldError", name: evolu7Name }),
+        ),
+      );
+      assertSame(waitedNames.at(-1), evolu7Name);
+      assertEqual(drivers.selectAll("_evolu_appOwner"), []);
+      assertSame(drivers.deletions(evolu7Name), 0);
+
+      await using later = await setupMigration("Evolu7FilesHeld", {
+        startedBefore: setup,
+      });
+      await using app = await later.run.orThrow(
+        createEvoluApp(Schema, instantStartConfig),
+      );
+      assertEqual(
+        app.appOwners.get().map(({ id }) => id),
+        [evolu7.appOwner.id],
+      );
+      const current = app.current.get();
+      assertNotNull(current);
+      assertEqual(await (await current.evolu).loadQuery(todoTitlesQuery), [
+        { title: "todo" },
+      ]);
+    });
   });
 
   describe("deleteDatabase", () => {

@@ -36,6 +36,41 @@
  * needs drift quarantine and an earlier release on the same device at once, and
  * failing would break a rollback to an earlier release outright.
  *
+ * ### Evolu 7
+ *
+ * Evolu 7 kept its AppOwner in the database, named the database by its `name`
+ * option, and did not encrypt it by default, so this release cannot open such a
+ * database as its own. Startup migrates one instead, on a platform that can
+ * tell whether a database exists ({@link Evolu7DatabaseExists}), and never for a
+ * database in memory:
+ *
+ * - A device database of instant start that this startup creates takes the Evolu
+ *   7 database's owner as its first AppOwner, when
+ *   {@link OpenDbWorkerInit.createFirstAppOwner} asks for one and Evolu 7 stored
+ *   a mnemonic that derives the owner.
+ * - An AppOwner's database imports the Evolu 7 database that holds its owner, in
+ *   the startup transaction, then deletes it before it serves a request. An
+ *   Evolu 7 database of another owner stays as it is.
+ *
+ * The worker first takes the lock under which an Evolu 7 tab runs its worker on
+ * the web, and keeps it while it reads the Evolu 7 database, and through the
+ * import and the deletion when it imports, so no Evolu 7 tab and no other
+ * DbWorker of the app opens that database meanwhile. A tab that still runs
+ * Evolu 7 holds the lock, so startup is refused with {@link DatabaseHeldError}
+ * after {@link databaseHeldTimeout}, and nothing is written, as is another
+ * database of the app that starts during an import that takes longer. The Evolu
+ * 7 database then opens before the startup transaction and waits for its files
+ * as the worker's own database does. A failed import fails the transaction, so
+ * both databases stay as they were. A failed deletion refuses startup too, and
+ * the next startup imports again, which changes nothing, and deletes. A
+ * deletion that removed only some of the files leaves an empty database, which
+ * stays, as every database Evolu 7 didn't write does.
+ *
+ * Removing an AppOwner deletes the Evolu 7 database that holds its owner too,
+ * as its database may never have opened to import it. It opens that database
+ * first, so while a tab that still runs Evolu 7 holds the lock, the removal
+ * fails with {@link DatabaseHeldError} and deletes nothing.
+ *
  * ### Failure
  *
  * Once the worker holds its port, a throw that ends it, such as a startup that
@@ -92,7 +127,7 @@ import {
   defectToError,
   type UnknownError,
 } from "../Error.ts";
-import { exhaustiveCheck } from "../Function.ts";
+import { constVoid, exhaustiveCheck } from "../Function.ts";
 import type { LockManagerDep } from "../LockManager.ts";
 import {
   acquireLeaderLock,
@@ -101,9 +136,10 @@ import {
 } from "../LockManager.ts";
 import { createMutableRecord, getOwnProp, objectToEntries } from "../Object.ts";
 import { orderString, orderUint8Array } from "../Order.ts";
-import { err, getOk, ok, trySync, type Result } from "../Result.ts";
+import { err, getOk, getOrThrow, ok, trySync, type Result } from "../Result.ts";
 import type {
   CreateSqliteDriverDep,
+  Sqlite,
   SqliteDep,
   SqliteRow,
   SqliteSchema,
@@ -111,6 +147,7 @@ import type {
 import {
   booleanToSqliteBoolean,
   createSqlite,
+  getSqliteSchema,
   sql,
   SqliteBoolean,
   sqliteBooleanToBoolean,
@@ -131,9 +168,13 @@ import {
   IdBytes,
   idBytesToId,
   idToIdBytes,
+  Mnemonic,
   NonNaNNumber,
+  object,
   onePositiveInt,
   PositiveInt,
+  String,
+  Unknown,
   type ExtractTyped,
   type Name,
   type Typed,
@@ -146,12 +187,15 @@ import type {
   WorkerSelf,
 } from "../Worker.ts";
 import { appOwnerTable } from "./Auth.ts";
-import type { OwnerId, OwnerIdBytes } from "./Owner.ts";
 import {
   createOwnerSecret,
+  mnemonicToOwnerSecret,
+  OwnerId,
+  OwnerIdBytes,
   ownerIdBytesToOwnerId,
   ownerIdToOwnerIdBytes,
   ownerSecretToOwnerId,
+  type OwnerSecret,
 } from "./Owner.ts";
 import {
   applyProtocolMessageAsClient,
@@ -168,6 +212,7 @@ import type { Query } from "./Query.ts";
 import type { ConditionalMutationChange, SqliteSchemaDep } from "./Schema.ts";
 import {
   ensureSqliteSchema,
+  getEvoluSqliteSchema,
   isLocalOnlyTable,
   QuarantineOrigin,
   QuarantineReason,
@@ -206,6 +251,7 @@ import {
   isTimestampBeyondMaxDrift,
   maxCounter,
   maxNodeId,
+  orderTimestamp,
   receiveTimestamp,
   sendTimestamp,
   TimestampBytes,
@@ -236,7 +282,19 @@ export interface OpenDbWorkerInit extends DbWorkerInitFields {
    * database at once end up with one first AppOwner. It never inserts into an
    * existing database. See docs/adr/evolu-creates-and-stores-app-owners.md.
    */
-  readonly createFirstAppOwner: { readonly deviceOwnerId: OwnerId } | null;
+  readonly createFirstAppOwner: {
+    readonly deviceOwnerId: OwnerId;
+    /**
+     * The Evolu 7 database whose AppOwner the startup that creates the device
+     * database inserts as the first one, in place of a new one, so an app that
+     * moves from Evolu 7 keeps its owner. An Evolu 7 database without a
+     * mnemonic that derives its owner, which the app gave Evolu 7, has no
+     * secret to insert. It is null for a device database a DeviceSecret opens:
+     * Evolu 7 kept its owner's secret unprotected, and an AppOwner never moves
+     * between modes.
+     */
+    readonly evolu7Name: Name | null;
+  } | null;
   /**
    * The gate this DbWorker was requested for. The SharedWorker leads for it
    * from creating or reviving the database, or after a failed deletion, until a
@@ -291,6 +349,17 @@ export interface DbWorkerInitFields {
    */
   readonly consoleEntryOrErrorChannelName: string;
   readonly port: NativeMessagePort<DbWorkerOutput, DbWorkerInput>;
+  /**
+   * Set for a database of an AppOwner. When the Evolu 7 database `name` exists
+   * and holds the AppOwner `appOwnerId`, a startup imports it before it serves
+   * a request and then deletes its files, and a deletion deletes them too, as
+   * the database may never have opened to import it; see Evolu 7 in the module
+   * doc.
+   */
+  readonly evolu7: {
+    readonly name: Name;
+    readonly appOwnerId: OwnerId;
+  } | null;
 }
 
 /**
@@ -313,8 +382,23 @@ export type DbWorkerDeps = WorkerDeps &
   LockManagerDep &
   CreateSqliteDriverDep &
   DeleteDatabaseFilesDep &
+  Partial<Evolu7DatabaseExistsDep> &
   Partial<WaitForDatabaseReleaseDep> &
   Partial<XChaCha20Poly1305Dep>;
+
+/**
+ * Whether the Evolu 7 database `name` exists. It creates nothing, unlike
+ * opening the database, which creates a missing one.
+ *
+ * {@link startDbWorker} asks it before it opens the Evolu 7 database to migrate
+ * it, so a platform that omits it migrates none.
+ */
+export type Evolu7DatabaseExists = (name: Name) => Task<boolean, UnknownError>;
+
+/** Dependency wrapper for {@link Evolu7DatabaseExists}. */
+export interface Evolu7DatabaseExistsDep {
+  readonly evolu7DatabaseExists: Evolu7DatabaseExists;
+}
 
 /**
  * Deletes the files of the persistent database `name`: the database file and
@@ -383,7 +467,9 @@ export interface UnsupportedDbVersionError extends Typed<"UnsupportedDbVersionEr
  * {@link databaseHeldTimeout}, so the database did not open, or
  * {@link Evolu.deleteDatabase} or {@link EvoluApp.remove} did not delete it, or
  * such a deletion did not finish in time, such as while the tab that starts it
- * shows a modal dialog; see {@link WaitForDatabaseRelease}.
+ * shows a modal dialog; see {@link WaitForDatabaseRelease}. It also names the
+ * Evolu 7 database that a tab still running Evolu 7 keeps, which Evolu migrates
+ * at the next start after that tab closed.
  *
  * A browser can keep the files of a worker that ended without closing them
  * until the browser restarts. Ask the user to close the app's other tabs or to
@@ -472,15 +558,62 @@ export const startDbWorker =
           });
           return ok();
         }
+        // The AppOwner's Evolu 7 database opens before anything is deleted, so
+        // a deletion that can't delete it, such as while a tab still runs
+        // Evolu 7, deletes nothing.
+        const { evolu7 } = initMessage;
+        const { evolu7DatabaseExists } = deps;
+        await using evolu7Stack = new AsyncDisposableStack();
+        let evolu7ToDelete: Evolu7Database | null = null;
+        if (evolu7 && evolu7DatabaseExists) {
+          const opened = await run(
+            openEvolu7Database(evolu7.name, evolu7Stack),
+            { ...deps, evolu7DatabaseExists },
+          );
+          // A database that can't be looked up or read may hold this
+          // AppOwner's data, so it fails the deletion too. It refuses every
+          // AppOwner's database at startup anyway.
+          if (!opened.ok) {
+            port.postMessage({ type: "DeleteFailed", error: opened.error });
+            return ok();
+          }
+          if (opened.value?.appOwnerId === evolu7.appOwnerId)
+            evolu7ToDelete = opened.value;
+          // Another owner's database stays, and must not keep its migration
+          // waiting while this one is deleted.
+          else await evolu7Stack.disposeAsync();
+        }
+        // After the wait for Evolu 7's lock, which can outlast the attempt.
         if (!(await isLeaderLockHeld(deps)(initMessage.attemptId))) return ok();
         // The database's earlier workers released the lock, so none has it
         // open.
         const deleted = await run(deps.deleteDatabaseFiles(initMessage.name));
-        port.postMessage(
-          deleted.ok
-            ? { type: "DatabaseDeleted" }
-            : { type: "DeleteFailed", error: deleted.error },
-        );
+        if (!deleted.ok) {
+          port.postMessage({ type: "DeleteFailed", error: deleted.error });
+          return ok();
+        }
+        // The Evolu 7 database goes last, so when its deletion fails, or the
+        // attempt ends before it, the AppOwner stays with it and imports it
+        // again. Its own database is gone then, with the changes it hadn't
+        // synced, which the removal would delete anyway; deleting the Evolu 7
+        // database first would lose data nothing may have imported or synced.
+        if (evolu7 && evolu7ToDelete) {
+          await evolu7ToDelete.sqlite[Symbol.asyncDispose]();
+          // The deletion above and the close can outlast the attempt.
+          if (!(await isLeaderLockHeld(deps)(initMessage.attemptId)))
+            return ok();
+          const deletedEvolu7 = await run(
+            deps.deleteDatabaseFiles(evolu7.name),
+          );
+          if (!deletedEvolu7.ok) {
+            port.postMessage({
+              type: "DeleteFailed",
+              error: deletedEvolu7.error,
+            });
+            return ok();
+          }
+        }
+        port.postMessage({ type: "DatabaseDeleted" });
         return ok();
       }
 
@@ -515,6 +648,58 @@ export const startDbWorker =
         ),
       );
 
+      // The startup transaction cannot wait, so an Evolu 7 database opens
+      // before it. A device database takes the Evolu 7 owner only at the
+      // startup that creates it, so later ones don't open the Evolu 7 database.
+      const evolu7Name =
+        initMessage.createFirstAppOwner?.evolu7Name ?? initMessage.evolu7?.name;
+      const evolu7Stack = disposer.use(new AsyncDisposableStack());
+      let evolu7: Evolu7Database | null = null;
+      let evolu7OwnerSecret: OwnerSecret | null = null;
+      if (
+        evolu7Name != null &&
+        !initMessage.memoryOnly &&
+        deps.evolu7DatabaseExists &&
+        (initMessage.evolu7 != null ||
+          sqlite.exec(sql`
+            select 1 from pragma_table_info('evolu_version') limit 1;
+          `).rows.length === 0)
+      ) {
+        const opened = await run(openEvolu7Database(evolu7Name, evolu7Stack), {
+          ...deps,
+          evolu7DatabaseExists: deps.evolu7DatabaseExists,
+        });
+        if (!opened.ok) {
+          port.postMessage({ type: "LeaderRefused", error: opened.error });
+          return ok();
+        }
+        evolu7 = opened.value;
+        // Only a device database reads the mnemonic, as its worker never
+        // traces rows. An owner the app gave Evolu 7 can have none, or one
+        // that Evolu 8 doesn't take or that derives another owner, which is
+        // then not the Evolu 7 database's.
+        if (evolu7 && initMessage.createFirstAppOwner) {
+          const { rows } = evolu7.sqlite.exec<{
+            appOwnerMnemonic: SqliteValue;
+          }>(sql`select "appOwnerMnemonic" from evolu_config limit 1;`);
+          const mnemonic = rows[0]?.appOwnerMnemonic;
+          if (Mnemonic.is(mnemonic)) {
+            const secret = mnemonicToOwnerSecret(mnemonic);
+            if (ownerSecretToOwnerId(secret) === evolu7.appOwnerId)
+              evolu7OwnerSecret = secret;
+          }
+        }
+      }
+      // A database of the same name that holds another owner is not this
+      // AppOwner's, so it stays as it is.
+      const evolu7ToImport =
+        evolu7 && evolu7.appOwnerId === initMessage.evolu7?.appOwnerId
+          ? evolu7
+          : null;
+      // Only an import needs the Evolu 7 database and its lock any longer, and
+      // a slow startup would keep the app's other databases waiting for the
+      // lock.
+      if (!evolu7ToImport) await evolu7Stack.disposeAsync();
       const baseSqliteStorage = createBaseSqliteStorage({ sqlite, ...deps });
       const dbDeps = {
         ...deps,
@@ -555,7 +740,7 @@ export const startDbWorker =
           // at once get one first AppOwner; see
           // docs/adr/evolu-creates-and-stores-app-owners.md.
           if (created && initMessage.createFirstAppOwner) {
-            const secret = createOwnerSecret(dbDeps);
+            const secret = evolu7OwnerSecret ?? createOwnerSecret(dbDeps);
             applyLocalOnlyChange(dbDeps)(
               {
                 ownerId: initMessage.createFirstAppOwner.deviceOwnerId,
@@ -569,6 +754,27 @@ export const startDbWorker =
               },
               deps.time.now(),
             );
+          }
+          if (evolu7ToImport) {
+            // Evolu 7 accepted these changes on this device, each within the
+            // drift of its time then, so none is from the future, though the
+            // device's time may have gone back since. Judged by the device's
+            // time alone, they would go to drift quarantine.
+            importEvolu7Database(dbDeps)(
+              evolu7ToImport.sqlite,
+              Math.max(deps.time.now(), evolu7ToImport.clock.millis) as Millis,
+            );
+            // Evolu 7 saved its clock after every change it stamped or
+            // received, so no imported timestamp is later. Taking it keeps a
+            // change after the migration later than the imported ones. On a
+            // device whose time went back by more than the drift since, such
+            // a change is ahead of the device's time, so it waits in drift
+            // quarantine until the time catches up, as on any database whose
+            // clock is ahead; Evolu 7 refused it.
+            if (orderTimestamp(evolu7ToImport.clock, initialClock) === 1) {
+              initialClock = evolu7ToImport.clock;
+              saveClock(dbDeps)(initialClock);
+            }
           }
           const released = releaseDriftQuarantine(dbDeps)(initialClock);
           if (released) {
@@ -590,6 +796,20 @@ export const startDbWorker =
         return ok();
       }
       const initialClock = startup.value;
+
+      if (evolu7ToImport && evolu7Name != null) {
+        await evolu7ToImport.sqlite[Symbol.asyncDispose]();
+        // The import is a merge, so the next startup repeats it harmlessly,
+        // but only while this database has served nothing: a deletion here,
+        // such as of an owner, would come back. So a database never serves
+        // while the Evolu 7 database it imported exists.
+        const deleted = await run(deps.deleteDatabaseFiles(evolu7Name));
+        if (!deleted.ok) {
+          port.postMessage({ type: "LeaderRefused", error: deleted.error });
+          return ok();
+        }
+      }
+      await evolu7Stack.disposeAsync();
 
       const storage = createClientStorage({
         ...dbDeps,
@@ -969,13 +1189,13 @@ const migrateToVersion2 = ({ sqlite }: SqliteDep): void => {
     sql`
       alter table evolu_message_quarantine
       add column "reason" integer not null default ${sql.raw(
-        String(QuarantineReason.Schema),
+        globalThis.String(QuarantineReason.Schema),
       )};
     `,
     sql`
       alter table evolu_message_quarantine
       add column "origin" integer not null default ${sql.raw(
-        String(QuarantineOrigin.ReceivedMessage),
+        globalThis.String(QuarantineOrigin.ReceivedMessage),
       )};
     `,
     sql`
@@ -1086,10 +1306,10 @@ const initializeDb =
           "column" text not null,
           "value" any,
           "reason" integer not null default ${sql.raw(
-            String(QuarantineReason.Schema),
+            globalThis.String(QuarantineReason.Schema),
           )},
           "origin" integer not null default ${sql.raw(
-            String(QuarantineOrigin.ReceivedMessage),
+            globalThis.String(QuarantineOrigin.ReceivedMessage),
           )},
           "quarantinedAt" integer,
           primary key ("ownerId", "timestamp", "table", "id", "column")
@@ -1110,6 +1330,401 @@ const initializeDb =
       on evolu_message_quarantine ("reason", "timestamp");
     `);
   };
+
+/** An Evolu 7 database opened for its migration; see the module documentation. */
+interface Evolu7Database {
+  readonly sqlite: Sqlite;
+  readonly appOwnerId: OwnerId;
+  readonly clock: Timestamp;
+}
+
+/**
+ * Opens the Evolu 7 database `name` once this worker holds the lock under which
+ * an Evolu 7 tab runs its worker on the web, or returns null when there is no
+ * database Evolu 7 wrote under that name. `stack` owns the lock and the opened
+ * database, so disposing it closes the database and then releases the lock.
+ *
+ * A tab that still runs Evolu 7 holds the lock, so the wait ends after
+ * {@link databaseHeldTimeout} with {@link DatabaseHeldError}. Holding it keeps
+ * such a tab, and another DbWorker of the app, from opening the Evolu 7
+ * database while this worker reads, imports, or deletes it.
+ */
+const openEvolu7Database =
+  (
+    name: Name,
+    stack: AsyncDisposableStack,
+  ): Task<
+    Evolu7Database | null,
+    DatabaseHeldError | UnknownError,
+    DbWorkerDeps & Evolu7DatabaseExistsDep
+  > =>
+  async (run) => {
+    const { deps } = run;
+    // The stack, not the wait, owns the request, as for a deletion's database
+    // lock.
+    const locked = await run(
+      timeout(
+        callback<void>(({ resolve }) => {
+          const abortController = new AbortController();
+          const released = Promise.withResolvers<void>();
+          const request = deps.lockManager
+            .request(
+              `evolu-sharedwebworker-${name}`,
+              { signal: abortController.signal },
+              async () => {
+                resolve(ok());
+                await released.promise;
+              },
+            )
+            .catch(constVoid);
+          // Waits for the release, so what follows the disposal runs without
+          // the lock.
+          stack.defer(async () => {
+            abortController.abort();
+            released.resolve();
+            await request;
+          });
+        }),
+        databaseHeldTimeout,
+      ),
+    );
+    if (!locked.ok) return err({ type: "DatabaseHeldError", name });
+
+    const exists = await run(deps.evolu7DatabaseExists(name));
+    if (!exists.ok) return exists;
+    if (!exists.value) return ok(null);
+
+    // Only a tab that ended without closing the files can hold them now.
+    if (deps.waitForDatabaseRelease) {
+      const released = await run(deps.waitForDatabaseRelease(name));
+      if (!released.ok) return released;
+    }
+
+    // A database Evolu 7 didn't write stays as it is, also an empty one, which
+    // a deletion that removed only some of the files leaves: nothing tells it
+    // from one the app keeps under the same name, such as in a pool of its
+    // own, so deleting it could delete the app's data. It is opened without a
+    // key, as Evolu 7 kept its database unless an app used its experimental
+    // encryptionKey, which no app is known to have done. Such a database, like
+    // any that can't be read, fails the Task with an UnknownError, or, when it
+    // doesn't open at all, panics the DbWorker, as its own database would,
+    // which refuses it.
+    const sqlite = stack.use(await run.ok(createSqlite(name)));
+    return trySync(() => readEvolu7Database(sqlite), createUnknownError);
+  };
+
+/**
+ * Reads what startup needs of an Evolu 7 database, or returns null for a
+ * database Evolu 7 didn't write. Evolu 7 kept its AppOwner in `evolu_config`,
+ * which holds only the clock since.
+ */
+const readEvolu7Database = (sqlite: Sqlite): Evolu7Database | null => {
+  const { rows: ownerColumns } = sqlite.exec(sql`
+    select 1
+    from pragma_table_info('evolu_config')
+    where "name" = 'appOwnerId';
+  `);
+  if (ownerColumns.length === 0) return null;
+
+  const { rows } = sqlite.exec(sql`
+    select "clock", "appOwnerId" from evolu_config limit 1;
+  `);
+  assertNonEmptyReadonlyArray(rows);
+  const { clock, appOwnerId } = getOrThrow(
+    Evolu7Config.fromUnknown(firstInArray(rows)),
+  );
+
+  return { sqlite, appOwnerId, clock: timestampBytesToTimestamp(clock) };
+};
+
+/** What startup reads of Evolu 7's `evolu_config`. */
+const Evolu7Config = /*#__PURE__*/ object({
+  clock: TimestampBytes,
+  appOwnerId: OwnerId,
+});
+
+/** A row of Evolu 7's history or quarantine, a column of a change. */
+const Evolu7HistoryRow = /*#__PURE__*/ object({
+  ownerId: OwnerIdBytes,
+  timestamp: TimestampBytes,
+  table: String,
+  id: IdBytes,
+  column: String,
+  // Validated with its change, as Evolu 7 accepted numbers that aren't
+  // finite.
+  value: Unknown,
+});
+
+/** The key of a row of an Evolu 7 local-only table. */
+const Evolu7LocalOnlyRowKey = /*#__PURE__*/ object({
+  ownerId: OwnerId,
+  id: Id,
+});
+
+/** How many changes of an Evolu 7 database one {@link applyMessages} takes. */
+const evolu7ImportBatchSize = 1000;
+
+/**
+ * Imports an Evolu 7 database into this one, inside the startup transaction.
+ *
+ * Its history and quarantine are the changes of every owner it held. They are
+ * applied as received changes are, so this database stores them as if a relay
+ * had delivered them: the same timestamps, so a relay that has them sends
+ * nothing again, and tables, time rows, and quarantine in this release's
+ * meaning. A value this release cannot store, a number that is not finite, is
+ * dropped, so its column keeps the value of an earlier change, and its change
+ * keeps its other columns; refusing the import instead would keep the app from
+ * ever starting. A change it cannot store at all is skipped, and so is a change
+ * stored already, so importing again changes nothing. A change this database
+ * received ahead of the device's time stays in drift quarantine until the time
+ * catches up, as before the import.
+ *
+ * Local-only tables have no history, so their rows are copied as they are, into
+ * tables and columns this database gets when its schema lacks them. A table or
+ * a column is the current one of the same name in any case of its ASCII
+ * letters, as SQLite folds only their case. A row this database has already is
+ * newer, so it keeps its values, its time and its deletion, and takes Evolu 7's
+ * values only for the columns it lacked, which it can't have cleared. A row it
+ * deleted, which leaves no trace, comes back. A row an Evolu 7 update created
+ * has no `createdAt`, so it gets its `updatedAt`, the earliest time left, as
+ * {@link applyLocalOnlyChange} gives it.
+ */
+const importEvolu7Database =
+  (
+    deps: BaseSqliteStorageDep &
+      SqliteDep &
+      SqliteSchemaDep &
+      TimestampConfigDep,
+  ) =>
+  (evolu7: Sqlite, now: Millis): void => {
+    // Evolu 7.3.0 added the quarantine, so a database that only earlier
+    // releases opened has no such table.
+    const hasQuarantine =
+      evolu7.exec(sql`
+        select 1
+        from sqlite_master
+        where "type" = 'table' and "name" = 'evolu_message_quarantine';
+      `).rows.length > 0;
+
+    let ownerIdBytes: OwnerIdBytes | null = null;
+    let timestampBytes: TimestampBytes | null = null;
+    let rows: Array<HistoryRow> = [];
+    let messages: Array<CrdtMessage> = [];
+
+    const endMessage = (): void => {
+      if (!timestampBytes || !isNonEmptyArray(rows)) return;
+      const change = DbChange.fromUnknown(historyRowsToDbChange(rows));
+      if (change.ok)
+        messages.push({
+          timestamp: timestampBytesToTimestamp(timestampBytes),
+          change: change.value,
+        });
+      rows = [];
+    };
+
+    const applyBatch = (): void => {
+      if (!ownerIdBytes || !isNonEmptyArray(messages)) return;
+      applyMessages(deps)(
+        ownerIdBytesToOwnerId(ownerIdBytes),
+        messages,
+        QuarantineOrigin.ReceivedMessage,
+        now,
+      );
+      messages = [];
+    };
+
+    // A change's columns can be split between the history and the quarantine,
+    // and a timestamp stored once is skipped whole, so both are read together.
+    // The index on the owner and the timestamp orders the history.
+    evolu7.iterate(
+      hasQuarantine
+        ? sql`
+            select "ownerId", "timestamp", "table", "id", "column", "value"
+            from evolu_history
+            union all
+            select "ownerId", "timestamp", "table", "id", "column", "value"
+            from evolu_message_quarantine
+            order by "ownerId", "timestamp";
+          `
+        : sql`
+            select "ownerId", "timestamp", "table", "id", "column", "value"
+            from evolu_history
+            order by "ownerId", "timestamp";
+          `,
+      (row) => {
+        const { ownerId, timestamp, table, id, column, value } = getOrThrow(
+          Evolu7HistoryRow.fromUnknown(row),
+        );
+        if (!ownerIdBytes || !eqUint8Array(ownerId, ownerIdBytes)) {
+          endMessage();
+          applyBatch();
+          ownerIdBytes = ownerId;
+          timestampBytes = timestamp;
+        } else if (
+          !timestampBytes ||
+          !eqUint8Array(timestamp, timestampBytes)
+        ) {
+          endMessage();
+          if (messages.length >= evolu7ImportBatchSize) applyBatch();
+          timestampBytes = timestamp;
+        }
+        // Evolu 7 accepted a number that isn't finite, which this release
+        // can't store, so only that value is dropped and the change keeps its
+        // other columns. DbChange validates the rest once the change is whole.
+        if (column === "isDeleted" || SqliteValue.is(value))
+          rows.push({ table, id, column, value });
+        return true;
+      },
+    );
+    endMessage();
+    applyBatch();
+
+    const localOnlyTables: Array<readonly [string, ReadonlySet<string>]> = [];
+    for (const [table, columns] of objectToEntries(
+      getSqliteSchema({ sqlite: evolu7 })().tables,
+    )) {
+      assertNonNullable(columns);
+      if (isLocalOnlyTable(table)) localOnlyTables.push([table, columns]);
+    }
+    if (!isNonEmptyArray(localOnlyTables)) return;
+
+    // SQLite folds the case of ASCII letters in names, so a table or a column
+    // of Evolu 7's that the current schema has with those letters in another
+    // case is the same, and ensureSqliteSchema, which compares names exactly,
+    // gets only those it lacks in every such case, under the current table's
+    // name.
+    const foldCase = (name: string): string =>
+      name.replaceAll(/[A-Z]+/gu, (letters) => letters.toLowerCase());
+    const foldedNames = (names: Iterable<string>): ReadonlySet<string> =>
+      new Set(Array.from(names, foldCase));
+    const idAndSystemColumns = foldedNames(["id", ...systemColumns]);
+    const currentSchema = getEvoluSqliteSchema(deps)();
+    const currentTablesByFoldedName = new Map(
+      objectToEntries(currentSchema.tables).map(([table, columns]) => {
+        assertNonNullable(columns);
+        return [foldCase(table), { table, columns: foldedNames(columns) }];
+      }),
+    );
+    // By the name of Evolu 7's table.
+    const lackedColumnsByTable = new Map(
+      localOnlyTables.map(([table, columns]) => {
+        const current = currentTablesByFoldedName.get(foldCase(table));
+        const lacked: ReadonlySet<string> = new Set(
+          [...columns].filter((column) => {
+            const name = foldCase(column);
+            return !idAndSystemColumns.has(name) && !current?.columns.has(name);
+          }),
+        );
+        return [table, { currentTable: current?.table ?? table, lacked }];
+      }),
+    );
+    ensureSqliteSchema(deps)(
+      {
+        tables: Object.fromEntries(
+          Array.from(
+            lackedColumnsByTable.values(),
+            ({ currentTable, lacked }) => [currentTable, lacked],
+          ),
+        ),
+        // Only tables and columns are added.
+        indexes: currentSchema.indexes,
+      },
+      currentSchema,
+    );
+
+    const keyColumns = new Set(["ownerId", "id"]);
+    for (const [table, columns] of localOnlyTables) {
+      const tableIdentifier = sql.identifier(table);
+      const valueColumns = [...columns.difference(keyColumns)];
+      const lackedColumns = lackedColumnsByTable.get(table);
+      assertNonNullable(lackedColumns);
+      evolu7.iterate(sql`select * from ${tableIdentifier};`, (row) => {
+        const { ownerId, id } = getOrThrow(
+          Evolu7LocalOnlyRowKey.fromUnknown({
+            ownerId: row.ownerId,
+            id: row.id,
+          }),
+        );
+        const isNew =
+          deps.sqlite.prepared`
+            insert into ${tableIdentifier} ("ownerId", "id")
+            values (${ownerId}, ${id})
+            on conflict ("ownerId", "id") do nothing;
+          `.changes > 0;
+        for (const column of valueColumns) {
+          // A row this database has is newer, so it keeps its values, its
+          // time and its deletion, also a column without a value, which,
+          // without history, may have been cleared. It takes Evolu 7's values
+          // only for the columns it lacked until now.
+          if (!isNew && !lackedColumns.lacked.has(column)) continue;
+          const value =
+            column === "createdAt" && row.createdAt === null
+              ? row.updatedAt
+              : row[column];
+          // A null is the default, and as for synced tables, a number that
+          // isn't finite, which Evolu 7 accepted, is dropped.
+          if (value === null || !SqliteValue.is(value)) continue;
+          deps.sqlite.prepared`
+            update ${tableIdentifier}
+            set ${sql.identifier(column)} = ${value}
+            where "ownerId" = ${ownerId} and "id" = ${id};
+          `;
+        }
+        return true;
+      });
+    }
+  };
+
+/** A column of a change as the history and the quarantine store it. */
+interface HistoryRow {
+  readonly table: string;
+  readonly id: IdBytes;
+  readonly column: string;
+  /** Validated with its change by {@link DbChange}. */
+  readonly value: unknown;
+}
+
+/**
+ * Rebuilds the change that a timestamp's history and quarantine rows hold, for
+ * {@link DbChange} to validate. A `createdAt` time row marks an insert, and a
+ * change without a time row, which Evolu 7.2.2 and earlier stored for an
+ * update, is an update.
+ */
+const historyRowsToDbChange = (
+  rows: NonEmptyReadonlyArray<HistoryRow>,
+): unknown => {
+  const firstRow = firstInArray(rows);
+  const values = createMutableRecord();
+  let isInsert = false;
+  let isDelete: unknown = null;
+
+  for (const row of rows) {
+    switch (row.column) {
+      case "createdAt":
+        isInsert = true;
+        break;
+      case "updatedAt":
+        isInsert = false;
+        break;
+      case "isDeleted":
+        // Anything but a SqliteBoolean fails the validation.
+        isDelete = SqliteBoolean.is(row.value)
+          ? sqliteBooleanToBoolean(row.value)
+          : row.value;
+        break;
+      default:
+        values[row.column] = row.value;
+    }
+  }
+
+  return {
+    table: firstRow.table,
+    id: idBytesToId(firstRow.id),
+    values,
+    isInsert,
+    isDelete,
+  };
+};
 
 const tryApplyQuarantinedMessages = (
   deps: SqliteDep & SqliteSchemaDep,
@@ -1566,38 +2181,10 @@ const createClientStorage = (
 
       const { rows } = result;
       assertNonEmptyReadonlyArray(rows, "Every timestamp must have rows");
-      const firstRow = firstInArray(rows);
-
-      const values = createMutableRecord<string, SqliteValue>();
-      let isInsert: DbChange["isInsert"] = false;
-      let isDelete: DbChange["isDelete"] = null;
-
-      for (const r of rows) {
-        switch (r.column) {
-          case "createdAt":
-            isInsert = true;
-            break;
-          case "updatedAt":
-            isInsert = false;
-            break;
-          case "isDeleted":
-            assertType(SqliteBoolean, r.value);
-            isDelete = sqliteBooleanToBoolean(r.value);
-            break;
-          default:
-            values[r.column] = r.value;
-        }
-      }
 
       const message: CrdtMessage = {
         timestamp: timestampBytesToTimestamp(timestamp),
-        change: DbChange.orThrow({
-          table: firstRow.table,
-          id: idBytesToId(firstRow.id),
-          values,
-          isInsert,
-          isDelete,
-        }),
+        change: getOrThrow(DbChange.fromUnknown(historyRowsToDbChange(rows))),
       };
 
       return encodeAndEncryptDbChange(deps)(message, getEncryptionKey());

@@ -70,6 +70,7 @@ export const navigation: Array<NavGroup> = [
       { title: "Comparison", href: "/docs/comparison" },
       { title: "Supply chain", href: "/docs/supply-chain" },
       { title: "Showcase", href: "/docs/showcase" },
+      { title: "Upgrading", href: "/docs/upgrading" },
       { title: "Changelog", href: "https://github.com/evoluhq/evolu/releases" },
     ],
   },
