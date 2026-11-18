@@ -50,8 +50,10 @@ import type {
   loadDeviceSecret,
 } from "../../src/DeviceSecret.ts";
 import { nativeSqliteAbiVersion } from "../../src/sqlite/Binding.ts";
-import { createReactNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
-import { createWaitForDatabaseRelease } from "../../src/sqlite/WaitForDatabaseRelease.ts";
+import {
+  createReactNativeSqliteDriver,
+  createWaitForDatabaseRelease,
+} from "../../src/Sqlite.ts";
 import { describeBindingConformance } from "../bindingConformance.ts";
 import { urlCases } from "./urlCases.ts";
 

@@ -72,8 +72,7 @@ const { createEvoluDeps: createMainEvoluDeps } =
   await import("../../src/createEvoluDeps.ts");
 const { createEvoluDeps: createSharedEvoluDeps } =
   await import("../../src/shared.ts");
-const { createReactNativeSqliteDriver } =
-  await import("../../src/sqlite/Driver.ts");
+const { createReactNativeSqliteDriver } = await import("../../src/Sqlite.ts");
 const {
   createBenchRelay,
   createStallMeter,

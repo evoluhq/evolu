@@ -24,7 +24,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { runDeviceTestsCli } from "../../scripts/device-tests.mts";
-import { createReactNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
+import { createReactNativeSqliteDriver } from "../../src/Sqlite.ts";
 import {
   deviceFixtureKey,
   deviceFixtureRows,

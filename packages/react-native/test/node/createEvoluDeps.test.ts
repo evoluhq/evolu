@@ -74,8 +74,7 @@ mock.module(
 );
 
 const { createEvoluDeps } = await import("../../src/createEvoluDeps.ts");
-const { createReactNativeSqliteDriver } =
-  await import("../../src/sqlite/Driver.ts");
+const { createReactNativeSqliteDriver } = await import("../../src/Sqlite.ts");
 const { createBenchRelay } = await import("../device/bench.ts");
 
 test("Evolu stores and queries rows in an encrypted database in EvoluApp's directory", async () => {

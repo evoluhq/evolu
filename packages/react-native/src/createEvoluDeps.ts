@@ -6,11 +6,13 @@ import {
 } from "@evolu/common";
 import type { EvoluDeps } from "@evolu/common/local-first";
 import { createEvoluDeps as createSharedEvoluDeps } from "./shared.ts";
-import { createEvolu7DatabaseExists } from "./sqlite/Evolu7DatabaseExists.ts";
-import { createDeleteDatabaseFiles } from "./sqlite/DeleteDatabaseFiles.ts";
-import { createReactNativeSqliteDriver } from "./sqlite/Driver.ts";
+import {
+  createDeleteDatabaseFiles,
+  createEvolu7DatabaseExists,
+  createReactNativeSqliteDriver,
+  createWaitForDatabaseRelease,
+} from "./Sqlite.ts";
 import { loadEvoluApp, loadNativeSqlite } from "./sqlite/Loader.ts";
-import { createWaitForDatabaseRelease } from "./sqlite/WaitForDatabaseRelease.ts";
 
 /**
  * Creates Evolu dependencies for React Native, in Expo apps and in React Native

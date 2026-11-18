@@ -31,9 +31,11 @@
 import { createRun, EncryptionKey, Name, sql } from "@evolu/common";
 import { AppName } from "@evolu/common/local-first";
 import type { EvoluDeps } from "@evolu/common/local-first";
-import { createReactNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
+import {
+  createReactNativeSqliteDriver,
+  createWaitForDatabaseRelease,
+} from "../../src/Sqlite.ts";
 import { loadEvoluApp, loadNativeSqlite } from "../../src/sqlite/Loader.ts";
-import { createWaitForDatabaseRelease } from "../../src/sqlite/WaitForDatabaseRelease.ts";
 import {
   forgetDeviceSecret,
   loadDeviceSecret,

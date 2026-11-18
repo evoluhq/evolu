@@ -37,7 +37,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
-import { createReactNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
+import { createReactNativeSqliteDriver } from "../../src/Sqlite.ts";
 
 const binding = (await setupAddon()).createBinding() as NativeSqlite;
 

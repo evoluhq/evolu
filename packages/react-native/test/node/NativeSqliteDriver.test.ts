@@ -60,10 +60,12 @@ import {
   describeSqliteDriverPrepare,
   setupSqliteAndDriver,
 } from "../../../../test/integration/nodejs/Sqlite/_prepare.ts";
-import { createEvolu7DatabaseExists } from "../../src/sqlite/Evolu7DatabaseExists.ts";
-import { createDeleteDatabaseFiles } from "../../src/sqlite/DeleteDatabaseFiles.ts";
-import { createReactNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
-import { createWaitForDatabaseRelease } from "../../src/sqlite/WaitForDatabaseRelease.ts";
+import {
+  createDeleteDatabaseFiles,
+  createEvolu7DatabaseExists,
+  createReactNativeSqliteDriver,
+  createWaitForDatabaseRelease,
+} from "../../src/Sqlite.ts";
 
 const addonPath = await setupAddonPath();
 const binding = loadAddon(addonPath).createBinding() as NativeSqlite;
@@ -206,7 +208,7 @@ test("an encrypted database ignores the empty journal an app killed between tran
       `
         const common = await import(${JSON.stringify(import.meta.resolve("@evolu/common"))});
         const { loadAddon } = await import(${JSON.stringify(import.meta.resolve("@evolu/sqlite-core/test/setup-addon.mts"))});
-        const { createReactNativeSqliteDriver } = await import(${JSON.stringify(new URL("../../src/sqlite/Driver.ts", import.meta.url).href)});
+        const { createReactNativeSqliteDriver } = await import(${JSON.stringify(new URL("../../src/Sqlite.ts", import.meta.url).href)});
         const run = common.testCreateRun();
         const driver = await run.ok(
           createReactNativeSqliteDriver({

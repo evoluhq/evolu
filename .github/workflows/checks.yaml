@@ -240,8 +240,8 @@ jobs:
   # the TypeScript driver, the expo-sqlite migration tests
   # and the fixtures the device route seeds, the podspec under Ruby,
   # cpp/CMakeLists.txt under CMake, the device driver with a fake adb and
-  # xcrun, and the package's src tests, with 100% coverage of scripts and
-  # src/sqlite.
+  # xcrun, and the package's src tests, with 100% coverage of scripts,
+  # src/Sqlite.ts and src/sqlite.
   react-native-native:
     name: React Native native
     runs-on: ubuntu-latest

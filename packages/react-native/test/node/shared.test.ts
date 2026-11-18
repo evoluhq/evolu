@@ -37,7 +37,7 @@ import { setupAddon } from "@evolu/sqlite-core/test/setup-addon.mts";
 import { tmpdir } from "node:os";
 import { describe, it, mock } from "node:test";
 import { createEvoluDeps } from "../../src/shared.ts";
-import { createReactNativeSqliteDriver } from "../../src/sqlite/Driver.ts";
+import { createReactNativeSqliteDriver } from "../../src/Sqlite.ts";
 
 installPolyfills();
 
