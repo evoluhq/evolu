@@ -7805,6 +7805,47 @@ describe("Evolu integration", () => {
       assertSame(drivers.deletions(evolu7Name), 1);
     });
 
+    it("switches a database to auto_vacuum before it imports the Evolu 7 database, so the import is stored once", async () => {
+      await using setup = await setupMigration("Evolu7Vacuum");
+      const { run, drivers, evolu7Name, instantStartConfig } = setup;
+      const evolu7 = await setup.setupEvolu7(evolu7Name);
+      evolu7.evolu.insert("todo", { title: "imported" });
+      await evolu7.settled();
+      // Every statement of the startups, which the predicate never ends.
+      const statements: Array<string> = [];
+      drivers.onNextStatement((statement) => {
+        statements.push(statement);
+        return false;
+      }, constVoid);
+
+      await using app = await run.orThrow(
+        createEvoluApp(Schema, instantStartConfig),
+      );
+      const current = app.current.get();
+      assertNotNull(current);
+      const evolu = await current.evolu;
+      const rows = await evolu.loadQuery(todosQuery);
+
+      assertEqual(
+        rows.map(({ title }) => title),
+        ["imported"],
+      );
+      const vacuums = statements.flatMap((statement, index) =>
+        /^\s*vacuum\b/iu.test(statement) ? [index] : [],
+      );
+      // The device database's and the AppOwner's, each while empty.
+      assertLength(vacuums, 2);
+      const imported = statements.findIndex((statement) =>
+        /^\s*insert into "todo"/iu.test(statement),
+      );
+      assertTrue(imported > Math.max(...vacuums));
+      assertSame(drivers.deletions(evolu7Name), 1);
+      for (const name of drivers.names())
+        assertEqual(drivers.selectAllIn(name, "pragma_auto_vacuum"), [
+          { auto_vacuum: 1 },
+        ]);
+    });
+
     it("takes Evolu 7's clock, so a change after the migration is later than the imported ones on a device whose time went back", async () => {
       await using setup = await setupMigration("Evolu7Clock", {
         // A minute before Evolu 7's changes, within the allowed drift.

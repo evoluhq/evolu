@@ -369,6 +369,82 @@ test('2.2.4 opens what the codec writes: a database 2.2.4 created, after rows we
   }
 });
 
+// The DbWorker of @evolu/common switches every database to auto_vacuum with
+// one VACUUM, and a tab of an earlier Evolu version can open the database
+// afterward.
+test("a database 2.2.4 created switches to auto_vacuum full with a VACUUM, which keeps its salt and rows, and shrinks at a deletion; 2.2.4 then opens it with the SQL @evolu/web runs and writes to it, and the codec reads what it wrote", async () => {
+  const sqliteJs = await setupSqliteJs();
+  const created = new sqliteJs.oo1.DB("/legacy.db", "c");
+  created.exec(evoluWebKeySql(testKey));
+  created.exec(
+    "CREATE TABLE t(id INTEGER PRIMARY KEY, a); WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM c WHERE i < 300) INSERT INTO t(a) SELECT randomblob(1000) FROM c",
+  );
+  created.close();
+  const file = readSqliteJsFile(sqliteJs, "/legacy.db");
+  const t = await setupSahPool();
+  writePoolFile(t, "/evolu1.db", file);
+  const { database, keyDerivation } = getOrThrow(
+    await openWithFallback(t, subtleCrypto),
+  );
+  assertEqual(keyDerivation, "Legacy224");
+  const select = (sql: string) => getOrThrow(database.run(sql, [])).rows;
+  assertEqual(select("PRAGMA auto_vacuum"), [{ auto_vacuum: 0 }]);
+  const rowsSql = "SELECT id, a FROM t WHERE id IN (1, 150, 300)";
+  const rows = select(rowsSql);
+
+  getOrThrow(database.exec("PRAGMA auto_vacuum = FULL; VACUUM"));
+
+  assertEqual(select("PRAGMA auto_vacuum"), [{ auto_vacuum: 1 }]);
+  assertEqual(select(rowsSql), rows);
+  assertEqual(select("SELECT count(*) AS count FROM t"), [{ count: 300 }]);
+  const [{ page_count: pageCount }] = select("PRAGMA page_count");
+  getOrThrow(database.exec("DELETE FROM t WHERE id > 50"));
+  const [{ page_count: pageCountAfter }] = select("PRAGMA page_count");
+  assertTrue(Number(pageCountAfter) < Number(pageCount) / 2);
+  assertEqual(select("PRAGMA freelist_count"), [{ freelist_count: 0 }]);
+  database[Symbol.dispose]();
+  const converted = getOrThrow(
+    t.pool.read("/evolu1.db", 0 as NonNegativeInt, (1 << 20) as NonNegativeInt),
+  );
+  // The legacy key is derived from the salt, so the open after the VACUUM
+  // must find the one the database was keyed with.
+  assertEqual(converted.subarray(0, 16), file.subarray(0, 16));
+  assertEqual(converted.length, Number(pageCountAfter) * 8192);
+
+  writeSqliteJsFile(sqliteJs, "/converted.db", converted);
+  const opened = new sqliteJs.oo1.DB("/converted.db", "w");
+  opened.exec(evoluWebKeySql(testKey));
+  assertEqual(opened.selectValue("SELECT count(*) FROM t"), 50);
+  assertEqual(opened.selectValue("PRAGMA auto_vacuum"), 1);
+  assertEqual(opened.selectValue("PRAGMA integrity_check"), "ok");
+  opened.exec(
+    "DELETE FROM t WHERE id > 10; INSERT INTO t(a) VALUES ('written by 2.2.4')",
+  );
+  opened.close();
+
+  const next = await setupSahPool();
+  writePoolFile(
+    next,
+    "/evolu1.db",
+    readSqliteJsFile(sqliteJs, "/converted.db"),
+  );
+  const reopened = getOrThrow(await openWithFallback(next, subtleCrypto));
+  assertEqual(reopened.keyDerivation, "Legacy224");
+  const selectReopened = (sql: string) =>
+    getOrThrow(reopened.database.run(sql, [])).rows;
+  assertEqual(selectReopened("SELECT count(*) AS count FROM t"), [
+    { count: 11 },
+  ]);
+  assertEqual(selectReopened("SELECT a FROM t WHERE id = 11"), [
+    { a: "written by 2.2.4" },
+  ]);
+  assertEqual(selectReopened("PRAGMA auto_vacuum"), [{ auto_vacuum: 1 }]);
+  assertEqual(selectReopened("PRAGMA integrity_check"), [
+    { integrity_check: "ok" },
+  ]);
+  reopened.database[Symbol.dispose]();
+});
+
 test("createEncryptedSqliteDatabase opens a new database with the raw key, reporting Raw, without deriving a legacy key, so the file opens with the raw key", async () => {
   const t = await setupSahPool();
   const spy = spySubtleCrypto();

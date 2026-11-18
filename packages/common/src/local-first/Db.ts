@@ -71,6 +71,41 @@
  * first, so while a tab that still runs Evolu 7 holds the lock, the removal
  * fails with {@link DatabaseHeldError} and deletes nothing.
  *
+ * ### Freed pages
+ *
+ * SQLite keeps the pages a deletion frees, such as those of an owner
+ * {@link Evolu.deleteOwner} deletes, in the file and reuses them for later
+ * writes, so by default the file never shrinks. Evolu's databases are in
+ * SQLite's `auto_vacuum = FULL` mode instead, in which a commit that frees
+ * pages moves the file's last pages into them and truncates the file. It
+ * returns only wholly freed pages, so pages a deletion left partly empty stay.
+ * Chromium keeps counting what a commit returned, and what its journal took,
+ * against the origin's quota until the worker ends, because it releases the
+ * storage a file's handle reserved only when the handle closes.
+ *
+ * Only a `VACUUM`, which rewrites the whole database, switches the mode of a
+ * database whose first page is written, and a driver's setup can write it. So
+ * startup runs one on an empty database, before anything is stored in it, and
+ * once on a database an earlier release created, after the startup transaction.
+ * That rewrite needs memory of about the size of the database's pages in use,
+ * because Evolu's SQLite keeps temporary files in memory, which a browser's
+ * worker keeps until it ends, and as much free storage for its journal, so a
+ * database whose pages in use take more than 100 MiB is not rewritten and stays
+ * in its mode, until a startup finds it smaller, as after an owner's deletion.
+ * The worker holds the database's lock for the rewrite and serves only after
+ * it, so the app waits, a deletion or removal of the database that waits for
+ * the lock longer than {@link databaseHeldTimeout} fails with
+ * {@link DatabaseHeldError}, and on React Native, where the worker shares the
+ * app's JavaScript thread, the app does not respond meanwhile. A rewrite that
+ * fails, such as on a full disk, changes nothing: the failure is logged as a
+ * warning, the database serves as it was, and the next startup tries again,
+ * which takes about as long. An empty database that cannot be switched fails
+ * startup, as any database that cannot be written does. After the rewrite, done
+ * or failed, the worker closes the database and opens it again before it
+ * serves, which returns the storage a browser kept reserved for the journal. A
+ * database in memory has no file and stays as it is. The Evolu Relay opens its
+ * database without this worker, so it keeps SQLite's default.
+ *
  * ### Failure
  *
  * Once the worker holds its port, a throw that ends it, such as a startup that
@@ -446,6 +481,17 @@ export interface WaitForDatabaseReleaseDep {
 /** The database version this code creates and supports; see the module doc. */
 const dbVersion = PositiveInt.orThrow(2);
 
+// The most bytes a database's pages in use, without the free ones, may take
+// for startup to rewrite it into auto_vacuum mode; see Freed pages in the
+// module doc. The rewrite holds them in memory, 18 MiB more for a database it
+// left at 14 MiB on the Node.js addon, which a
+// browser's worker keeps until it ends, and a system can end an app that takes
+// too much, as iOS does, which the next startup would then repeat. The bound
+// is a judgment, not a device's measured limit. An encrypted database of 112
+// MiB took 6 to 8 seconds in Chromium, Firefox and WebKit on an Apple M5
+// (November 2026), and a phone takes longer.
+const maxRewrittenDatabaseSize = 100 * 1024 * 1024;
+
 /**
  * The stored database version is newer than this code supports. Newer code
  * created or migrated the database, which is left unchanged. This happens when
@@ -637,16 +683,13 @@ export const startDbWorker =
         }
       }
 
-      const sqlite = disposer.use(
-        await run.ok(
-          createSqlite(
-            initMessage.name,
-            initMessage.memoryOnly
-              ? { mode: "memory" }
-              : { mode: "encrypted", encryptionKey: initMessage.encryptionKey },
-          ),
-        ),
+      const openSqlite = createSqlite(
+        initMessage.name,
+        initMessage.memoryOnly
+          ? { mode: "memory" }
+          : { mode: "encrypted", encryptionKey: initMessage.encryptionKey },
       );
+      let sqlite = disposer.use(await run.ok(openSqlite));
 
       // The startup transaction cannot wait, so an Evolu 7 database opens
       // before it. A device database takes the Evolu 7 owner only at the
@@ -700,14 +743,27 @@ export const startDbWorker =
       // a slow startup would keep the app's other databases waiting for the
       // lock.
       if (!evolu7ToImport) await evolu7Stack.disposeAsync();
-      const baseSqliteStorage = createBaseSqliteStorage({ sqlite, ...deps });
-      const dbDeps = {
+      let baseSqliteStorage = createBaseSqliteStorage({ sqlite, ...deps });
+      let dbDeps = {
         ...deps,
         sqlite,
         sqliteSchema: initMessage.sqliteSchema,
         baseSqliteStorage,
         timestampConfig: { maxDrift: defaultTimestampMaxDrift },
       };
+      // See Freed pages in the module doc. An empty database is switched before
+      // anything is stored in it, also what startup imports from Evolu 7, so
+      // only a database an earlier release created is rewritten with its rows,
+      // below. The VACUUM is for a driver whose setup already wrote the
+      // database's first page. After the Evolu 7 database opened, so a startup
+      // refused for it wrote nothing.
+      if (
+        !initMessage.memoryOnly &&
+        sqlite.exec(sql`select 1 from sqlite_schema limit 1;`).rows.length === 0
+      ) {
+        sqlite.exec(sql`pragma auto_vacuum = full;`);
+        sqlite.exec(sql`vacuum;`);
+      }
       const startup = sqlite.transaction(
         (): Result<Timestamp, UnsupportedDbVersionError> => {
           // Only the version record is read before the version check, because a
@@ -810,6 +866,55 @@ export const startDbWorker =
         }
       }
       await evolu7Stack.disposeAsync();
+
+      // A database an earlier release created. After the startup transaction,
+      // so a database of a newer version, which it refuses, is never
+      // rewritten, and after the Evolu 7 database is closed, so a long rewrite
+      // doesn't keep its lock.
+      if (!initMessage.memoryOnly) {
+        const { rows } = sqlite.exec<{ autoVacuum: number; size: number }>(sql`
+          select
+            (select auto_vacuum from pragma_auto_vacuum) as "autoVacuum",
+            (
+              (select page_count from pragma_page_count) -
+                (select freelist_count from pragma_freelist_count)
+            ) * (select page_size from pragma_page_size) as "size";
+        `);
+        if (
+          rows[0].autoVacuum !== 1 &&
+          rows[0].size <= maxRewrittenDatabaseSize
+        ) {
+          try {
+            sqlite.exec(sql`pragma auto_vacuum = full;`);
+            sqlite.exec(sql`vacuum;`);
+          } catch (error) {
+            // Nothing records the failure, so the next startup tries again,
+            // at about the cost of a rewrite. A full disk is rare and the
+            // bound limits that cost, while a record would be a state of its
+            // own and would keep a database whose disk was full only for a
+            // while as it is until its pages in use take less.
+            deps.console.warn(
+              "The database keeps the pages deletions free, because switching it to auto_vacuum failed.",
+              error,
+            );
+          }
+          // Chromium reserves quota for a sync access handle ahead of its
+          // writes and releases what the file doesn't use only when the handle
+          // closes. The rewrite's journal grows to the database's size, so
+          // without closing, the origin would keep about twice the database's
+          // size reserved after the rewrite, done or failed, and writes that
+          // fit before it would fail:
+          // https://chromium.googlesource.com/chromium/src/+/153ab68741786276ee86ff25e07d020c3aee43e6/content/browser/file_system_access/file_system_access_manager_impl.cc#1751
+          //
+          // The gate is not checked again before the open. A worker whose gate
+          // ended during the rewrite is disposed right after startup, as one
+          // whose gate ended during the startup transaction is.
+          await sqlite[Symbol.asyncDispose]();
+          sqlite = disposer.use(await run.ok(openSqlite));
+          baseSqliteStorage = createBaseSqliteStorage({ sqlite, ...deps });
+          dbDeps = { ...dbDeps, sqlite, baseSqliteStorage };
+        }
+      }
 
       const storage = createClientStorage({
         ...dbDeps,
@@ -1016,6 +1121,22 @@ export const startDbWorker =
                 // reserve the evolu_ prefix, so Evolu's tables are named.
                 // Inside trySync, a value that is not an OwnerId fails only
                 // this deletion.
+                //
+                // No VACUUM follows. It would also return the pages the
+                // deletion left partly empty, 8 to 35 % more in a measurement
+                // of two owners (November 2026), but it rewrites the whole
+                // database, so its time, memory and free storage grow with
+                // the database, at every deletion.
+                //
+                // Nor is the database closed and opened again, as after
+                // startup's rewrite, for Chromium to stop counting what the
+                // commit returned and what its journal took against the
+                // origin's quota. The device has the storage at the commit,
+                // and Chromium keeps a journal's reservation after any large
+                // commit, such as a sync batch's, so opening again after
+                // deletions alone would not settle the quota, while the
+                // storage and the Run built from the connection would have to
+                // be built again.
                 const deleted = trySync(() => {
                   const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
                   sqlite.transaction(() => {

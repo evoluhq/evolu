@@ -1047,7 +1047,13 @@ export interface Evolu<
    * A later `useOwner` syncs the data back, and a mutation with the owner
    * stores its rows again, so stop using the owner first, such as by removing
    * it from where the app lists it. Encrypted copies in device backups and in
-   * freed storage remain.
+   * freed storage remain. The deletion's commit returns the pages it emptied to
+   * the device, so the file of a database in SQLite's `auto_vacuum` mode
+   * shrinks by them, though Chromium counts them against the origin's quota
+   * until the database's worker ends. Pages the owner's rows shared with other
+   * owners' rows stay in the file, and a database that startup did not switch
+   * to that mode, such as one with more than 100 MiB of pages in use, returns
+   * none.
    *
    * It takes no {@link AppOwner}, whose ID names the database;
    * {@link Evolu.deleteDatabase} deletes the whole database instead. An owner

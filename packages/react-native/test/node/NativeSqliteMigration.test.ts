@@ -33,6 +33,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -129,6 +130,45 @@ for (const expoSqlite of expoSqliteReleases)
       );
     });
 
+    // The DbWorker of @evolu/common switches every database to auto_vacuum
+    // with one VACUUM.
+    it("switches a database the fixture created to auto_vacuum full with a VACUUM, keeping every row and SQLCipher's page-1 layout, so a deletion shrinks the file, which SQLCipher still opens", async () => {
+      const databaseDirectory = mkdtempSync(join(releaseDirectory, "vacuum-"));
+      const path = join(databaseDirectory, `evolu1-${testName}.db`);
+      copyFileSync(base, path);
+      {
+        const { run, driver: opening } = openDatabase(databaseDirectory);
+        await using _run = run;
+        using driver = await opening;
+        assertEqual(driver.exec(sql`pragma auto_vacuum;`).rows, [
+          { auto_vacuum: 0 },
+        ]);
+
+        driver.exec(sql`pragma auto_vacuum = full;`);
+        driver.exec(sql`vacuum;`);
+
+        assertEqual(driver.exec(sql`pragma auto_vacuum;`).rows, [
+          { auto_vacuum: 1 },
+        ]);
+        assertEqual(driver.exec(countQuery).rows, [
+          { original: rows, updated: 0, integrity: "ok" },
+        ]);
+        const { size } = statSync(path);
+        // Each row takes about a page.
+        driver.exec(sql`delete from t where id > 10;`);
+        assert(statSync(path).size < size / 2, "The file kept its size.");
+      }
+
+      assertFalse(
+        bytesToHex(readFileSync(path).subarray(16, 21)) === defaultLayoutBytes,
+      );
+      assertEqual(runSqlcipherFixture(fixture, ["count", path, hexKey]), {
+        status: 0,
+        stdout: "10 0 ok\n",
+        stderr: "",
+      });
+    });
+
     it("opens the copy of every write of a crashed transaction with every row before or after it, and leaves no hot journal", async () => {
       const work = join(releaseDirectory, "work.db");
       let crashes = 0;
@@ -193,6 +233,47 @@ it("gives a new database page 1 of the default layout, with its page size, file 
         21,
       ),
     ),
+    defaultLayoutBytes,
+  );
+});
+
+// The DbWorker of @evolu/common switches an empty database to auto_vacuum with
+// a VACUUM, after the driver's setup wrote its first page.
+it("switches a new, empty database to auto_vacuum full with a VACUUM, keeping the default layout, so a deletion of rows stored after it shrinks the file", async () => {
+  const databaseDirectory = mkdtempSync(join(directory, "empty-"));
+  const path = join(databaseDirectory, `evolu1-${testName}.db`);
+  {
+    const { run, driver: opening } = openDatabase(databaseDirectory);
+    await using _run = run;
+    using driver = await opening;
+    assertEqual(driver.exec(sql`pragma auto_vacuum;`).rows, [
+      { auto_vacuum: 0 },
+    ]);
+
+    driver.exec(sql`pragma auto_vacuum = full;`);
+    driver.exec(sql`vacuum;`);
+
+    assertEqual(driver.exec(sql`pragma auto_vacuum;`).rows, [
+      { auto_vacuum: 1 },
+    ]);
+    driver.exec(sql`create table t (id integer primary key, v blob);`);
+    driver.exec(sql`
+      with recursive
+        c(i) as (
+          select 1
+          union all
+          select i + 1 from c where i < 100
+        )
+      insert into t (v)
+      select randomblob(3000) from c;
+    `);
+    const { size } = statSync(path);
+    driver.exec(sql`delete from t where id > 20;`);
+    assert(statSync(path).size < size / 2, "The file kept its size.");
+  }
+
+  assertEqual(
+    bytesToHex(readFileSync(path).subarray(16, 21)),
     defaultLayoutBytes,
   );
 });

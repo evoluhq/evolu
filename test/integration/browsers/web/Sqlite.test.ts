@@ -467,6 +467,76 @@ describe("createWasmSqliteDriver", () => {
       timeout,
     );
 
+    // The DbWorker of @evolu/common switches every database to auto_vacuum
+    // with one VACUUM.
+    test(
+      "an encrypted OPFS database switches to auto_vacuum full with a VACUUM, and a deletion then shrinks the pool's files",
+      async () => {
+        const name = `autoVacuum${Date.now()}`;
+        const key = new Uint8Array(32).fill(42);
+        const driver = createWorkerDriver();
+        // The files' sizes, while no worker holds them.
+        const poolSize = async (): Promise<number> => {
+          const root = await navigator.storage.getDirectory();
+          const pool = await root.getDirectoryHandle(`.${name}`);
+          const opaque = await pool.getDirectoryHandle(".opaque");
+          let size = 0;
+          for await (const handle of opaque.values())
+            if (handle.kind === "file") size += (await handle.getFile()).size;
+          return size;
+        };
+        const select = async (sqlStr: string) => {
+          const result = await driver.exec(sqlStr);
+          assertWorkerOk(result);
+          return result.data?.rows;
+        };
+
+        try {
+          assertWorkerOk(await driver.create(name, key));
+          assertWorkerOk(
+            await driver.exec(
+              "CREATE TABLE t (id INTEGER PRIMARY KEY, data BLOB)",
+            ),
+          );
+          assertWorkerOk(
+            await driver.exec(
+              "WITH RECURSIVE c(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM c WHERE i < 2000) INSERT INTO t (data) SELECT randomblob(1000) FROM c",
+            ),
+          );
+          expect(await select("PRAGMA auto_vacuum")).toEqual([
+            { auto_vacuum: 0 },
+          ]);
+
+          assertWorkerOk(await driver.exec("PRAGMA auto_vacuum = FULL"));
+          assertWorkerOk(await driver.exec("VACUUM"));
+
+          expect(await select("PRAGMA auto_vacuum")).toEqual([
+            { auto_vacuum: 1 },
+          ]);
+          assertWorkerOk(await driver.dispose());
+          const size = await poolSize();
+
+          assertWorkerOk(await driver.create(name, key));
+          assertWorkerOk(await driver.exec("DELETE FROM t WHERE id > 200"));
+          expect(await select("SELECT count(*) AS count FROM t")).toEqual([
+            { count: 200 },
+          ]);
+          expect(await select("PRAGMA integrity_check")).toEqual([
+            { integrity_check: "ok" },
+          ]);
+          assertWorkerOk(await driver.dispose());
+
+          expect(await poolSize()).toBeLessThan(size / 2);
+        } finally {
+          // The database takes megabytes of a profile that outlives the run.
+          await driver.dispose();
+          await driver.deleteDatabaseFiles(name);
+          driver.terminate();
+        }
+      },
+      timeout,
+    );
+
     test(
       "deletes plain OPFS database file",
       async () => {

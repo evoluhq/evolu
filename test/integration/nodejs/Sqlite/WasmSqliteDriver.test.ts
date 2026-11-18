@@ -10,6 +10,7 @@ import {
   assertEqual,
   assertFalse,
   assertInstanceOf,
+  assertThrowsInstanceOf,
   assertTrue,
   bytesToHex,
   createQueryBuilder,
@@ -38,7 +39,11 @@ import {
   sahPoolHeaderSize,
   type SahPoolOptions,
 } from "../../../../packages/sqlite-wasm/src/SahPool.ts";
-import { setupFakeOpfs, type FakeOpfs } from "../sqlite-wasm/_fakeOpfs.ts";
+import {
+  createQuotaExceededError,
+  setupFakeOpfs,
+  type FakeOpfs,
+} from "../sqlite-wasm/_fakeOpfs.ts";
 import { setupSahPool } from "../sqlite-wasm/_sahPool.ts";
 import {
   readSqliteJsFile,
@@ -232,6 +237,198 @@ for (const encrypted of [false, true])
       { data: "created by 2.2.4" },
     ]);
   });
+
+// The DbWorker of @evolu/common switches every database to auto_vacuum with
+// one VACUUM, after the driver's setup wrote the database's first page.
+for (const [title, options] of [
+  ["a plain", undefined],
+  ["an encrypted", { mode: "encrypted", encryptionKey: testKey }],
+] as const) {
+  test(`${title} database the driver set up switches to auto_vacuum full with a VACUUM, keeps its rows, and a deletion then truncates its file`, async () => {
+    const fake = setupFakeOpfs();
+    const setup = await setupDriver(fake);
+    await using _run = setup.run;
+    const rowsSql = sql`select id, data from t where id in (1, 200, 400);`;
+    {
+      using driver = await setup.open(options);
+      driver.exec(sql`create table t (id integer primary key, data blob);`);
+      driver.exec(sql`
+        with recursive
+          c(i) as (
+            select 1
+            union all
+            select i + 1 from c where i < 400
+          )
+        insert into t (data)
+        select randomblob(1000) from c;
+      `);
+      assertEqual(driver.exec(sql`pragma auto_vacuum;`).rows, [
+        { auto_vacuum: 0 },
+      ]);
+      const { rows } = driver.exec(rowsSql);
+
+      driver.exec(sql`pragma auto_vacuum = full;`);
+      driver.exec(sql`vacuum;`);
+
+      assertEqual(driver.exec(sql`pragma auto_vacuum;`).rows, [
+        { auto_vacuum: 1 },
+      ]);
+      assertEqual(driver.exec(rowsSql).rows, rows);
+      const size = slotSize(fake, "/evolu1.db");
+      assert(size != null, "Expected the database's slot.");
+      driver.exec(sql`delete from t where id > 100;`);
+      const sizeAfter = slotSize(fake, "/evolu1.db");
+      assert(sizeAfter != null, "Expected the database's slot.");
+      assertTrue(sizeAfter < size / 2);
+      assertEqual(driver.exec(sql`pragma freelist_count;`).rows, [
+        { freelist_count: 0 },
+      ]);
+    }
+
+    using driver = await setup.open(options);
+    assertEqual(driver.exec(sql`select count(*) as count from t;`).rows, [
+      { count: 100 },
+    ]);
+    assertEqual(driver.exec(sql`pragma integrity_check;`).rows, [
+      { integrity_check: "ok" },
+    ]);
+  });
+
+  test(`${title} database the driver set up switches to auto_vacuum full with a VACUUM while empty, so a deletion of rows stored after it truncates its file`, async () => {
+    const fake = setupFakeOpfs();
+    const setup = await setupDriver(fake);
+    await using _run = setup.run;
+    {
+      using driver = await setup.open(options);
+      // The setup of an encrypted database already wrote its first page.
+      assertEqual(driver.exec(sql`pragma auto_vacuum;`).rows, [
+        { auto_vacuum: 0 },
+      ]);
+
+      driver.exec(sql`pragma auto_vacuum = full;`);
+      driver.exec(sql`vacuum;`);
+
+      assertEqual(driver.exec(sql`pragma auto_vacuum;`).rows, [
+        { auto_vacuum: 1 },
+      ]);
+      driver.exec(sql`create table t (id integer primary key, data blob);`);
+      driver.exec(sql`
+        with recursive
+          c(i) as (
+            select 1
+            union all
+            select i + 1 from c where i < 400
+          )
+        insert into t (data)
+        select randomblob(1000) from c;
+      `);
+      const size = slotSize(fake, "/evolu1.db");
+      assert(size != null, "Expected the database's slot.");
+      driver.exec(sql`delete from t where id > 100;`);
+      const sizeAfter = slotSize(fake, "/evolu1.db");
+      assert(sizeAfter != null, "Expected the database's slot.");
+      assertTrue(sizeAfter < size / 2);
+    }
+
+    using driver = await setup.open(options);
+    assertEqual(driver.exec(sql`pragma auto_vacuum;`).rows, [
+      { auto_vacuum: 1 },
+    ]);
+    assertEqual(driver.exec(sql`select count(*) as count from t;`).rows, [
+      { count: 100 },
+    ]);
+    assertEqual(driver.exec(sql`pragma integrity_check;`).rows, [
+      { integrity_check: "ok" },
+    ]);
+  });
+
+  // The VACUUM writes the database's pages to its journal, which grows to the
+  // database's size, then the rewritten pages over the database. A full
+  // storage fails the writes that would grow a file, and stays full while the
+  // DbWorker closes the database and opens it again. A failing write to the
+  // database itself, as of a device that fails, leaves a hot journal, which
+  // the open after the close rolls back once writes work again.
+  for (const [failure, failAt] of [
+    ["full storage", 1],
+    ["full storage", 40],
+    ["failing database writes", 1],
+    ["failing database writes", 25],
+  ] as const)
+    test(`a VACUUM of ${title} database that fails with ${failure}, from write ${failAt}, leaves the database as it was once it is closed and opened again, and a later VACUUM switches it`, async () => {
+      const fake = setupFakeOpfs();
+      const setup = await setupDriver(fake);
+      await using _run = setup.run;
+      const rowsSql = sql`
+        select count(*) as count, sum(length(data)) as bytes from t;
+      `;
+      const rows = [{ count: 400, bytes: 400_000 }];
+      {
+        using driver = await setup.open(options);
+        driver.exec(sql`create table t (id integer primary key, data blob);`);
+        driver.exec(sql`
+          with recursive
+            c(i) as (
+              select 1
+              union all
+              select i + 1 from c where i < 400
+            )
+          insert into t (data)
+          select randomblob(1000) from c;
+        `);
+        const database = fake
+          .listFiles(".Test/.opaque")
+          .map((fileName) => `.Test/.opaque/${fileName}`)
+          .find((path) => {
+            const bytes = fake.readFile(path);
+            assert(bytes != null, "Expected the slot.");
+            return (
+              new TextDecoder().decode(bytes.subarray(0, bytes.indexOf(0))) ===
+              "/evolu1.db"
+            );
+          });
+        assert(database != null, "Expected the database's slot.");
+        let writes = 0;
+        fake.inject((call) => {
+          if (call.method !== "write") return null;
+          const fails =
+            failure === "full storage"
+              ? call.at + call.length > (fake.readFile(call.path)?.length ?? 0)
+              : call.path === database;
+          return fails && ++writes >= failAt
+            ? { type: "Throw", error: createQuotaExceededError() }
+            : null;
+        });
+        driver.exec(sql`pragma auto_vacuum = full;`);
+
+        assertThrowsInstanceOf(() => driver.exec(sql`vacuum;`), Error);
+      }
+      // A device that failed works again; a full storage stays full.
+      if (failure === "failing database writes") fake.inject(null);
+
+      {
+        using driver = await setup.open(options);
+        assertEqual(driver.exec(sql`pragma auto_vacuum;`).rows, [
+          { auto_vacuum: 0 },
+        ]);
+        assertEqual(driver.exec(rowsSql).rows, rows);
+        assertEqual(driver.exec(sql`pragma integrity_check;`).rows, [
+          { integrity_check: "ok" },
+        ]);
+        fake.inject(null);
+
+        driver.exec(sql`pragma auto_vacuum = full;`);
+        driver.exec(sql`vacuum;`);
+
+        assertEqual(driver.exec(sql`pragma auto_vacuum;`).rows, [
+          { auto_vacuum: 1 },
+        ]);
+        assertEqual(driver.exec(rowsSql).rows, rows);
+        assertEqual(driver.exec(sql`pragma integrity_check;`).rows, [
+          { integrity_check: "ok" },
+        ]);
+      }
+    });
+}
 
 test("evoluJsonArrayFrom and evoluJsonObjectFrom return a REAL exactly as stored", async () => {
   const setup = await setupDriver(setupFakeOpfs());

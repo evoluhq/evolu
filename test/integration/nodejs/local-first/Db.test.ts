@@ -129,6 +129,7 @@ import {
   sqliteQueryStringToSqliteQuery,
   type CreateSqliteDriver,
   type Sqlite,
+  type SqliteDriverOptions,
   type SqliteQuery,
   type SqliteSchema,
   type SqliteValue,
@@ -6336,14 +6337,14 @@ describe("quarantine replay", () => {
   });
 });
 
-const setupReplayDatabase = () => {
+const setupReplayDatabase = (options?: SqliteDriverOptions) => {
   const name = Name.orThrow(`evolu-retry-${randomUUID()}`);
   const connections: Array<{ disposed: boolean }> = [];
   let deleteDatabase = constVoid;
   using disposer = new DisposableStack();
   disposer.defer(() => deleteDatabase());
   const createSqliteDriver: CreateSqliteDriver = () => async (run) => {
-    const driver = await run.ok(createNodeJsSqliteDriver(name));
+    const driver = await run.ok(createNodeJsSqliteDriver(name, options));
     const connection = { disposed: false };
     connections.push(connection);
     deleteDatabase = driver.deleteDatabase;
@@ -9386,5 +9387,495 @@ describe("owner deletion", () => {
     });
     assertLength(queryOutputs, 1);
     assertSame(queryOutputs[0].type, "OnQueuedResponse");
+  });
+});
+
+describe("freed pages", () => {
+  const readPageCount = (setup: DbSetup): number =>
+    setup.sqlite.exec<{ page_count: number }>(sql`pragma page_count;`).rows[0]
+      .page_count;
+
+  const isVacuumSql = (statement: string): boolean =>
+    /^\s*vacuum\b/iu.test(statement);
+
+  const isVacuum = (query: SqliteQuery): boolean => isVacuumSql(query.sql);
+
+  /** Writes 40 rows of about 2 KB for the owner, each in its own commit. */
+  const writeRows = async (
+    setup: DbWorkerSetup,
+    ownerId: OwnerId,
+  ): Promise<void> => {
+    for (let i = 0; i < 40; i++)
+      await postRequest(
+        setup,
+        setupMutateRequest(setup.evoluInstanceId, [
+          createMutationChange({
+            ownerId,
+            table: "testTable",
+            id: setup.createId(),
+            values: { name: `${i}`.padEnd(2000, "x") },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ]),
+      );
+  };
+
+  for (const [title, options] of [
+    ["a plaintext", undefined],
+    [
+      "an encrypted",
+      { mode: "encrypted", encryptionKey: testAppOwner.encryptionKey },
+    ],
+  ] as const) {
+    it(`puts ${title} file database in auto_vacuum full, so an owner's deletion shrinks the file`, async () => {
+      using file = setupReplayDatabase(options);
+      await using dbSetup = await setupDb({
+        createSqliteDriver: file.createSqliteDriver,
+      });
+      await using setup = await setupDbWorker({ dbSetup, memoryOnly: false });
+
+      assertEqual(setup.sqlite.exec(sql`pragma auto_vacuum;`).rows, [
+        { auto_vacuum: 1 },
+      ]);
+
+      for (const ownerId of [testAppOwner.id, testDbAppOwner2.id])
+        await writeRows(setup, ownerId);
+      const pageCount = readPageCount(setup);
+
+      const attemptId = setup.createId();
+      const outputs = await postRequest(
+        setup,
+        {
+          type: "ForEvolu",
+          id: setup.evoluInstanceId,
+          message: { type: "DeleteOwner", ownerId: testDbAppOwner2.id },
+        },
+        attemptId,
+      );
+
+      assertEqual(outputs, [
+        {
+          type: "OnQueuedResponse",
+          attemptId,
+          response: {
+            type: "ForEvolu",
+            id: setup.evoluInstanceId,
+            message: { type: "OwnerDeleted" },
+          },
+        },
+      ]);
+      // Each owner's rows took more than 40 pages.
+      assertTrue(readPageCount(setup) < pageCount - 40);
+      assertEqual(setup.sqlite.exec(sql`pragma freelist_count;`).rows, [
+        { freelist_count: 0 },
+      ]);
+    });
+  }
+
+  /** Runs `read` on the file's database, which no worker holds. */
+  const withDatabase = async <T>(
+    file: ReturnType<typeof setupReplayDatabase>,
+    read: (sqlite: Sqlite) => T,
+  ): Promise<T> => {
+    await using run = testCreateRun();
+    await using sqlite = await run.ok(createSqlite(testName), {
+      createSqliteDriver: file.createSqliteDriver,
+    });
+    return read(sqlite);
+  };
+
+  /**
+   * Stores a table with rows in the file's database, which leaves it in
+   * SQLite's default mode, as a database an earlier release created is, and
+   * deletes most of them, which leaves it free pages.
+   */
+  const createEarlierDatabase = (
+    file: ReturnType<typeof setupReplayDatabase>,
+  ): Promise<void> =>
+    withDatabase(file, (sqlite) => {
+      sqlite.exec(sql`create table "earlier" ("id" integer primary key, "v");`);
+      sqlite.exec(sql`
+        with recursive
+          c(i) as (
+            select 1
+            union all
+            select i + 1 from c where i < 800
+          )
+        insert into "earlier" ("v")
+        select randomblob(1000) from c;
+      `);
+      sqlite.exec(sql`delete from "earlier" where "id" > 200;`);
+    });
+
+  /** The mode of the file's database and its rows, which no worker holds. */
+  const readDatabase = (file: ReturnType<typeof setupReplayDatabase>) =>
+    withDatabase(file, (sqlite) => ({
+      autoVacuum: sqlite.exec(sql`pragma auto_vacuum;`).rows,
+      snapshot: getSqliteSnapshot({ sqlite }),
+    }));
+
+  /**
+   * Starts a DbWorker that opens the file's database itself, so each of its
+   * opens is a connection of the file's.
+   */
+  const setupFileDbWorker = async (
+    createSqliteDriver: CreateSqliteDriver,
+    {
+      console,
+      expectRefused = false,
+    }: { console?: TestConsole; expectRefused?: boolean } = {},
+  ) => {
+    await using disposer = new AsyncDisposableStack();
+    const dbSetup = disposer.use(await setupDb());
+    const setup = disposer.use(
+      await setupDbWorker({
+        dbSetup: { ...dbSetup, createSqliteDriver },
+        memoryOnly: false,
+        expectRefused,
+        ...(console && { console, consoleLevel: "warn" as const }),
+      }),
+    );
+    const disposables = disposer.move();
+    return {
+      setup,
+      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
+    };
+  };
+
+  /** A driver of the file's database that records the statements it runs. */
+  const recordStatements =
+    (
+      file: ReturnType<typeof setupReplayDatabase>,
+      statements: Array<string>,
+      onExec?: (query: SqliteQuery) => void,
+    ): CreateSqliteDriver =>
+    (name, options) =>
+    async (run) => {
+      const driver = await run.ok(file.createSqliteDriver(name, options));
+      return ok({
+        ...driver,
+        exec: (query) => {
+          statements.push(query.sql);
+          onExec?.(query);
+          return driver.exec(query);
+        },
+      });
+    };
+
+  it("switches an empty database with one VACUUM before it stores anything, opens it once, and at a later start only opens it", async () => {
+    using file = setupReplayDatabase();
+    const statements: Array<string> = [];
+    const createSqliteDriver = recordStatements(file, statements);
+    {
+      await using _worker = await setupFileDbWorker(createSqliteDriver);
+
+      const vacuums = statements.flatMap((statement, index) =>
+        isVacuumSql(statement) ? [index] : [],
+      );
+      assertLength(vacuums, 1);
+      assertTrue(
+        vacuums[0] <
+          statements.findIndex((statement) => /^\s*create\b/iu.test(statement)),
+      );
+      assertEqual(
+        file.connections.map(({ disposed }) => disposed),
+        [false],
+      );
+    }
+    assertEqual((await readDatabase(file)).autoVacuum, [{ auto_vacuum: 1 }]);
+    statements.length = 0;
+    const opened = file.connections.length;
+    {
+      await using _worker = await setupFileDbWorker(createSqliteDriver);
+
+      assertFalse(statements.some(isVacuumSql));
+      assertLength(file.connections, opened + 1);
+    }
+  });
+
+  it("refuses a newer database in a file unchanged, without rewriting it, and opens it once", async () => {
+    using file = setupReplayDatabase();
+    await createEarlierDatabase(file);
+    // Its rewrite fails, which leaves a database of this release in SQLite's
+    // default mode.
+    let failsVacuum = true;
+    const statements: Array<string> = [];
+    const createSqliteDriver = recordStatements(file, statements, (query) => {
+      if (failsVacuum && isVacuum(query))
+        throw new Error("database or disk is full");
+    });
+    {
+      await using _worker = await setupFileDbWorker(createSqliteDriver);
+    }
+    await withDatabase(file, (sqlite) => {
+      sqlite.exec(sql`update evolu_version set "dbVersion" = 3;`);
+    });
+    const before = await readDatabase(file);
+    assertEqual(before.autoVacuum, [{ auto_vacuum: 0 }]);
+    failsVacuum = false;
+    statements.length = 0;
+    const opened = file.connections.length;
+    {
+      await using refused = await setupFileDbWorker(createSqliteDriver, {
+        expectRefused: true,
+      });
+
+      assertEqual(refused.setup.initOutputs, [
+        {
+          type: "LeaderRefused",
+          error: {
+            type: "UnsupportedDbVersionError",
+            storedVersion: PositiveInt.orThrow(3),
+            supportedVersion: PositiveInt.orThrow(2),
+          },
+        },
+      ]);
+    }
+
+    assertFalse(statements.some(isVacuumSql));
+    assertLength(file.connections, opened + 1);
+    assertEqual(await readDatabase(file), before);
+  });
+
+  it("rewrites a database an earlier release created, keeping its rows, and opens it again before it serves", async () => {
+    using file = setupReplayDatabase();
+    await createEarlierDatabase(file);
+    const before = await readDatabase(file);
+    assertEqual(before.autoVacuum, [{ auto_vacuum: 0 }]);
+    {
+      await using worker = await setupFileDbWorker(file.createSqliteDriver);
+
+      // The connections that prepared and read it, the worker's first, which
+      // the rewrite ran on, and the one it serves on.
+      assertEqual(
+        file.connections.map(({ disposed }) => disposed),
+        [true, true, true, false],
+      );
+      await writeRows(worker.setup, testAppOwner.id);
+    }
+
+    const after = await readDatabase(file);
+    assertEqual(after.autoVacuum, [{ auto_vacuum: 1 }]);
+    const earlier = (snapshot: typeof after.snapshot) =>
+      snapshot.tables.find(({ name }) => name === "earlier");
+    assertEqual(earlier(after.snapshot), earlier(before.snapshot));
+    const testTable = after.snapshot.tables.find(
+      ({ name }) => name === "testTable",
+    );
+    assertNotUndefined(testTable);
+    assertLength(testTable.rows, 40);
+  });
+
+  it("serves a database whose rewrite failed as it was, on a connection it opened again, warns, and rewrites it at the next start, keeping its rows", async () => {
+    using file = setupReplayDatabase();
+    await createEarlierDatabase(file);
+    const error = new Error("database or disk is full");
+    let failsVacuum = true;
+    const createSqliteDriver: CreateSqliteDriver =
+      (name, options) => async (run) => {
+        const driver = await run.ok(file.createSqliteDriver(name, options));
+        return ok({
+          ...driver,
+          exec: (query) => {
+            if (failsVacuum && isVacuum(query)) throw error;
+            return driver.exec(query);
+          },
+        });
+      };
+    const console = testCreateConsole({ level: "warn" });
+    {
+      await using worker = await setupFileDbWorker(createSqliteDriver, {
+        console,
+      });
+
+      const entries = console.getEntriesSnapshot();
+      assertLength(entries, 1);
+      assertSame(entries[0].method, "warn");
+      assertSame(entries[0].args.at(-1), error);
+      assertEqual(worker.setup.reportDefect.getDefects(), []);
+      assertEqual(
+        file.connections.map(({ disposed }) => disposed),
+        [true, true, false],
+      );
+      await writeRows(worker.setup, testAppOwner.id);
+    }
+    const failed = await readDatabase(file);
+    assertEqual(failed.autoVacuum, [{ auto_vacuum: 0 }]);
+
+    failsVacuum = false;
+    {
+      await using _worker = await setupFileDbWorker(createSqliteDriver, {
+        console,
+      });
+    }
+
+    const rewritten = await readDatabase(file);
+    assertEqual(rewritten.autoVacuum, [{ auto_vacuum: 1 }]);
+    assertEqual(rewritten.snapshot, failed.snapshot);
+    assertEqual(console.getEntriesSnapshot(), []);
+  });
+
+  for (const [title, size, autoVacuum, opens] of [
+    [
+      "rewrites a database whose pages in use take 100 MiB",
+      100 * 1024 * 1024,
+      1,
+      2,
+    ],
+    [
+      "leaves a database whose pages in use take a byte more than 100 MiB in its mode, and opens it once",
+      100 * 1024 * 1024 + 1,
+      0,
+      1,
+    ],
+  ] as const)
+    it(title, async () => {
+      using file = setupReplayDatabase();
+      await createEarlierDatabase(file);
+      const prepared = file.connections.length;
+      // The size the worker reads, in place of the database's, which is
+      // kept with what it is computed from.
+      const computed: Array<Record<string, unknown>> = [];
+      const createSqliteDriver: CreateSqliteDriver =
+        (name, options) => async (run) => {
+          const driver = await run.ok(file.createSqliteDriver(name, options));
+          return ok({
+            ...driver,
+            exec: (query) => {
+              const result = driver.exec(query);
+              if (!query.sql.includes("pragma_page_count")) return result;
+              computed.push({
+                size: result.rows[0].size,
+                ...driver.exec(sql`pragma page_count;`).rows[0],
+                ...driver.exec(sql`pragma freelist_count;`).rows[0],
+                ...driver.exec(sql`pragma page_size;`).rows[0],
+              });
+              return { ...result, rows: [{ ...result.rows[0], size }] };
+            },
+          });
+        };
+      {
+        await using worker = await setupFileDbWorker(createSqliteDriver);
+
+        assertLength(file.connections, prepared + opens);
+        await writeRows(worker.setup, testAppOwner.id);
+      }
+
+      // The bytes of the pages in use, without the free ones.
+      assertLength(computed, 1);
+      const [{ size: computedSize, page_count, freelist_count, page_size }] =
+        computed;
+      assertTrue(Number(freelist_count) > 0);
+      assertSame(
+        computedSize,
+        (Number(page_count) - Number(freelist_count)) * Number(page_size),
+      );
+
+      assertEqual((await readDatabase(file)).autoVacuum, [
+        { auto_vacuum: autoVacuum },
+      ]);
+    });
+
+  it("refuses an empty database it cannot switch, as one it cannot write", async () => {
+    using file = setupReplayDatabase();
+    const error = new Error("database or disk is full");
+    await using dbSetup = await setupDb({
+      createSqliteDriver: file.createSqliteDriver,
+      onExec: (query) => {
+        if (isVacuum(query)) throw error;
+      },
+    });
+    await using refused = await setupDbWorker({
+      dbSetup,
+      memoryOnly: false,
+      expectRefused: true,
+    });
+
+    assertEqual(refused.initOutputs, [
+      { type: "LeaderRefused", error: createUnknownError(error) },
+    ]);
+  });
+
+  it("refuses a database it cannot open again after the rewrite, which keeps its rows", async () => {
+    using file = setupReplayDatabase();
+    await createEarlierDatabase(file);
+    const before = await readDatabase(file);
+    const error = new Error("unable to open database file");
+    let opens = 0;
+    const createSqliteDriver: CreateSqliteDriver = (name, options) => (run) => {
+      if (++opens === 2) throw error;
+      return run(file.createSqliteDriver(name, options));
+    };
+    {
+      await using worker = await setupFileDbWorker(createSqliteDriver, {
+        expectRefused: true,
+      });
+
+      assertEqual(worker.setup.initOutputs, [
+        { type: "LeaderRefused", error: createUnknownError(error) },
+      ]);
+    }
+
+    const after = await readDatabase(file);
+    assertEqual(after.autoVacuum, [{ auto_vacuum: 1 }]);
+    const earlier = (snapshot: typeof after.snapshot) =>
+      snapshot.tables.find(({ name }) => name === "earlier");
+    assertEqual(earlier(after.snapshot), earlier(before.snapshot));
+  });
+
+  it("returns the pages a deletion of local-only rows frees to the file", async () => {
+    using file = setupReplayDatabase();
+    await using dbSetup = await setupDb({
+      createSqliteDriver: file.createSqliteDriver,
+    });
+    await using setup = await setupDbWorker({ dbSetup, memoryOnly: false });
+    const ids = Array.from({ length: 40 }, () => setup.createId());
+    for (const id of ids)
+      await postRequest(
+        setup,
+        setupMutateRequest(setup.evoluInstanceId, [
+          createMutationChange({
+            table: "_localTable",
+            id,
+            values: { value: "x".repeat(2000) },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ]),
+      );
+    const pageCount = readPageCount(setup);
+
+    for (const id of ids)
+      await postRequest(
+        setup,
+        setupMutateRequest(setup.evoluInstanceId, [
+          createMutationChange({
+            table: "_localTable",
+            id,
+            values: {},
+            isInsert: false,
+            isDelete: true,
+          }),
+        ]),
+      );
+
+    // The rows took more than 10 pages.
+    assertTrue(readPageCount(setup) < pageCount - 10);
+    assertEqual(setup.sqlite.exec(sql`pragma freelist_count;`).rows, [
+      { freelist_count: 0 },
+    ]);
+  });
+
+  it("leaves a memory database, which has no file, as it is", async () => {
+    const statements: Array<string> = [];
+    await using dbSetup = await setupDb({
+      onExec: (query) => {
+        statements.push(query.sql);
+      },
+    });
+    await using _setup = await setupDbWorker({ dbSetup });
+
+    assertFalse(statements.some((statement) => /vacuum/iu.test(statement)));
   });
 });
