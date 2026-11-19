@@ -922,6 +922,62 @@ export const startDbWorker =
       });
       const dbWorkerRun = disposer.use(run.create({ storage }));
 
+      // A newer build can create app tables this build's schema lacks, so they
+      // are read from the file. App tables store the OwnerId, and Evolu's own
+      // tables its bytes. Only index names reserve the evolu_ prefix, so
+      // Evolu's tables are named. Inside trySync, a value that is not an
+      // OwnerId fails only this deletion.
+      //
+      // No VACUUM follows. It would also return the pages the deletion left
+      // partly empty, 8 to 35 % more in a measurement of two owners (November
+      // 2026), but it rewrites the whole database, so its time, memory and
+      // free storage grow with the database, at every deletion.
+      //
+      // Nor is the database closed and opened again, as after startup's
+      // rewrite, for Chromium to stop counting what the commit returned and
+      // what its journal took against the origin's quota. The device has the
+      // storage at the commit, and Chromium keeps a journal's reservation after
+      // any large commit, such as a sync batch's, so opening again after
+      // deletions alone would not settle the quota, while the storage and the
+      // Run built from the connection would have to be built again.
+      const deleteOwner = (ownerId: OwnerId): Result<void, UnknownError> =>
+        trySync(() => {
+          const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
+          sqlite.transaction(() => {
+            // Only tables, because deleting from a view fails.
+            const { rows: appTables } = sqlite.exec<{
+              name: string;
+            }>(sql`
+              select m.name
+              from sqlite_master as m
+              join pragma_table_info(m.name) as c on c.name = 'ownerId'
+              where
+                m.type = 'table'
+                and m.name not in
+                  (
+                    'evolu_history',
+                    'evolu_message_quarantine',
+                    'evolu_timestamp',
+                    'evolu_usage'
+                  );
+            `);
+            for (const { name } of appTables)
+              sqlite.exec(sql`
+                delete from ${sql.identifier(name)}
+                where "ownerId" = ${ownerId};
+              `);
+            sqlite.exec(sql`
+              delete from evolu_history
+              where "ownerId" = ${ownerIdBytes};
+            `);
+            sqlite.exec(sql`
+              delete from evolu_message_quarantine
+              where "ownerId" = ${ownerIdBytes};
+            `);
+            baseSqliteStorage.deleteOwner(ownerIdBytes);
+          });
+        }, createUnknownError);
+
       port.postMessage({
         type: "LeaderAcquired",
         clock: initialClock,
@@ -1044,6 +1100,17 @@ export const startDbWorker =
                   return;
                 }
 
+                if (request.message.type === "DeleteOwner") {
+                  postQueuedResponse({
+                    type: "ForSharedWorker",
+                    message: {
+                      type: "DeleteOwner",
+                      result: deleteOwner(request.message.ownerId),
+                    },
+                  });
+                  return;
+                }
+
                 const protocolMessagesByOwnerId = new Map<
                   OwnerId,
                   ProtocolMessage
@@ -1114,65 +1181,7 @@ export const startDbWorker =
               }
 
               if (request.message.type === "DeleteOwner") {
-                const { ownerId } = request.message;
-                // A newer build can create app tables this build's schema
-                // lacks, so they are read from the file. App tables store the
-                // OwnerId, and Evolu's own tables its bytes. Only index names
-                // reserve the evolu_ prefix, so Evolu's tables are named.
-                // Inside trySync, a value that is not an OwnerId fails only
-                // this deletion.
-                //
-                // No VACUUM follows. It would also return the pages the
-                // deletion left partly empty, 8 to 35 % more in a measurement
-                // of two owners (November 2026), but it rewrites the whole
-                // database, so its time, memory and free storage grow with
-                // the database, at every deletion.
-                //
-                // Nor is the database closed and opened again, as after
-                // startup's rewrite, for Chromium to stop counting what the
-                // commit returned and what its journal took against the
-                // origin's quota. The device has the storage at the commit,
-                // and Chromium keeps a journal's reservation after any large
-                // commit, such as a sync batch's, so opening again after
-                // deletions alone would not settle the quota, while the
-                // storage and the Run built from the connection would have to
-                // be built again.
-                const deleted = trySync(() => {
-                  const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
-                  sqlite.transaction(() => {
-                    // Only tables, because deleting from a view fails.
-                    const { rows: appTables } = sqlite.exec<{
-                      name: string;
-                    }>(sql`
-                      select m.name
-                      from sqlite_master as m
-                      join pragma_table_info(m.name) as c on c.name = 'ownerId'
-                      where
-                        m.type = 'table'
-                        and m.name not in
-                          (
-                            'evolu_history',
-                            'evolu_message_quarantine',
-                            'evolu_timestamp',
-                            'evolu_usage'
-                          );
-                    `);
-                    for (const { name } of appTables)
-                      sqlite.exec(sql`
-                        delete from ${sql.identifier(name)}
-                        where "ownerId" = ${ownerId};
-                      `);
-                    sqlite.exec(sql`
-                      delete from evolu_history
-                      where "ownerId" = ${ownerIdBytes};
-                    `);
-                    sqlite.exec(sql`
-                      delete from evolu_message_quarantine
-                      where "ownerId" = ${ownerIdBytes};
-                    `);
-                    baseSqliteStorage.deleteOwner(ownerIdBytes);
-                  });
-                }, createUnknownError);
+                const deleted = deleteOwner(request.message.ownerId);
                 postQueuedResponse({
                   type: "ForEvolu",
                   id: request.id,

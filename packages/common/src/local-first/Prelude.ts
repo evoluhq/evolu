@@ -52,6 +52,7 @@ export type {
   OpeningAppOwnerState,
   RemoveAppOwnerError,
   UnuseOwner,
+  UseOwnerOptions,
 } from "./Evolu.ts";
 export {
   evoluJsonArrayFrom,

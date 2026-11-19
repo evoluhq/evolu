@@ -27,6 +27,7 @@ import {
   type QueryRows,
   type Row,
   type SyncState,
+  type UseOwnerOptions,
 } from "@evolu/common/local-first";
 import {
   createContext,
@@ -109,17 +110,18 @@ export interface ReactBinding<
   /**
    * Uses an Owner for sync through {@link Evolu.useOwner} while the component is
    * mounted, and stops when it unmounts or the Evolu instance, owner, or
-   * transports change. A null owner uses none, for a component that waits for
-   * one. {@link Evolu.deleteOwner} of the owner ends its use, and the component
-   * uses the owner again only once it remounts or the Evolu instance, owner, or
-   * transports change.
+   * options change. A null owner uses none, for a component that waits for one.
+   * {@link Evolu.deleteOwner} of the owner ends its use, and the component uses
+   * the owner again only once it remounts or the Evolu instance, owner, or
+   * options change. With {@link UseOwnerOptions.deleteWhenUnused}, the owner's
+   * rows are deleted once no component or other code uses it.
    *
-   * The owner and transports are compared by content, so recreating them on
-   * each render keeps the same registration.
+   * The owner and options are compared by content, so recreating them on each
+   * render keeps the same registration.
    */
   readonly useOwner: (
     owner: Parameters<Evolu<S>["useOwner"]>[0] | null,
-    transports?: Parameters<Evolu<S>["useOwner"]>[1],
+    options?: UseOwnerOptions,
   ) => void;
 
   /**
@@ -325,25 +327,34 @@ export const createEvoluBinding = <
 
   const useOwner = (
     owner: Parameters<Evolu<S>["useOwner"]>[0] | null,
-    transports?: Parameters<Evolu<S>["useOwner"]>[1],
+    options?: UseOwnerOptions,
   ): void => {
+    // An array, the transports argument before the options, would read as
+    // options without transports, so a later array wouldn't even reach
+    // Evolu's useOwner, which throws for it.
+    assert(
+      !Array.isArray(options),
+      "useOwner takes its transports in the options, such as useOwner(owner, { transports }).",
+    );
     const evolu = useEvolu();
-    // What identifies a registration: the keys, not other Owner fields.
+    // What identifies a registration: the keys and the options, not other
+    // Owner fields.
     const key =
       owner &&
       structuralLookup({
         id: owner.id,
         encryptionKey: owner.encryptionKey,
         writeKey: "writeKey" in owner ? owner.writeKey : null,
-        transports: transports ?? null,
+        transports: options?.transports ?? null,
+        deleteWhenUnused: options?.deleteWhenUnused ?? false,
       });
 
     useEffect(
       () =>
         owner && !isDatabaseDeleted(evolu)
-          ? evolu.useOwner(owner, transports)
+          ? evolu.useOwner(owner, options)
           : undefined,
-      // oxlint-disable-next-line react/exhaustive-deps -- The key stands for the owner and transports, which callers usually recreate on each render.
+      // oxlint-disable-next-line react/exhaustive-deps -- The key stands for the owner and options, which callers usually recreate on each render.
       [evolu, key],
     );
   };

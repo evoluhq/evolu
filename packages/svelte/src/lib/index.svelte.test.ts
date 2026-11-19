@@ -4,6 +4,7 @@ import {
   assertType,
   assertNonNullable,
   assertSame,
+  assertThrows,
   assertTrue,
   constVoid,
   createId,
@@ -47,10 +48,12 @@ import {
   type OwnerSyncStatus,
   type PendingSyncRoute,
   type QueryRows,
+  type ReadonlyOwner,
   type SharedWorkerInput,
   type SharedWorkerOutput,
   type SyncRoute,
   type SyncState,
+  type UseOwnerOptions,
 } from "@evolu/common/local-first";
 import { installPolyfills } from "@evolu/common/polyfills";
 import { readFileSync } from "node:fs";
@@ -109,6 +112,7 @@ const {
 // reactive.
 const {
   effect_root: effectRoot,
+  flush,
   get,
   set,
   state,
@@ -118,6 +122,7 @@ const {
   "svelte/internal/client"
 )) as {
   readonly effect_root: (fn: () => void) => () => void;
+  readonly flush: () => void;
   readonly state: <T>(value: T) => Signal<T>;
   readonly get: <T>(signal: Signal<T>) => T;
   readonly set: <T>(signal: Signal<T>, value: T) => void;
@@ -653,11 +658,9 @@ const setupOwnerSync = () => {
   const calls: Array<string> = [];
   // Only useOwner is used by ownerSync.
   const evolu = {
-    useOwner: (
-      owner: { readonly id: OwnerId },
-      transports?: ReadonlyArray<unknown>,
-    ) => {
-      const name = `${owner.id === testAppOwner.id ? "app" : "other"}${transports ? ` ${transports.length}` : ""}`;
+    useOwner: (owner: { readonly id: OwnerId }, options?: UseOwnerOptions) => {
+      const transports = options?.transports;
+      const name = `${owner.id === testAppOwner.id ? "app" : "other"}${"writeKey" in owner ? "" : " readonly"}${transports ? ` ${transports.length}` : ""}${options?.deleteWhenUnused ? " deleting" : ""}`;
       calls.push(`use ${name}`);
       return () => {
         calls.push(`unuse ${name}`);
@@ -693,7 +696,7 @@ test("ownerSync keeps the registration for an owner and transports recreated wit
     ownerSync(
       evolu,
       () => get(owner),
-      () => get(transports),
+      () => ({ transports: get(transports) }),
     );
   });
   await setImmediate();
@@ -715,9 +718,11 @@ test("ownerSync uses another registration when the owner or transports change", 
     ownerSync(
       evolu,
       () => get(owner),
-      () =>
-        get(transports) as
-          readonly [ReturnType<typeof relayTransport>] | undefined,
+      () => {
+        const value = get(transports) as
+          readonly [ReturnType<typeof relayTransport>] | undefined;
+        return value && { transports: value };
+      },
     );
   });
   await setImmediate();
@@ -732,6 +737,165 @@ test("ownerSync uses another registration when the owner or transports change", 
     "use app 1",
     "unuse app 1",
     "use other 1",
+  ]);
+  dispose();
+});
+
+test("ownerSync uses another registration when transports are omitted", async () => {
+  const { calls, evolu } = setupOwnerSync();
+  const options = state<UseOwnerOptions | undefined>({
+    transports: [relayTransport("wss://relay.example/")],
+  });
+  const dispose = effectRoot(() => {
+    ownerSync(
+      evolu,
+      () => testAppOwner,
+      () => get(options),
+    );
+  });
+  await setImmediate();
+
+  set(options, undefined);
+  await setImmediate();
+  assertEqual(calls, ["use app 1", "unuse app 1", "use app"]);
+  dispose();
+});
+
+test("ownerSync uses another registration when the same owner becomes readonly or writable", async () => {
+  const { calls, evolu } = setupOwnerSync();
+  const { id, encryptionKey } = testAppOwner;
+  const owner = state<ReadonlyOwner | Owner>(testAppOwner);
+  const dispose = effectRoot(() => {
+    ownerSync(evolu, () => get(owner));
+  });
+  await setImmediate();
+
+  set(owner, { id, encryptionKey });
+  await setImmediate();
+  set(owner, testAppOwner);
+  await setImmediate();
+  assertEqual(calls, [
+    "use app",
+    "unuse app",
+    "use app readonly",
+    "unuse app readonly",
+    "use app",
+  ]);
+  dispose();
+});
+
+test("ownerSync uses another registration when deleteWhenUnused true is omitted", async () => {
+  const { calls, evolu } = setupOwnerSync();
+  const options = state<UseOwnerOptions | undefined>({
+    deleteWhenUnused: true,
+  });
+  const dispose = effectRoot(() => {
+    ownerSync(
+      evolu,
+      () => testAppOwner,
+      () => get(options),
+    );
+  });
+  await setImmediate();
+
+  set(options, undefined);
+  await setImmediate();
+  assertEqual(calls, ["use app deleting", "unuse app deleting", "use app"]);
+  dispose();
+});
+
+test("ownerSync rejects transports in place of the options", () => {
+  const { calls, evolu } = setupOwnerSync();
+  const transport = relayTransport("wss://relay.example/");
+  const dispose = effectRoot(() => {
+    ownerSync(
+      evolu,
+      () => testAppOwner,
+      // @ts-expect-error Transports go in the options object.
+      () => [transport],
+    );
+  });
+
+  // The effect reads the key, whose derivation throws.
+  assertThrows(flush, (thrown) => {
+    assertTrue(thrown instanceof Error);
+    assertTrue(thrown.message.startsWith("ownerSync takes options"));
+  });
+  assertEqual(calls, []);
+  dispose();
+});
+
+test("ownerSync uses another registration when deleteWhenUnused changes", async () => {
+  const { calls, evolu } = setupOwnerSync();
+  const deleteWhenUnused = state(false);
+  const dispose = effectRoot(() => {
+    ownerSync(
+      evolu,
+      () => testAppOwner,
+      () => ({ deleteWhenUnused: get(deleteWhenUnused) }),
+    );
+  });
+  await setImmediate();
+
+  set(deleteWhenUnused, true);
+  await setImmediate();
+  assertEqual(calls, ["use app", "unuse app", "use app deleting"]);
+  dispose();
+});
+
+test("ownerSync keeps the registration across omitted options, empty options and deleteWhenUnused false", async () => {
+  const { calls, evolu } = setupOwnerSync();
+  const options = state<UseOwnerOptions | undefined>(undefined);
+  const dispose = effectRoot(() => {
+    ownerSync(
+      evolu,
+      () => testAppOwner,
+      () => get(options),
+    );
+  });
+  await setImmediate();
+
+  set(options, {});
+  await setImmediate();
+  set(options, { deleteWhenUnused: false });
+  await setImmediate();
+  set(options, undefined);
+  await setImmediate();
+  assertEqual(calls, ["use app"]);
+  dispose();
+});
+
+test("ownerSync keeps a deleting registration for recreated options and uses another when deleteWhenUnused becomes false", async () => {
+  const { calls, evolu } = setupOwnerSync();
+  const options = state<UseOwnerOptions>({
+    transports: [relayTransport("wss://relay.example/")],
+    deleteWhenUnused: true,
+  });
+  const dispose = effectRoot(() => {
+    ownerSync(
+      evolu,
+      () => testAppOwner,
+      () => get(options),
+    );
+  });
+  await setImmediate();
+
+  set(options, {
+    transports: [relayTransport("wss://relay.example/")],
+    deleteWhenUnused: true,
+  });
+  await setImmediate();
+  assertEqual(calls, ["use app 1 deleting"]);
+
+  set(options, {
+    transports: [relayTransport("wss://relay.example/")],
+    deleteWhenUnused: false,
+  });
+  await setImmediate();
+  assertEqual(calls, [
+    "use app 1 deleting",
+    "unuse app 1 deleting",
+    "use app 1",
   ]);
   dispose();
 });
@@ -753,6 +917,41 @@ test("ownerSync uses no owner while it is null", async () => {
   dispose();
 });
 
+test("ownerSync builds no options while the owner is null", () => {
+  const { calls, evolu } = setupOwnerSync();
+  const owner = state<Owner | null>(null);
+  const dispose = effectRoot(() => {
+    ownerSync(
+      evolu,
+      () => get(owner),
+      // Owner-scoped transports built from the owner, which ownerSync uses
+      // only while there is one.
+      () => ({
+        transports: [
+          createOwnerWebSocketTransport({
+            url: RelayUrl.orThrow("wss://relay.example/"),
+            ownerId: get(owner)!.id,
+          }),
+        ],
+      }),
+    );
+  });
+  // Runs the effects now, so what they throw fails this test.
+  flush();
+  assertEqual(calls, []);
+
+  set(owner, testAppOwner);
+  flush();
+  assertEqual(calls, ["use app 1"]);
+
+  set(owner, null);
+  flush();
+  assertEqual(calls, ["use app 1", "unuse app 1"]);
+
+  dispose();
+  assertEqual(calls, ["use app 1", "unuse app 1"]);
+});
+
 test("ownerSync uses no owner of an instance whose database was deleted", async () => {
   await using setup = await setupDeletableEvolu();
   const { evolu, deleteDatabase } = setup;
@@ -765,6 +964,29 @@ test("ownerSync uses no owner of an instance whose database was deleted", async 
   const dispose = effectRoot(() => {
     ownerSync(evolu, () => testAppOwner);
   });
+  await setImmediate();
+  dispose();
+});
+
+test("ownerSync uses no owner again once the database of its instance is deleted after the registration", async () => {
+  await using setup = await setupDeletableEvolu();
+  const { evolu, deleteDatabase } = setup;
+  const transports = state([relayTransport("wss://relay.example/")] as const);
+  const dispose = effectRoot(() => {
+    ownerSync(
+      evolu,
+      () => testAppOwner,
+      () => ({ transports: get(transports) }),
+    );
+  });
+  await setImmediate();
+
+  deleteDatabase();
+  await setImmediate();
+  assertTrue(isDatabaseDeleted(evolu));
+  // The options change, so the effect runs again, and the instance's
+  // useOwner would throw.
+  set(transports, [relayTransport("wss://other.example/")] as const);
   await setImmediate();
   dispose();
 });

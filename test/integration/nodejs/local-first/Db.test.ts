@@ -9285,6 +9285,264 @@ describe("owner deletion", () => {
     assertEqual(countOwnerRows(setup, testAppOwner.id), keptCounts);
   });
 
+  it("deletes them for the SharedWorker's deletion of an unused owner too", async () => {
+    await using dbSetup = await setupDb();
+    await using setup = await setupOwnersDatabase(dbSetup);
+    const keptCounts = countOwnerRows(setup, testAppOwner.id);
+    const attemptId = setup.createId();
+
+    const outputs = await postRequest(
+      setup,
+      {
+        type: "ForSharedWorker",
+        message: { type: "DeleteOwner", ownerId: testDbAppOwner2.id },
+      },
+      attemptId,
+    );
+
+    assertEqual(outputs, [
+      {
+        type: "OnQueuedResponse",
+        attemptId,
+        response: {
+          type: "ForSharedWorker",
+          message: { type: "DeleteOwner", result: ok() },
+        },
+      },
+    ]);
+    assertTrue(
+      Object.values(countOwnerRows(setup, testDbAppOwner2.id)).every(
+        (count) => count === 0,
+      ),
+    );
+    assertEqual(countOwnerRows(setup, testAppOwner.id), keptCounts);
+  });
+
+  it("deletes a deleted owner again and an owner without rows, changing nothing", async () => {
+    await using dbSetup = await setupDb();
+    await using setup = await setupOwnersDatabase(dbSetup);
+    const deleteOwner = async (ownerId: OwnerId) => {
+      const attemptId = setup.createId();
+      assertEqual(
+        await postRequest(
+          setup,
+          {
+            type: "ForSharedWorker",
+            message: { type: "DeleteOwner", ownerId },
+          },
+          attemptId,
+        ),
+        [
+          {
+            type: "OnQueuedResponse",
+            attemptId,
+            response: {
+              type: "ForSharedWorker",
+              message: { type: "DeleteOwner", result: ok() },
+            },
+          },
+        ],
+      );
+    };
+    await deleteOwner(testDbAppOwner2.id);
+    const snapshot = getSqliteSnapshot(setup);
+
+    await deleteOwner(testDbAppOwner2.id);
+    await deleteOwner(
+      createAppOwner(
+        createOwnerSecret(testCreateDeps({ seed: "nodejs-db-owner-no-rows" })),
+      ).id,
+    );
+
+    assertEqual(getSqliteSnapshot(setup), snapshot);
+  });
+
+  it("deletes the rows of an owner that has only local-only rows", async () => {
+    await using dbSetup = await setupDb();
+    await using setup = await setupOwnersDatabase(dbSetup);
+    const localOwnerId = createAppOwner(
+      createOwnerSecret(testCreateDeps({ seed: "nodejs-db-owner-local-only" })),
+    ).id;
+    await postRequest(
+      setup,
+      setupMutateRequest(setup.evoluInstanceId, [
+        createMutationChange({
+          ownerId: localOwnerId,
+          table: "_localTable",
+          id: setup.createId(),
+          values: { value: "local only" },
+          isInsert: true,
+          isDelete: null,
+        }),
+      ]),
+    );
+    const noRows = {
+      testTable: 0,
+      _localTable: 0,
+      newerTable: 0,
+      evolu_appTable: 0,
+      evolu_history: 0,
+      evolu_message_quarantine: 0,
+      evolu_timestamp: 0,
+      evolu_usage: 0,
+    };
+    assertEqual(countOwnerRows(setup, localOwnerId), {
+      ...noRows,
+      _localTable: 1,
+    });
+    const keptCounts = [
+      countOwnerRows(setup, testAppOwner.id),
+      countOwnerRows(setup, testDbAppOwner2.id),
+    ];
+    const attemptId = setup.createId();
+
+    const outputs = await postRequest(
+      setup,
+      {
+        type: "ForSharedWorker",
+        message: { type: "DeleteOwner", ownerId: localOwnerId },
+      },
+      attemptId,
+    );
+
+    assertEqual(outputs, [
+      {
+        type: "OnQueuedResponse",
+        attemptId,
+        response: {
+          type: "ForSharedWorker",
+          message: { type: "DeleteOwner", result: ok() },
+        },
+      },
+    ]);
+    assertEqual(countOwnerRows(setup, localOwnerId), noRows);
+    assertEqual(
+      [
+        countOwnerRows(setup, testAppOwner.id),
+        countOwnerRows(setup, testDbAppOwner2.id),
+      ],
+      keptCounts,
+    );
+  });
+
+  it("writes and syncs a deleted owner again, uploading only its new rows", async () => {
+    await using setup = await setupDbWorker();
+    const ownerIdBytes = ownerIdToOwnerIdBytes(testDbAppOwner2.id);
+    /** Inserts a row of the owner and returns the messages it syncs. */
+    const insert = async (name: string) => {
+      const [output] = await postRequest(
+        setup,
+        setupMutateRequest(setup.evoluInstanceId, [
+          createMutationChange({
+            ownerId: testDbAppOwner2.id,
+            table: "testTable",
+            id: setup.createId(),
+            values: { name },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ]),
+      );
+      assert(
+        output.type === "OnQueuedResponse" &&
+          output.response.type === "ForEvolu" &&
+          output.response.message.type === "Mutate",
+        "Expected a mutation's answer.",
+      );
+      return output.response.message.messagesByOwnerId.get(testDbAppOwner2.id);
+    };
+    await insert("deleted");
+    const attemptId = setup.createId();
+    assertEqual(
+      await postRequest(
+        setup,
+        {
+          type: "ForSharedWorker",
+          message: { type: "DeleteOwner", ownerId: testDbAppOwner2.id },
+        },
+        attemptId,
+      ),
+      [
+        {
+          type: "OnQueuedResponse",
+          attemptId,
+          response: {
+            type: "ForSharedWorker",
+            message: { type: "DeleteOwner", result: ok() },
+          },
+        },
+      ],
+    );
+
+    const messages = await insert("new");
+
+    assertNotUndefined(messages);
+    assertLength(messages, 1);
+    const [message] = messages;
+    assertEqual(message.change.values, { name: "new" });
+    assertEqual(
+      setup.sqlite.exec(sql`
+        select "name"
+        from "testTable"
+        where "ownerId" = ${testDbAppOwner2.id};
+      `).rows,
+      [{ name: "new" }],
+    );
+
+    // A round with a relay converges and uploads only the new row.
+    await using relay = await setupSqliteAndRelayStorage();
+    let syncMessage = getQueuedSharedWorkerMessage(
+      await postRequest(setup, {
+        type: "ForSharedWorker",
+        message: { type: "CreateSyncMessages", owners: [testDbAppOwner2] },
+      }),
+      "CreateSyncMessages",
+    ).protocolMessagesByOwnerId.get(testDbAppOwner2.id);
+    for (let step = 0; ; step++) {
+      assert(step < 20, "The round did not converge.");
+      assertNotUndefined(syncMessage);
+      const relayResponse = await relay.run.orThrow(
+        applyProtocolMessageAsRelay(syncMessage),
+      );
+      const { result } = getQueuedSharedWorkerMessage(
+        await postRequest(
+          setup,
+          setupApplySyncRequest(relayResponse.message, testDbAppOwner2),
+        ),
+        "ApplySyncMessage",
+      );
+      assertOk(result);
+      if (result.value.type === "Converged") break;
+      assertSame(result.value.type, "Response");
+      syncMessage = result.value.message;
+    }
+    const relayTimestamps = relay.sqlite
+      .exec<{ readonly timestamp: Uint8Array }>(sql`
+        select "timestamp"
+        from evolu_message
+        where "ownerId" = ${ownerIdBytes};
+      `)
+      .rows.map(({ timestamp }) =>
+        timestampBytesToTimestamp(TimestampBytes.orThrow(timestamp)),
+      );
+    assertEqual(relayTimestamps, [message.timestamp]);
+    assertEqual(
+      decryptAndDecodeDbChange({
+        xChaCha20Poly1305: createXChaCha20Poly1305(),
+      })(
+        {
+          timestamp: message.timestamp,
+          change: relay.storage.readDbChange(
+            ownerIdBytes,
+            timestampToTimestampBytes(message.timestamp),
+          ),
+        },
+        testDbAppOwner2.encryptionKey,
+      ),
+      ok(message.change),
+    );
+  });
+
   it("leaves a view and a table without owners alone", async () => {
     await using dbSetup = await setupDb();
     await using setup = await setupOwnersDatabase(dbSetup);
@@ -9375,6 +9633,33 @@ describe("owner deletion", () => {
     ]);
     assertEqual(countOwnerRows(setup, testDbAppOwner2.id), counts);
     assertEqual(setup.reportDefect.getDefects(), []);
+
+    // The SharedWorker's own deletion of an unused owner answers it too.
+    const sharedWorkerAttemptId = setup.createId();
+    assertEqual(
+      await postRequest(
+        setup,
+        {
+          type: "ForSharedWorker",
+          message: { type: "DeleteOwner", ownerId: testDbAppOwner2.id },
+        },
+        sharedWorkerAttemptId,
+      ),
+      [
+        {
+          type: "OnQueuedResponse",
+          attemptId: sharedWorkerAttemptId,
+          response: {
+            type: "ForSharedWorker",
+            message: {
+              type: "DeleteOwner",
+              result: err(createUnknownError(error)),
+            },
+          },
+        },
+      ],
+    );
+    assertEqual(countOwnerRows(setup, testDbAppOwner2.id), counts);
 
     const queryOutputs = await postRequest(setup, {
       type: "ForEvolu",

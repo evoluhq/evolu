@@ -229,6 +229,90 @@
  * it answers each deletion of one with its refusal, at once or when it is
  * refused.
  *
+ * {@link UseOwnerOptions.deleteWhenUnused} deletes an owner's rows once nothing
+ * uses the owner. In each tenant, the owner is Used while a registration of it
+ * exists in an instance, also in one still ending, whose registrations count
+ * and sync until it releases them, so a write it made still uploads. It is
+ * Unused while the delay after its last registrations lasts, Deleting while the
+ * deletion of its rows is queued and nothing uses it, and Idle otherwise. A
+ * Used owner, which can have a deletion queued too, is kept when a registration
+ * since it was last unused didn't ask for deleteWhenUnused or was readonly,
+ * because Evolu can't tell whether relays have the rows of a readonly one,
+ * which sends none, or when it lost a relay whose route was incomplete, which
+ * may lack its changes. Registrations end together in one run of removes of an
+ * instance's batch, as when the components of a screen unmount, or with their
+ * instance, as when a tab closes. An instance sends a change before any later
+ * release, so its upload keeps the routes incomplete until relays have it, and
+ * the removes of an owner between its other owner actions together after the
+ * last of them, so changes made among them come first and the registrations
+ * still end together. The states change as follows:
+ *
+ * - Used, registrations end together while another remains: their transports are
+ *   released at once, and the owner is kept when it thereby loses a relay whose
+ *   route is incomplete. A relay counts as lost when no remaining registration
+ *   of the owner in the database that acquired its transports syncs with it,
+ *   also when another database still does, whose end would keep nothing here.
+ * - Used, registrations end together in a run of removes whose batch registers
+ *   the owner again after it, as when a changed option or React's Strict Mode
+ *   mounts a component again: they end when that registration starts, which
+ *   takes their transports over until it claims its own, so a connection they
+ *   share stays open. When they were its last, what kept the owner ends with
+ *   them, as when its last registrations end otherwise. It is kept when it then
+ *   loses a relay whose route is incomplete, as when registrations end while
+ *   another remains.
+ * - Used, its last registrations end together: Unused, and the transports of all
+ *   of them stay claimed for 10 seconds, so the owner syncs on.
+ * - Used, its last registrations end together while the owner is kept, none of
+ *   them acquired its transports, or the database is refused, deleting or
+ *   ended: Idle, and their transports are released at once.
+ * - Used, its last registrations end together while its deletion is queued:
+ *   Deleting, and their transports are released at once, so a write they made
+ *   stays on the device until the owner is used again.
+ * - Unused, a registration starts: Used, and the registration takes every
+ *   transport over until it claims its own, so a connection they share stays
+ *   open. The owner is kept when it then loses a relay whose route is
+ *   incomplete, as when registrations end while another remains.
+ * - Unused, the delay ends while a registration of the owner waits for its turn:
+ *   the delay starts again, so the registration takes the transports over once
+ *   it starts. An ending instance's registration never starts, so it doesn't
+ *   count.
+ * - Unused, the delay ends otherwise: the transports are released. Deleting when
+ *   the database's DbWorker leads and every route of the owner is complete, so
+ *   every relay it syncs with has its changes. Otherwise Idle, and the rows
+ *   stay until the owner is used and unused again. The delay ends after the
+ *   messages an AppOwner's removal holds, so a registration among them counts.
+ * - Unused, {@link Evolu.deleteOwner} deletes the owner, the database is refused,
+ *   deleted or removed, or the tenant ends, as when its last tab closes: Idle,
+ *   and the transports are released. The delay lives in this worker's memory,
+ *   so the rows stay, unless that deletion deleted them.
+ * - Deleting, a registration starts: Used, with the deletion still queued, and
+ *   the registration syncs the owner again once the rows are gone.
+ * - Deleting, or Used with its deletion queued, the DbWorker deleted the rows, as
+ *   for {@link Evolu.deleteOwner}: a registration of an instance still ending
+ *   ends, as a remove of it would. Every instance refreshes its queries, and
+ *   none calls {@link EvoluConfig.onOwnerDeleted}, because nothing used the
+ *   owner when its deletion was queued. Used or Idle.
+ * - Deleting, or Used with its deletion queued, the deletion fails: every tab is
+ *   told, and the rows stay. Used or Idle.
+ * - Deleting, the database is refused, deleted or removed, or the tenant ends:
+ *   the deletion is dropped. Idle.
+ * - Idle, a registration starts: Used.
+ *
+ * While a deletion of the owner is queued, it holds the owner's frames and
+ * rounds as one by {@link Evolu.deleteOwner} does, and a replacement DbWorker
+ * runs it. A deletion or removal of the database also ends every registration
+ * of its instances, also of one still ending, so the ended database syncs
+ * nothing into a revived one.
+ *
+ * The delay is fixed at 10 seconds because it only has to cover a registration
+ * that ends and starts again: a component that unmounts and mounts again, a
+ * change of relays, or a quick return to a page. A longer or configurable
+ * delay, which nothing needs yet, would need more. It would outlast the app
+ * more often, so the database would have to store the pending deletion and
+ * finish it when it opens. That check has no transports to ask a relay, so it
+ * could delete only an owner the database recorded as fully sent. And its
+ * connections would have to be released, not held for minutes.
+ *
  * ## Synchronization routing
  *
  * WebSocket transports are shared resources keyed by their configuration and
@@ -269,8 +353,9 @@
  * ## Sync state
  *
  * The shared worker publishes one plain snapshot, {@link SyncState}, of every
- * transport it manages and every database it holds, with the owners its
- * instances registered and, for each writable owner, one route per transport
+ * transport it manages and every database it holds, with the owners it syncs,
+ * which its instances registered or which wait out their delay after their last
+ * use (see Deletion), and, for each writable owner, one route per transport
  * claimed for the owner by any database, as specified below. Each part is a
  * union of the states the worker keeps for it: a transport's connection, a
  * database that is active or refused, a writable or readonly owner, and a
@@ -464,6 +549,7 @@ import {
   emptyArray,
   firstInArray,
   isNonEmptyArray,
+  type NonEmptyArray,
   type NonEmptyReadonlyArray,
 } from "../Array.ts";
 import {
@@ -572,6 +658,7 @@ import type {
   EvoluErrorDep,
   LoadQueryOptions,
   SyncStateDep,
+  UseOwnerOptions,
 } from "./Evolu.ts";
 import {
   type Owner,
@@ -915,7 +1002,9 @@ export type SyncTenant = ActiveSyncTenant | RefusedSyncTenant;
 
 /**
  * A database that is not refused, including one still starting, with the owners
- * its instances registered.
+ * it syncs: those its instances registered, and those
+ * {@link UseOwnerOptions.deleteWhenUnused} keeps syncing for 10 seconds after
+ * their last use.
  */
 export interface ActiveSyncTenant extends Typed<"Active"> {
   readonly name: Name;
@@ -933,8 +1022,9 @@ export interface RefusedSyncTenant extends Typed<"Refused"> {
 }
 
 /**
- * An owner registered by any instance of an {@link ActiveSyncTenant}: `Writable`
- * when any registration holds its write key, otherwise `Readonly`.
+ * An owner an {@link ActiveSyncTenant} syncs: `Writable` when any registration
+ * holds its write key, also while {@link UseOwnerOptions.deleteWhenUnused} keeps
+ * syncing it after its last use, otherwise `Readonly`.
  */
 export type SyncTenantOwner = WritableSyncTenantOwner | ReadonlySyncTenantOwner;
 
@@ -1571,6 +1661,8 @@ export type EvoluInput =
              */
             readonly id: OwnerRegistrationId;
             readonly owner: SyncOwner;
+            /** See {@link UseOwnerOptions.deleteWhenUnused} and Deletion. */
+            readonly deleteWhenUnused: boolean;
           }
         | {
             /**
@@ -1764,6 +1856,15 @@ export type DbWorkerReadRequest =
             /** Whether a device database stores an AppOwner's row. */
             readonly type: "HasAppOwner";
             readonly ownerId: OwnerId;
+          }
+        | {
+            /**
+             * Deletes the rows of an owner nothing used for the delay of
+             * {@link UseOwnerOptions.deleteWhenUnused}, as
+             * {@link Evolu.deleteOwner} does; see Deletion.
+             */
+            readonly type: "DeleteOwner";
+            readonly ownerId: OwnerId;
           };
     };
 
@@ -1787,6 +1888,10 @@ type ForSharedWorkerReadMessage = ExtractTyped<
 // each nearly reaches its own limit, the deletion ends with DatabaseHeldError
 // though none did.
 const deleteDatabaseWithDbWorkerTimeout: PositiveDuration = "30s";
+
+// How long an owner waits, unused, for its deletion when its registrations
+// asked for UseOwnerOptions.deleteWhenUnused; see Deletion.
+const deleteWhenUnusedDelay: PositiveDuration = "10s";
 
 export type DbWorkerOutput =
   | {
@@ -1922,6 +2027,14 @@ export type DbWorkerQueuedResponse =
              */
             readonly type: "HasAppOwner";
             readonly result: Result<boolean, UnknownError>;
+          }
+        | {
+            /**
+             * The owner's rows were deleted in one transaction, or SQLite
+             * failed the deletion, which rolled back.
+             */
+            readonly type: "DeleteOwner";
+            readonly result: Result<void, UnknownError>;
           };
     };
 
@@ -3360,8 +3473,39 @@ const createEvoluTenant =
 
     interface OwnerRegistration {
       readonly syncOwner: SyncOwner;
-      /** Null while the registration's transports are acquired. */
-      lease: ClaimLease | null;
+      claim: OwnerRegistrationClaim;
+    }
+
+    type OwnerRegistrationClaim =
+      | {
+          readonly type: "Acquiring";
+          /**
+           * The transports of the registrations it replaced or of the unused
+           * owner it took over, claimed until it claims its own, so a
+           * connection they share stays open.
+           */
+          readonly takenOver: ReadonlyArray<ClaimLease>;
+          /**
+           * The relays of those transports whose routes a writable registration
+           * synced, so they tell what relays have. None when it took over only
+           * readonly registrations.
+           */
+          readonly takenOverKeys: ReadonlySet<StructuralLookupKey>;
+        }
+      | { readonly type: "Acquired"; readonly lease: ClaimLease };
+
+    /**
+     * An owner whose last registrations, which asked for
+     * {@link UseOwnerOptions.deleteWhenUnused}, ended together. It keeps their
+     * transports claimed until its deletion, a new registration, or the end of
+     * the database; see Deletion.
+     */
+    interface UnusedOwner {
+      readonly syncOwner: SyncOwner;
+      readonly leases: NonEmptyReadonlyArray<ClaimLease>;
+      /** The transports of the registrations whose transports it holds. */
+      readonly transportKeys: ReadonlySet<StructuralLookupKey>;
+      readonly timeoutId: TimeoutId;
     }
 
     const instancesById = disposer.adopt(
@@ -3412,6 +3556,11 @@ const createEvoluTenant =
           >;
           readonly source: ApplySyncMessageSource;
           capturedInputs?: CapturedWriteInputs;
+        }
+      | {
+          /** A deletion of an unused owner's rows; see Deletion. */
+          readonly type: "DeleteUnusedOwner";
+          readonly request: ForSharedWorkerReadRequest<"DeleteOwner">;
         }
       | {
           /**
@@ -3524,6 +3673,38 @@ const createEvoluTenant =
       Map<OwnerId, RouteState>
     >();
 
+    const unusedOwnersById = new Map<OwnerId, UnusedOwner>();
+    // The owners a registration without deleteWhenUnused, or a readonly one,
+    // used since they were last unused, or that lost a relay with an
+    // incomplete route meanwhile, which keeps them; see Deletion.
+    const keptOwnerIds = new Set<OwnerId>();
+    // Instances no longer listed that haven't released their registrations
+    // yet, because their end waits for a registration's transports.
+    const endingInstances = new Set<EvoluInstance>();
+
+    // Ends an unused owner's delay and returns it. Its transports stay claimed
+    // until the caller releases them.
+    const takeUnusedOwner = (ownerId: OwnerId): UnusedOwner | undefined => {
+      const unused = unusedOwnersById.get(ownerId);
+      if (!unused) return undefined;
+      unusedOwnersById.delete(ownerId);
+      deps.time.clearTimeout(unused.timeoutId);
+      return unused;
+    };
+
+    const endUnusedOwners = (): void => {
+      for (const ownerId of unusedOwnersById.keys())
+        for (const lease of takeUnusedOwner(ownerId)?.leases ?? [])
+          lease.release();
+    };
+
+    // Releases the transports a registration holds. One still acquiring its
+    // own releases them once acquired.
+    const releaseClaim = (claim: OwnerRegistrationClaim): void => {
+      if (claim.type === "Acquired") claim.lease.release();
+      else for (const lease of claim.takenOver) lease.release();
+    };
+
     // Disposal does not wait for the DbWorker. It holds the database lock
     // until Dispose arrives, its tab closes, or this worker ends, and the next
     // DbWorker for this database, of this worker or another build, waits for
@@ -3538,6 +3719,10 @@ const createEvoluTenant =
         dbWorker.port.postMessage({ type: "Dispose" });
       if (dbWorker.type !== "Refused" && dbWorker.type !== "Deleted")
         setDbWorker({ type: "Disposed" });
+      // In the step that enters `Disposed`, which starts no delay, so a
+      // registration released between disposal steps starts none that
+      // outlives the tenant.
+      endUnusedOwners();
       dropQueue(databaseEndedError);
     });
 
@@ -3765,14 +3950,18 @@ const createEvoluTenant =
                 case "HasAppOwner":
                 case "CreateSyncMessages":
                 case "ApplySyncMessage":
+                case "DeleteUnusedOwner":
                   // dropQueue answers a check with the refusal, and a refused
-                  // database syncs nothing.
+                  // database syncs nothing and keeps the unused owner's rows.
                   break;
                 default:
                   exhaustiveCheck(entry);
               }
             dropQueue(message.error);
             setDbWorker(refused);
+            // Nor does it delete an unused owner, so the delays end now, which
+            // releases their transports.
+            endUnusedOwners();
             deps.publishSyncState();
             // Once to each tab, through its own connection, also when it has
             // several instances of the database.
@@ -3811,6 +4000,7 @@ const createEvoluTenant =
               case "CreateSyncMessages":
               case "ApplySyncMessage":
               case "HasAppOwner":
+              case "DeleteUnusedOwner":
                 assertSame(response.type, "ForSharedWorker");
                 handleResponseForSharedWorker(response, entry);
                 break;
@@ -3823,14 +4013,20 @@ const createEvoluTenant =
             leading.activeDispatch = null;
             // The owner keeps syncing, and reconciles what its rounds
             // skipped while the deletion was queued, unless another deletion
-            // of it is queued.
-            if (
-              response.message.type === "DeleteOwnerFailed" &&
-              entry.type === "Read" &&
-              entry.request.message.type === "DeleteOwner"
-            )
+            // of it is queued. A deletion of an unused owner ends only an
+            // ending instance's registrations, so one made meanwhile syncs the
+            // owner again.
+            const reconciledOwnerId =
+              entry.type === "DeleteUnusedOwner"
+                ? entry.request.message.ownerId
+                : response.message.type === "DeleteOwnerFailed" &&
+                    entry.type === "Read" &&
+                    entry.request.message.type === "DeleteOwner"
+                  ? entry.request.message.ownerId
+                  : null;
+            if (reconciledOwnerId)
               requestCreateSyncMessages(
-                new Set([entry.request.message.ownerId]),
+                new Set([reconciledOwnerId]),
                 allTransports,
               );
             // Follow-up uploads and retries are already queued or sent. Only
@@ -3892,6 +4088,14 @@ const createEvoluTenant =
             );
           break;
 
+        case "DeleteUnusedOwner":
+          updatePendingCount(
+            pendingOwnerDeletionCountByOwnerId,
+            entry.request.message.ownerId,
+            delta,
+          );
+          break;
+
         case "CreateSyncMessages":
         case "HasAppOwner":
         case "DeleteDatabase":
@@ -3946,6 +4150,20 @@ const createEvoluTenant =
     // and disposed. A later instance revives the database.
     const endDatabase = (removed: boolean): void => {
       dropQueue(databaseEndedError);
+      // The ended database syncs no owner, so a revived one gets none of its
+      // rows: its registrations end, also those of an instance still ending,
+      // and its unused owners have no rows to delete. Its routes end with
+      // them, so a revived database starts its own. Its instances end after
+      // `Deleted`, which starts no delay.
+      for (const instance of [...instancesById.values(), ...endingInstances]) {
+        for (const { claim } of instance.ownerRegistrations.values())
+          releaseClaim(claim);
+        instance.ownerRegistrations.clear();
+        instance.ownerIdByQueuedRegistrationId.clear();
+      }
+      keptOwnerIds.clear();
+      endUnusedOwners();
+      deps.refreshAllSyncRoutes();
       setDbWorker({ type: "Deleted" });
       // No longer refused, also when no instance is left to publish it.
       deps.publishSyncState();
@@ -4194,20 +4412,18 @@ const createEvoluTenant =
         case "OwnerDeleted": {
           assertSame(first.message.type, "DeleteOwner");
           const { ownerId } = first.message;
-          // The owner stops syncing in every instance, so relays do not bring
-          // its rows back. A registration still acquiring its transports
-          // releases them once acquired, and one still waiting for its turn
-          // never starts.
-          for (const {
-            ownerRegistrations,
-            ownerIdByQueuedRegistrationId,
-          } of instancesById.values()) {
+          // The owner stops syncing in every instance, also an ending one, and
+          // a registration still waiting for its turn never starts.
+          for (const { ownerRegistrations, ownerIdByQueuedRegistrationId } of [
+            ...instancesById.values(),
+            ...endingInstances,
+          ]) {
             for (const [
               registrationId,
-              { syncOwner, lease },
+              { syncOwner, claim },
             ] of ownerRegistrations)
               if (syncOwner.owner.id === ownerId) {
-                lease?.release();
+                releaseClaim(claim);
                 ownerRegistrations.delete(registrationId);
               }
             for (const [
@@ -4217,6 +4433,10 @@ const createEvoluTenant =
               if (queuedOwnerId === ownerId)
                 ownerIdByQueuedRegistrationId.delete(registrationId);
           }
+          // So does an unused owner's delay, and the next use decides anew.
+          for (const lease of takeUnusedOwner(ownerId)?.leases ?? [])
+            lease.release();
+          keptOwnerIds.delete(ownerId);
           deps.refreshAllSyncRoutes();
           deps.publishSyncState();
           refreshQueries();
@@ -4256,17 +4476,22 @@ const createEvoluTenant =
           lastReceivedAt: null,
         }));
 
+    // The owners the tenant syncs: those of every instance's registrations,
+    // also an ending instance's until it releases them, and the unused ones,
+    // which sync until their deletion; see Deletion. So a route completes only
+    // once its relay has the writes, and an owner whose delay the release
+    // starts keeps a complete route.
     const getSyncOwners = () => {
       const ownersById = new Map<OwnerId, { writable: boolean }>();
-      for (const instance of instancesById.values()) {
-        for (const {
-          syncOwner: { owner },
-        } of instance.ownerRegistrations.values()) {
-          const entry = ownersById.get(owner.id) ?? { writable: false };
-          entry.writable ||= "writeKey" in owner;
-          ownersById.set(owner.id, entry);
-        }
-      }
+      const add = ({ owner }: SyncOwner): void => {
+        const entry = ownersById.get(owner.id) ?? { writable: false };
+        entry.writable ||= "writeKey" in owner;
+        ownersById.set(owner.id, entry);
+      };
+      for (const instance of [...instancesById.values(), ...endingInstances])
+        for (const { syncOwner } of instance.ownerRegistrations.values())
+          add(syncOwner);
+      for (const { syncOwner } of unusedOwnersById.values()) add(syncOwner);
       return [...ownersById].map(([ownerId, { writable }]) => ({
         ownerId,
         writable,
@@ -4343,10 +4568,44 @@ const createEvoluTenant =
       response: ExtractTyped<DbWorkerQueuedResponse, "ForSharedWorker">,
       entry: ExtractTyped<
         QueueEntry,
-        "CreateSyncMessages" | "ApplySyncMessage" | "HasAppOwner"
+        | "CreateSyncMessages"
+        | "ApplySyncMessage"
+        | "HasAppOwner"
+        | "DeleteUnusedOwner"
       >,
     ): void => {
       switch (entry.type) {
+        case "DeleteUnusedOwner": {
+          assertSame(response.message.type, "DeleteOwner");
+          const { result } = response.message;
+          // Nothing awaits it, so a failure is reported to every tab, as a
+          // write of a disposed instance is, and the rows stay.
+          if (!result.ok) {
+            deps.postConsoleEntryOrError({
+              type: "Error",
+              error: result.error,
+            });
+            break;
+          }
+          const { ownerId } = entry.request.message;
+          // An ending instance's registrations end as removes of them would,
+          // so they sync nothing back, and the owner is kept when it loses a
+          // relay whose route is incomplete.
+          const ended: Array<OwnerRegistration> = [];
+          for (const { ownerRegistrations } of endingInstances)
+            for (const [registrationId, registration] of ownerRegistrations)
+              if (registration.syncOwner.owner.id === ownerId) {
+                ownerRegistrations.delete(registrationId);
+                ended.push(registration);
+              }
+          releaseRegistrations(ended);
+          deps.refreshAllSyncRoutes();
+          deps.publishSyncState();
+          // Nothing used the owner when its deletion was queued, so no instance
+          // is told; see Deletion.
+          refreshQueries();
+          break;
+        }
         case "HasAppOwner":
           assertSame(response.message.type, "HasAppOwner");
           entry.onAnswer(response.message.result);
@@ -4640,14 +4899,15 @@ const createEvoluTenant =
       ownerIds: ReadonlySet<OwnerId>,
     ): ReadonlyMap<OwnerId, Owner> => {
       const ownersById = new Map<OwnerId, Owner>();
-      for (const instance of instancesById.values()) {
-        for (const {
-          syncOwner: { owner },
-        } of instance.ownerRegistrations.values()) {
-          if (!ownerIds.has(owner.id) || !("writeKey" in owner)) continue;
+      const add = ({ owner }: SyncOwner): void => {
+        if (ownerIds.has(owner.id) && "writeKey" in owner)
           ownersById.set(owner.id, owner);
-        }
-      }
+      };
+      for (const instance of [...instancesById.values(), ...endingInstances])
+        for (const { syncOwner } of instance.ownerRegistrations.values())
+          add(syncOwner);
+      // An unused owner syncs until its deletion; see Deletion.
+      for (const { syncOwner } of unusedOwnersById.values()) add(syncOwner);
       return ownersById;
     };
 
@@ -4747,74 +5007,350 @@ const createEvoluTenant =
       runQueue();
     };
 
-    const toggleSyncOwner =
+    const isOwnerRegistered = (ownerId: OwnerId): boolean =>
+      [...instancesById.values(), ...endingInstances].some(
+        ({ ownerRegistrations }) =>
+          [...ownerRegistrations.values()].some(
+            ({ syncOwner }) => syncOwner.owner.id === ownerId,
+          ),
+      );
+
+    // Whether the owner, still registered, loses a relay whose route is
+    // incomplete, which may lack its changes, when it stops syncing through
+    // the transports of `keys`. A relay counts as lost when no registration
+    // of the owner in the database that acquired its transports syncs with
+    // it, because one still acquiring them may fail. Another database syncing
+    // with the relay doesn't count, because its end keeps nothing here.
+    const losesIncompleteRoute = (
+      ownerId: OwnerId,
+      keys: Iterable<StructuralLookupKey>,
+    ): boolean => {
+      refreshSyncRoutes();
+      const keptKeys = new Set(
+        [...instancesById.values(), ...endingInstances].flatMap(
+          ({ ownerRegistrations }) =>
+            [...ownerRegistrations.values()].flatMap(({ syncOwner, claim }) =>
+              syncOwner.owner.id === ownerId && claim.type === "Acquired"
+                ? syncOwner.transports.map(structuralLookup)
+                : [],
+            ),
+        ),
+      );
+      return [...keys].some(
+        (key) =>
+          !keptKeys.has(key) &&
+          routesByOwnerIdByKey.get(key)?.get(ownerId)?.progress.type !==
+            "Complete",
+      );
+    };
+
+    // Ends registrations their instances no longer hold, other than by the
+    // owner's deletion, which ended together: in one run of removes of a batch,
+    // with their instance, or by a failed claim. When every registration since
+    // the owner was last unused asked for deleteWhenUnused and none is left,
+    // the transports of those of an owner stay claimed for the delay; see
+    // Deletion. A registration waiting for its turn doesn't keep the use going,
+    // so it takes the transports over when it starts.
+    const releaseRegistrations = (
+      registrations: ReadonlyArray<OwnerRegistration>,
+    ): void => {
+      const registrationsByOwnerId = new Map<
+        OwnerId,
+        NonEmptyArray<OwnerRegistration>
+      >();
+      for (const registration of registrations) {
+        const ownerId = registration.syncOwner.owner.id;
+        const owned = registrationsByOwnerId.get(ownerId);
+        if (owned) owned.push(registration);
+        else registrationsByOwnerId.set(ownerId, [registration]);
+      }
+      // A route refresh drops the routes of an owner neither used nor unused,
+      // so every owner the registrations leave unused starts its delay before
+      // the lost relays are checked and the claims released, which refresh
+      // routes, or its complete routes would start over.
+      const stillUsed: Array<{
+        readonly ownerId: OwnerId;
+        readonly transportKeys: ReadonlySet<StructuralLookupKey>;
+      }> = [];
+      const claims: Array<OwnerRegistrationClaim> = [];
+      for (const [ownerId, owned] of registrationsByOwnerId) {
+        const acquired = owned.flatMap(({ syncOwner, claim }) =>
+          claim.type === "Acquired" ? [{ syncOwner, lease: claim.lease }] : [],
+        );
+        // The relays they sync with: those of an acquired registration, and
+        // those one still acquiring its own transports took over.
+        const transportKeys = new Set(
+          owned.flatMap(({ syncOwner, claim }) =>
+            claim.type === "Acquired"
+              ? syncOwner.transports.map(structuralLookup)
+              : [...claim.takenOverKeys],
+          ),
+        );
+        if (isOwnerRegistered(ownerId)) {
+          stillUsed.push({ ownerId, transportKeys });
+          for (const { claim } of owned) claims.push(claim);
+          continue;
+        }
+        const leases = acquired.map(({ lease }) => lease);
+        // The kept flag ends with the owner's last registration. A deletion
+        // of the owner already queued deletes its rows, and the reconcile
+        // after it would download them again for a delay. A write the
+        // registrations made stays on the device until the owner is used
+        // again, as a write of an owner nothing syncs does.
+        if (
+          keptOwnerIds.delete(ownerId) ||
+          pendingOwnerDeletionCountByOwnerId.has(ownerId) ||
+          !isNonEmptyArray(leases) ||
+          !isOpenableDbWorker(dbWorker)
+        ) {
+          for (const { claim } of owned) claims.push(claim);
+          continue;
+        }
+        // A run of removes and an instance's end both end acquired
+        // registrations, and a failed claim leaves no lease.
+        assert(
+          leases.length === owned.length,
+          "Only acquired registrations start a delay.",
+        );
+        startUnusedOwnerDelay(ownerId, {
+          syncOwner: owned[0].syncOwner,
+          leases,
+          transportKeys,
+        });
+      }
+      // An owner that stays used is kept when it loses a relay whose route is
+      // incomplete.
+      for (const { ownerId, transportKeys } of stillUsed)
+        if (losesIncompleteRoute(ownerId, transportKeys))
+          keptOwnerIds.add(ownerId);
+      for (const claim of claims) releaseClaim(claim);
+    };
+
+    // Starts the delay of an unused owner; see Deletion. It ends after the
+    // messages a removal holds, so a registration received within it counts.
+    // A registration of the owner waiting for its turn, such as behind another
+    // registration's transports, starts it again, so the registration takes
+    // the transports over once it starts; an ending instance's never starts.
+    // Otherwise the rows are deleted when the DbWorker leads and every relay
+    // the owner syncs with has its changes, which its complete routes tell,
+    // and stay otherwise.
+    const startUnusedOwnerDelay = (
+      ownerId: OwnerId,
+      { syncOwner, leases, transportKeys }: Omit<UnusedOwner, "timeoutId">,
+    ): void => {
+      const unused: UnusedOwner = {
+        syncOwner,
+        leases,
+        transportKeys,
+        timeoutId: deps.time.setTimeout(() => {
+          deps.removals.whenNotRemoving(() => {
+            if (unusedOwnersById.get(ownerId) !== unused) return;
+            if (
+              [...instancesById.values()].some(
+                ({ ownerIdByQueuedRegistrationId }) =>
+                  [...ownerIdByQueuedRegistrationId.values()].includes(ownerId),
+              )
+            ) {
+              startUnusedOwnerDelay(ownerId, unused);
+              return;
+            }
+            refreshSyncRoutes();
+            const keys = getClaimedKeys(ownerId);
+            const isOnRelays =
+              dbWorker.type === "Leading" &&
+              keys.length > 0 &&
+              keys.every(
+                (key) =>
+                  routesByOwnerIdByKey.get(key)?.get(ownerId)?.progress.type ===
+                  "Complete",
+              );
+            unusedOwnersById.delete(ownerId);
+            if (isOnRelays)
+              enqueueRequest({
+                type: "DeleteUnusedOwner",
+                request: {
+                  type: "ForSharedWorker",
+                  message: { type: "DeleteOwner", ownerId },
+                },
+              });
+            for (const lease of unused.leases) lease.release();
+            deps.refreshAllSyncRoutes();
+            deps.publishSyncState();
+            runQueue();
+          });
+        }, deleteWhenUnusedDelay),
+      };
+      unusedOwnersById.set(ownerId, unused);
+    };
+
+    // Starts a registration. The registrations of the instance it replaces,
+    // which a run of removes before it in the batch ended, end now, and it
+    // takes their transports over; see Deletion.
+    const addRegistration =
       (
         instance: EvoluInstance,
-        action: Exclude<
+        action: Extract<
           ExtractTyped<EvoluInput, "UseOwner">["actions"][number],
-          { readonly action: "sync" }
+          { readonly action: "add" }
         >,
+        replacedIds: ReadonlyArray<OwnerRegistrationId>,
       ): Task<void, never, EvoluTenantDeps> =>
       async (run) => {
-        if (action.action === "add") {
-          const { id, owner: syncOwner } = action;
-          // The owner's deletion ended it before its turn.
-          if (!instance.ownerIdByQueuedRegistrationId.delete(id)) return ok();
-          const ownerId = syncOwner.owner.id;
-          const isFirstWritableUse =
+        const { id, owner: syncOwner, deleteWhenUnused } = action;
+        // The owner's deletion ended it before its turn, and those it
+        // replaces.
+        if (!instance.ownerIdByQueuedRegistrationId.delete(id)) return ok();
+        const ownerId = syncOwner.owner.id;
+        const replaced = replacedIds.map((replacedId) => {
+          const replacedRegistration =
+            instance.ownerRegistrations.get(replacedId);
+          assert(
+            replacedRegistration?.claim.type === "Acquired",
+            "The instance's actions run in order, so its add has ended.",
+          );
+          instance.ownerRegistrations.delete(replacedId);
+          return {
+            syncOwner: replacedRegistration.syncOwner,
+            lease: replacedRegistration.claim.lease,
+          };
+        });
+        // The kept flag ends with the owner's last registrations, also when a
+        // registration replaces them.
+        if (isNonEmptyArray(replaced) && !isOwnerRegistered(ownerId))
+          keptOwnerIds.delete(ownerId);
+        // A transport first claimed for the owner starts every tenant's
+        // round through onFirstClaimAdded. A tenant's first writable
+        // registration reconciles its existing history through the
+        // transports already claimed for the owner. Later writes upload
+        // through every claimed transport, whichever instance made them, so
+        // later registrations need no round.
+        const claimedKeys = getClaimedKeys(ownerId);
+        const unused = takeUnusedOwner(ownerId);
+        let isFirstWritableUse = false;
+        // An unused owner has no registration, and replaced ones are
+        // registrations, so it takes over one or the other.
+        const takenOver = [
+          ...(unused?.leases ?? []),
+          ...replaced.map(({ lease }) => lease),
+        ];
+        // Also of a replaced readonly registration beside a writable one,
+        // because the owner's routes are those of every transport claimed for
+        // it while a registration of it is writable. Not of replaced readonly
+        // ones while another writable registration remains: they kept the
+        // owner, which stays kept while that one does, so their relays need no
+        // judgment. If that one ends before this one acquires its transports,
+        // the next writable use reconciles once more through relays that
+        // already have the changes.
+        const takenOverKeys = new Set(
+          unused
+            ? unused.transportKeys
+            : replaced.some(({ syncOwner }) => "writeKey" in syncOwner.owner)
+              ? replaced.flatMap(({ syncOwner }) =>
+                  syncOwner.transports.map(structuralLookup),
+                )
+              : [],
+        );
+        const registration: OwnerRegistration = {
+          syncOwner,
+          claim: { type: "Acquiring", takenOver, takenOverKeys },
+        };
+        // Evolu can't tell whether relays have the rows of a readonly
+        // registration, which sends none, so it keeps them.
+        if (!deleteWhenUnused || !("writeKey" in syncOwner.owner))
+          keptOwnerIds.add(ownerId);
+        // First-claim callbacks must see the owner before acquisition finishes.
+        instance.ownerRegistrations.set(id, registration);
+        refreshSyncRoutes();
+        try {
+          const lease = await run.ok(
+            deps.transports.claim(ownerId, syncOwner.transports),
+          );
+          // The owner's deletion can end the registration while its
+          // transports are acquired, which then releases them at once and
+          // starts no round.
+          if (instance.ownerRegistrations.get(id) !== registration) {
+            lease.release();
+            deps.publishSyncState();
+            return ok();
+          }
+          registration.claim = { type: "Acquired", lease };
+          // Decided once acquired, because a writable registration still
+          // acquiring its transports may fail. It's not the first use when it
+          // or another writable registration took over routes, as of an unused
+          // owner, which still syncs, or when another acquired its own.
+          isFirstWritableUse =
             "writeKey" in syncOwner.owner &&
-            !getUsedOwnersById(new Set([ownerId])).has(ownerId);
-          // A transport first claimed for the owner starts every tenant's
-          // round through onFirstClaimAdded. A tenant's first writable
-          // registration reconciles its existing history through the
-          // transports already claimed for the owner. Later writes upload
-          // through every claimed transport, whichever instance made them, so
-          // later registrations need no round.
-          const claimedKeys = getClaimedKeys(ownerId);
-          const registration: OwnerRegistration = { syncOwner, lease: null };
-          // First-claim callbacks must see the owner before acquisition finishes.
-          instance.ownerRegistrations.set(id, registration);
-          refreshSyncRoutes();
-          try {
-            const lease = await run.ok(
-              deps.transports.claim(ownerId, syncOwner.transports),
+            takenOverKeys.size === 0 &&
+            ![...instancesById.values(), ...endingInstances].some(
+              ({ ownerRegistrations }) =>
+                [...ownerRegistrations.values()].some(
+                  (other) =>
+                    other !== registration &&
+                    (other.claim.type === "Acquired" ||
+                      other.claim.takenOverKeys.size > 0) &&
+                    other.syncOwner.owner.id === ownerId &&
+                    "writeKey" in other.syncOwner.owner,
+                ),
             );
-            // The owner's deletion can end the registration while its
-            // transports are acquired, which then releases them at once and
-            // starts no round.
-            if (instance.ownerRegistrations.get(id) !== registration) {
-              lease.release();
-              deps.publishSyncState();
-              return ok();
-            }
-            registration.lease = lease;
-          } finally {
+        } finally {
+          const isCurrent =
+            instance.ownerRegistrations.get(id) === registration;
+          if (isCurrent && registration.claim.type === "Acquiring") {
+            // A failed claim ends the registration while it still holds the
+            // transports it took over, so their relays count as when
+            // registrations end.
+            instance.ownerRegistrations.delete(id);
+            releaseRegistrations([registration]);
+            deps.refreshAllSyncRoutes();
+            // It throws past the publish below.
+            deps.publishSyncState();
+          } else {
+            // As when registrations end while another remains, the owner is
+            // kept when it loses a relay whose transports it took over and
+            // whose route is incomplete.
             if (
-              registration.lease === null &&
-              instance.ownerRegistrations.get(id) === registration
+              isCurrent &&
+              takenOverKeys.size > 0 &&
+              losesIncompleteRoute(ownerId, takenOverKeys)
             )
-              instance.ownerRegistrations.delete(id);
+              keptOwnerIds.add(ownerId);
+            for (const lease of takenOver) lease.release();
             deps.refreshAllSyncRoutes();
           }
-          if (isFirstWritableUse)
-            for (const key of claimedKeys)
-              requestCreateSyncMessages(new Set([ownerId]), {
-                type: "Transport",
-                key,
-              });
-        } else {
-          const registration = instance.ownerRegistrations.get(action.id);
-          // The owner's deletion ended it.
-          if (!registration) return ok();
-          // The instance's actions run in order, so its add has ended.
-          assertNonNullable(registration.lease);
-          registration.lease.release();
-          instance.ownerRegistrations.delete(action.id);
         }
+        if (isFirstWritableUse)
+          for (const key of claimedKeys)
+            requestCreateSyncMessages(new Set([ownerId]), {
+              type: "Transport",
+              key,
+            });
         deps.refreshAllSyncRoutes();
         deps.publishSyncState();
         return ok();
       };
+
+    // Ends the registrations of a run of removes in an instance's batch, which
+    // end together; see Deletion.
+    const removeRegistrations = (
+      instance: EvoluInstance,
+      ids: ReadonlyArray<OwnerRegistrationId>,
+    ): void => {
+      const registrations: Array<OwnerRegistration> = [];
+      for (const id of ids) {
+        const registration = instance.ownerRegistrations.get(id);
+        // The owner's deletion ended it.
+        if (!registration) continue;
+        assert(
+          registration.claim.type === "Acquired",
+          "The instance's actions run in order, so its add has ended.",
+        );
+        instance.ownerRegistrations.delete(id);
+        registrations.push(registration);
+      }
+      releaseRegistrations(registrations);
+      deps.refreshAllSyncRoutes();
+      deps.publishSyncState();
+    };
 
     const hasAppOwner: EvoluTenant["hasAppOwner"] = (ownerId) =>
       callback(({ resolve }) => {
@@ -4978,9 +5514,11 @@ const createEvoluTenant =
           });
 
           disposer.defer(() => {
-            for (const { lease } of instance.ownerRegistrations.values())
-              lease?.release();
+            // Together, as a run of removes would, also when its tab closes.
+            const registrations = [...instance.ownerRegistrations.values()];
             instance.ownerRegistrations.clear();
+            releaseRegistrations(registrations);
+            endingInstances.delete(instance);
             deps.refreshAllSyncRoutes();
             deps.publishSyncState();
           });
@@ -4991,9 +5529,12 @@ const createEvoluTenant =
           const instanceRun = disposer.use(tenantRun.create());
           const useOwnerMutex = createMutex();
 
+          // Routes are refreshed once the registrations are released, so an
+          // owner whose delay the release starts keeps its routes. Until then,
+          // its registrations still count; see releaseRegistrations.
           disposer.defer(() => {
             instancesById.delete(instance.id);
-            refreshSyncRoutes();
+            endingInstances.add(instance);
             console.debug("evoluDispose", { name, id: instance.id });
           });
           disposer.use(instance.port);
@@ -5133,7 +5674,20 @@ const createEvoluTenant =
                       );
                   void instanceRun(
                     useOwnerMutex.withLock(async (run) => {
-                      for (const action of message.actions) {
+                      const { actions } = message;
+                      const replacedIdsByOwnerId = new Map<
+                        OwnerId,
+                        Array<OwnerRegistrationId>
+                      >();
+                      // The rest of the batch of an instance that ends, whose
+                      // Run is aborted, doesn't run, so its registrations end
+                      // together with it.
+                      for (
+                        let index = 0;
+                        index < actions.length && !run.signal.aborted;
+                        index++
+                      ) {
+                        const action = actions[index];
                         switch (action.action) {
                           case "sync":
                             console.debug("requestSync", {
@@ -5145,26 +5699,81 @@ const createEvoluTenant =
                               allTransports,
                             );
                             break;
-                          case "add":
+                          case "add": {
+                            const ownerId = action.owner.owner.id;
                             console.debug("useOwner", {
                               id: instance.id,
                               action: action.action,
                               registrationId: action.id,
-                              ownerId: action.owner.owner.id,
+                              ownerId,
                               transportUrls: action.owner.transports.map(
                                 ({ url }) => url,
                               ),
                             });
-                            await run(toggleSyncOwner(instance, action));
+                            const replacedIds =
+                              replacedIdsByOwnerId.get(ownerId) ?? [];
+                            replacedIdsByOwnerId.delete(ownerId);
+                            // A claim that aborts, such as a socket creation
+                            // that observes an abort, ends only its
+                            // registration, not the rest of the batch.
+                            await run.abortable(
+                              addRegistration(instance, action, replacedIds),
+                            );
                             break;
-                          case "remove":
+                          }
+                          case "remove": {
+                            // A run of removes, such as of the components of
+                            // one screen, ends together.
+                            const ids = [action.id];
+                            for (
+                              let next = actions[index + 1];
+                              next?.action === "remove";
+                              next = actions[index + 1]
+                            ) {
+                              ids.push(next.id);
+                              index++;
+                            }
                             console.debug("useOwner", {
                               id: instance.id,
                               action: action.action,
-                              registrationId: action.id,
+                              registrationIds: ids,
                             });
-                            await run(toggleSyncOwner(instance, action));
+                            // Those of an owner that the rest of the batch
+                            // registers again, as a component mounted again by
+                            // a changed option or React's Strict Mode, end
+                            // when that registration starts. A sync of the
+                            // owner between them, which comes after the removes
+                            // in call order, sees them ended.
+                            const ending: Array<OwnerRegistrationId> = [];
+                            for (const id of ids) {
+                              const ownerId =
+                                instance.ownerRegistrations.get(id)?.syncOwner
+                                  .owner.id;
+                              const nextOfOwner = actions
+                                .slice(index + 1)
+                                .find(
+                                  (next) =>
+                                    (next.action === "add" &&
+                                      next.owner.owner.id === ownerId) ||
+                                    (next.action === "sync" &&
+                                      next.ownerId === ownerId),
+                                );
+                              if (
+                                ownerId === undefined ||
+                                nextOfOwner?.action !== "add"
+                              )
+                                ending.push(id);
+                              else {
+                                const replacedIds =
+                                  replacedIdsByOwnerId.get(ownerId);
+                                if (replacedIds) replacedIds.push(id);
+                                else replacedIdsByOwnerId.set(ownerId, [id]);
+                              }
+                            }
+                            if (isNonEmptyArray(ending))
+                              removeRegistrations(instance, ending);
                             break;
+                          }
                           default:
                             exhaustiveCheck(action);
                         }

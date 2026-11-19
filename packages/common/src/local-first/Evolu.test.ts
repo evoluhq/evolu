@@ -1988,7 +1988,9 @@ describe("Evolu", () => {
       await testWaitForWorkerMessage();
       assertTrue(setup.evoluInputs.some((input) => input.type === "Mutate"));
       assertFalse(setup.evoluInputs.some((input) => input.type === "UseOwner"));
-      const unuseOwner = evolu.useOwner(testAppOwner, [testOwnerTransport]);
+      const unuseOwner = evolu.useOwner(testAppOwner, {
+        transports: [testOwnerTransport],
+      });
       await testWaitForWorkerMessage();
       assertTrue(setup.evoluInputs.some((input) => input.type === "UseOwner"));
       unuseOwner();
@@ -2021,6 +2023,7 @@ describe("Evolu", () => {
       assertEqual(input.actions, [
         {
           action: "add",
+          deleteWhenUnused: false,
           id,
           owner: {
             owner: testPostedAppOwner,
@@ -2179,7 +2182,9 @@ describe("Evolu", () => {
         };
         assertNotSame(sharedOwner.id, evolu.appOwner.id);
 
-        const unuse = evolu.useOwner(sharedOwner, [testOwnerTransport]);
+        const unuse = evolu.useOwner(sharedOwner, {
+          transports: [testOwnerTransport],
+        });
         const result = evolu.requestSync(sharedOwner.id);
         assertType<typeof result, void>();
         assertSame(result, undefined);
@@ -2192,18 +2197,12 @@ describe("Evolu", () => {
         assertEqual(evoluInputs, [
           {
             type: "UseOwner",
-            actions: [{ action: "add", id, owner }],
-          },
-          {
-            type: "UseOwner",
             actions: [
+              { action: "add", deleteWhenUnused: false, id, owner },
               { action: "sync", ownerId: sharedOwner.id },
               { action: "remove", id },
+              { action: "sync", ownerId: sharedOwner.id },
             ],
-          },
-          {
-            type: "UseOwner",
-            actions: [{ action: "sync", ownerId: sharedOwner.id }],
           },
         ]);
       });
@@ -2222,7 +2221,7 @@ describe("Evolu", () => {
         await using setup = await setupRunWithEvoluDeps();
         const { run, evoluInputs } = setup;
         const evolu = await run.ok(testCreateEvolu);
-        evolu.useOwner(testAppOwner, [testOwnerTransport]);
+        evolu.useOwner(testAppOwner, { transports: [testOwnerTransport] });
         evolu.insert("todo", {
           title: NonEmptyTrimmedString100.orThrow("Before sync"),
         });
@@ -2231,6 +2230,427 @@ describe("Evolu", () => {
         assertEqual(
           evoluInputs.map(({ type }) => type),
           ["UseOwner", "Mutate", "UseOwner"],
+        );
+      });
+    });
+
+    describe("owner actions and changes", () => {
+      it("sends an owner's release after a change made before it, also when an earlier owner action in the same tick was queued first", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const unuseOwner = evolu.useOwner(testSharedOwner, {
+          transports: [testOwnerTransport],
+        });
+        await testWaitForWorkerMessage();
+        evoluInputs.length = 0;
+
+        evolu.useOwner(testAppOwner, { transports: [testOwnerTransport] });
+        evolu.insert(
+          "todo",
+          { title: NonEmptyTrimmedString100.orThrow("Last") },
+          { owner: testSharedOwner },
+        );
+        unuseOwner();
+        await testWaitForWorkerMessage();
+
+        assertEqual(
+          evoluInputs.map((input) =>
+            input.type === "UseOwner"
+              ? input.actions.map(({ action }) => action)
+              : input.type,
+          ),
+          [["add"], "Mutate", ["remove"]],
+        );
+      });
+
+      it("sends the removes of a tick in one message after a change made between them, so they end together", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const unuseFirst = evolu.useOwner(testSharedOwner, {
+          transports: [testOwnerTransport],
+        });
+        const unuseSecond = evolu.useOwner(testSharedOwner, {
+          transports: [testOwnerTransport],
+        });
+        await testWaitForWorkerMessage();
+        evoluInputs.length = 0;
+
+        unuseFirst();
+        evolu.insert(
+          "todo",
+          { title: NonEmptyTrimmedString100.orThrow("Between") },
+          { owner: testSharedOwner },
+        );
+        unuseSecond();
+        await testWaitForWorkerMessage();
+
+        assertEqual(
+          evoluInputs.map((input) =>
+            input.type === "UseOwner"
+              ? input.actions.map(({ action }) => action)
+              : input.type,
+          ),
+          ["Mutate", ["remove", "remove"]],
+        );
+      });
+
+      it("sends the removes of a tick in one message after a change made between them also after another owner action", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const unuseFirst = evolu.useOwner(testSharedOwner, {
+          transports: [testOwnerTransport],
+        });
+        const unuseSecond = evolu.useOwner(testSharedOwner, {
+          transports: [testOwnerTransport],
+        });
+        await testWaitForWorkerMessage();
+        evoluInputs.length = 0;
+
+        evolu.useOwner(testAppOwner, { transports: [testOwnerTransport] });
+        unuseFirst();
+        evolu.insert(
+          "todo",
+          { title: NonEmptyTrimmedString100.orThrow("Between") },
+          { owner: testSharedOwner },
+        );
+        unuseSecond();
+        await testWaitForWorkerMessage();
+
+        assertEqual(
+          evoluInputs.map((input) =>
+            input.type === "UseOwner"
+              ? input.actions.map(({ action }) => action)
+              : input.type,
+          ),
+          [["add"], "Mutate", ["remove", "remove"]],
+        );
+      });
+
+      it("sends a release before a change made after it when no remove follows", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const unuseOwner = evolu.useOwner(testSharedOwner, {
+          transports: [testOwnerTransport],
+        });
+        await testWaitForWorkerMessage();
+        evoluInputs.length = 0;
+
+        unuseOwner();
+        evolu.insert(
+          "todo",
+          { title: NonEmptyTrimmedString100.orThrow("After") },
+          { owner: testSharedOwner },
+        );
+        await testWaitForWorkerMessage();
+
+        assertEqual(
+          evoluInputs.map((input) =>
+            input.type === "UseOwner"
+              ? input.actions.map(({ action }) => action)
+              : input.type,
+          ),
+          [["remove"], "Mutate"],
+        );
+      });
+
+      it("sends a release before a change made after it when only another owner's remove follows", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const unuseShared = evolu.useOwner(testSharedOwner, {
+          transports: [testOwnerTransport],
+        });
+        const unuseApp = evolu.useOwner(testAppOwner, {
+          transports: [testOwnerTransport],
+        });
+        await testWaitForWorkerMessage();
+        evoluInputs.length = 0;
+
+        unuseShared();
+        evolu.insert(
+          "todo",
+          { title: NonEmptyTrimmedString100.orThrow("After") },
+          { owner: testSharedOwner },
+        );
+        unuseApp();
+        await testWaitForWorkerMessage();
+
+        assertEqual(
+          evoluInputs.map((input) =>
+            input.type === "UseOwner"
+              ? input.actions.map(({ action }) => action)
+              : input.type,
+          ),
+          [["remove"], "Mutate", ["remove"]],
+        );
+      });
+
+      it("sends a release before a change made after it when another owner action follows", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const unuseOwner = evolu.useOwner(testSharedOwner, {
+          transports: [testOwnerTransport],
+        });
+        await testWaitForWorkerMessage();
+        evoluInputs.length = 0;
+
+        unuseOwner();
+        evolu.insert(
+          "todo",
+          { title: NonEmptyTrimmedString100.orThrow("After") },
+          { owner: testSharedOwner },
+        );
+        evolu.requestSync(testSharedOwner.id);
+        await testWaitForWorkerMessage();
+
+        assertEqual(
+          evoluInputs.map((input) =>
+            input.type === "UseOwner"
+              ? input.actions.map(({ action }) => action)
+              : input.type,
+          ),
+          [["remove"], "Mutate", ["sync"]],
+        );
+      });
+
+      it("sends the removes of an owner together after a change and another owner's action between them", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const unuseFirst = evolu.useOwner(testSharedOwner, {
+          transports: [testOwnerTransport],
+        });
+        const unuseSecond = evolu.useOwner(testSharedOwner, {
+          transports: [testOwnerTransport],
+        });
+        await testWaitForWorkerMessage();
+        evoluInputs.length = 0;
+
+        unuseFirst();
+        evolu.insert(
+          "todo",
+          { title: NonEmptyTrimmedString100.orThrow("Between") },
+          { owner: testSharedOwner },
+        );
+        evolu.requestSync(testAppOwner.id);
+        unuseSecond();
+        await testWaitForWorkerMessage();
+
+        assertEqual(
+          evoluInputs.map((input) =>
+            input.type === "UseOwner"
+              ? input.actions.map(({ action }) => action)
+              : input.type,
+          ),
+          ["Mutate", ["sync", "remove", "remove"]],
+        );
+      });
+
+      it("sends the removes of an owner around its own action between them in call order", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const unuseFirst = evolu.useOwner(testSharedOwner, {
+          transports: [testOwnerTransport],
+        });
+        const unuseSecond = evolu.useOwner(testSharedOwner, {
+          transports: [testOwnerTransport],
+        });
+        await testWaitForWorkerMessage();
+        evoluInputs.length = 0;
+
+        unuseFirst();
+        evolu.requestSync(testSharedOwner.id);
+        unuseSecond();
+        await testWaitForWorkerMessage();
+
+        assertEqual(
+          evoluInputs.map((input) =>
+            input.type === "UseOwner"
+              ? input.actions.map(({ action }) => action)
+              : input.type,
+          ),
+          [["remove", "sync", "remove"]],
+        );
+      });
+
+      it("sends a release before a change made after it when a registration of the owner follows the change, and that registration with the owner's next release", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const unuseFirst = evolu.useOwner(testSharedOwner, {
+          transports: [testOwnerTransport],
+        });
+        const unuseSecond = evolu.useOwner(testSharedOwner, {
+          transports: [testOwnerTransport],
+        });
+        await testWaitForWorkerMessage();
+        const [firstId, secondId] = getRegistrationIds(evoluInputs);
+        evoluInputs.length = 0;
+
+        unuseFirst();
+        evolu.insert(
+          "todo",
+          { title: NonEmptyTrimmedString100.orThrow("Between") },
+          { owner: testSharedOwner },
+        );
+        evolu.useOwner(testSharedOwner, { transports: [testOwnerTransport] });
+        unuseSecond();
+        await testWaitForWorkerMessage();
+
+        // The owner's action between the removes ends the first run of them,
+        // so the first release goes in call order, before the change.
+        assertEqual(
+          evoluInputs.map((input) =>
+            input.type === "UseOwner"
+              ? input.actions.map((action) =>
+                  action.action === "remove"
+                    ? action.id === firstId
+                      ? "remove first"
+                      : action.id === secondId
+                        ? "remove second"
+                        : "remove other"
+                    : action.action,
+                )
+              : input.type,
+          ),
+          [["remove first"], "Mutate", ["add", "remove second"]],
+        );
+      });
+
+      it("sends the removes of a tick in one message after a change made between them, and a registration of the owner after them", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const unuseFirst = evolu.useOwner(testSharedOwner, {
+          transports: [testOwnerTransport],
+        });
+        const unuseSecond = evolu.useOwner(testSharedOwner, {
+          transports: [testOwnerTransport],
+        });
+        await testWaitForWorkerMessage();
+        const [firstId, secondId] = getRegistrationIds(evoluInputs);
+        evoluInputs.length = 0;
+
+        unuseFirst();
+        evolu.insert(
+          "todo",
+          { title: NonEmptyTrimmedString100.orThrow("Between") },
+          { owner: testSharedOwner },
+        );
+        unuseSecond();
+        evolu.useOwner(testSharedOwner, { transports: [testOwnerTransport] });
+        await testWaitForWorkerMessage();
+
+        // The registration after the last remove ends the run of removes, so
+        // they end together, and the registration then takes over their
+        // transports.
+        assertEqual(
+          evoluInputs.map((input) =>
+            input.type === "UseOwner"
+              ? input.actions.map((action) =>
+                  action.action === "remove"
+                    ? action.id === firstId
+                      ? "remove first"
+                      : action.id === secondId
+                        ? "remove second"
+                        : "remove other"
+                    : action.action,
+                )
+              : input.type,
+          ),
+          ["Mutate", ["remove first", "remove second", "add"]],
+        );
+      });
+
+      it("exports after the changes made before it", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+
+        evolu.insert("todo", {
+          title: NonEmptyTrimmedString100.orThrow("Exported"),
+        });
+        void evolu.exportDatabase();
+        await testWaitForWorkerMessage();
+
+        assertEqual(
+          evoluInputs.map(({ type }) => type),
+          ["Mutate", "Export"],
+        );
+      });
+
+      it("runs the callbacks of changes an owner action between them sends in two messages", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs, postEvoluOutput } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const succeeded: Array<string> = [];
+
+        evolu.insert(
+          "todo",
+          { title: NonEmptyTrimmedString100.orThrow("Before") },
+          {
+            onSuccess: () => {
+              succeeded.push("before");
+            },
+          },
+        );
+        evolu.useOwner(testSharedOwner, { transports: [testOwnerTransport] });
+        evolu.insert(
+          "todo",
+          { title: NonEmptyTrimmedString100.orThrow("After") },
+          {
+            onSuccess: () => {
+              succeeded.push("after");
+            },
+          },
+        );
+        await testWaitForWorkerMessage();
+
+        assertEqual(
+          evoluInputs.map(({ type }) => type),
+          ["Mutate", "UseOwner", "Mutate"],
+        );
+        for (const input of evoluInputs)
+          if (input.type === "Mutate") {
+            assertLength(input.callbackIds, 1);
+            postEvoluOutput({
+              type: "OnPatchesByQuery",
+              patchesByQuery: new Map(),
+              callbackIds: input.callbackIds,
+            });
+          }
+        await testWaitForWorkerMessage();
+        assertEqual(succeeded, ["before", "after"]);
+      });
+
+      it("sends an owner's release after a change made before it when an uncached load flushes them", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const unuseOwner = evolu.useOwner(testSharedOwner, {
+          transports: [testOwnerTransport],
+        });
+        await testWaitForWorkerMessage();
+        evoluInputs.length = 0;
+
+        evolu.insert(
+          "todo",
+          { title: NonEmptyTrimmedString100.orThrow("Last") },
+          { owner: testSharedOwner },
+        );
+        unuseOwner();
+        void evolu.loadQuery(todoTitleQuery, { cache: false });
+        await testWaitForWorkerMessage();
+
+        assertEqual(
+          evoluInputs.map(({ type }) => type),
+          ["Mutate", "UseOwner", "Query"],
         );
       });
     });
@@ -2247,9 +2667,269 @@ describe("Evolu", () => {
         };
 
         assertThrowsInstanceOf(
-          () => evolu.useOwner(instantStart, [testOwnerTransport]),
+          () =>
+            evolu.useOwner(instantStart, { transports: [testOwnerTransport] }),
           Error,
         );
+      });
+
+      it("posts whether the registration deletes the owner once it is unused", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const sharedOwner = createSharedOwner(createOwnerSecret(run.deps));
+
+        evolu.useOwner(sharedOwner, {
+          transports: [testOwnerTransport],
+          deleteWhenUnused: true,
+        });
+        evolu.useOwner(sharedOwner, { transports: [testOwnerTransport] });
+        await testWaitForWorkerMessage();
+
+        assertEqual(
+          evoluInputs.flatMap((input) =>
+            input.type === "UseOwner"
+              ? input.actions.flatMap((action) =>
+                  action.action === "add"
+                    ? [[action.owner.transports, action.deleteWhenUnused]]
+                    : [],
+                )
+              : [],
+          ),
+          [
+            [[testOwnerTransport], true],
+            [[testOwnerTransport], false],
+          ],
+        );
+      });
+
+      it("posts deleteWhenUnused with the config transports when its transports are omitted", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(
+          createEvolu(Schema, {
+            appName: testAppName,
+            appOwner: testAppOwner,
+            transports: [testOwnerTransport],
+          }),
+        );
+        await testWaitForWorkerMessage();
+        evoluInputs.length = 0;
+
+        evolu.useOwner(testSharedOwner, { deleteWhenUnused: true });
+        await testWaitForWorkerMessage();
+
+        const [id] = getRegistrationIds(evoluInputs);
+        assertEqual(evoluInputs, [
+          {
+            type: "UseOwner",
+            actions: [
+              {
+                owner: {
+                  owner: {
+                    id: testSharedOwner.id,
+                    encryptionKey: testSharedOwner.encryptionKey,
+                    writeKey: testSharedOwner.writeKey,
+                  },
+                  transports: [testOwnerTransport],
+                },
+                action: "add",
+                deleteWhenUnused: true,
+                id,
+              },
+            ],
+          },
+        ]);
+      });
+
+      it("throws for deleteWhenUnused without transports when config.transports is empty", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const evolu = await setup.run.ok(testCreateEvolu);
+
+        assertSame(
+          assertThrowsInstanceOf(
+            () => evolu.useOwner(testSharedOwner, { deleteWhenUnused: true }),
+            Error,
+          ).message,
+          "useOwner requires non-empty transports, in its options or in config.transports.",
+        );
+        await testWaitForWorkerMessage();
+        assertEqual(setup.evoluInputs, []);
+      });
+
+      it("throws for transports passed without the options, as before them", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const evolu = await setup.run.ok(testCreateEvolu);
+
+        const error = assertThrowsInstanceOf(
+          () =>
+            // @ts-expect-error Transports go in the options object.
+            evolu.useOwner(testAppOwner, [testOwnerTransport]),
+          Error,
+        );
+        assertSame(
+          error.message,
+          "useOwner takes its transports in the options, such as useOwner(owner, { transports }).",
+        );
+        await testWaitForWorkerMessage();
+        assertEqual(setup.evoluInputs, []);
+      });
+
+      it("throws for transports passed without the options also when config.transports is not empty, so the owner never syncs with them", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(
+          createEvolu(Schema, {
+            appName: testAppName,
+            appOwner: testAppOwner,
+            transports: [testOwnerTransport],
+          }),
+        );
+        await testWaitForWorkerMessage();
+        evoluInputs.length = 0;
+
+        const error = assertThrowsInstanceOf(
+          () =>
+            // @ts-expect-error Transports go in the options object.
+            evolu.useOwner(testSharedOwner, [testOwnerTransport]),
+          Error,
+        );
+        assertSame(
+          error.message,
+          "useOwner takes its transports in the options, such as useOwner(owner, { transports }).",
+        );
+        await testWaitForWorkerMessage();
+        assertEqual(evoluInputs, []);
+      });
+
+      it("throws for empty transports also when config.transports is not empty, so the owner never syncs with them", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(
+          createEvolu(Schema, {
+            appName: testAppName,
+            appOwner: testAppOwner,
+            transports: [testOwnerTransport],
+          }),
+        );
+        await testWaitForWorkerMessage();
+        evoluInputs.length = 0;
+
+        const error = assertThrowsInstanceOf(
+          () =>
+            evolu.useOwner(testSharedOwner, {
+              // @ts-expect-error Transports, when given, are non-empty.
+              transports: [],
+            }),
+          Error,
+        );
+        assertSame(
+          error.message,
+          "useOwner requires non-empty transports, in its options or in config.transports.",
+        );
+        await testWaitForWorkerMessage();
+        assertEqual(evoluInputs, []);
+      });
+
+      it("posts deleteWhenUnused false with its AppOwner or an owner with its ID", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+
+        evolu.useOwner(evolu.appOwner, {
+          transports: [testOwnerTransport],
+          deleteWhenUnused: false,
+        });
+        // A ShardOwner created from the AppOwner's secret has its ID.
+        evolu.useOwner(createShardOwner(testOwnerSecret), {
+          transports: [testOwnerTransport],
+          deleteWhenUnused: false,
+        });
+        await testWaitForWorkerMessage();
+
+        assertEqual(
+          evoluInputs.flatMap((input) =>
+            input.type === "UseOwner"
+              ? input.actions.flatMap((action) =>
+                  action.action === "add"
+                    ? [[action.owner.owner.id, action.deleteWhenUnused]]
+                    : [],
+                )
+              : [],
+          ),
+          [
+            [testAppOwner.id, false],
+            [testAppOwner.id, false],
+          ],
+        );
+      });
+
+      it("posts deleteWhenUnused with a SharedReadonlyOwner", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const readonlyOwner = createSharedReadonlyOwner(testSharedOwner);
+
+        // The SharedWorker keeps a readonly owner's rows; see Deletion.
+        evolu.useOwner(readonlyOwner, {
+          transports: [testOwnerTransport],
+          deleteWhenUnused: true,
+        });
+        await testWaitForWorkerMessage();
+
+        const [id] = getRegistrationIds(evoluInputs);
+        assertEqual(evoluInputs, [
+          {
+            type: "UseOwner",
+            actions: [
+              {
+                owner: {
+                  owner: {
+                    id: readonlyOwner.id,
+                    encryptionKey: readonlyOwner.encryptionKey,
+                  },
+                  transports: [testOwnerTransport],
+                },
+                action: "add",
+                deleteWhenUnused: true,
+                id,
+              },
+            ],
+          },
+        ]);
+      });
+
+      it("throws for deleteWhenUnused with its AppOwner or an owner with its ID, which names the database", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const evolu = await setup.run.ok(testCreateEvolu);
+
+        const message =
+          "deleteWhenUnused can't delete the owner with the AppOwner's ID, which names the database. Use deleteDatabase.";
+        assertSame(
+          assertThrowsInstanceOf(
+            () =>
+              evolu.useOwner(evolu.appOwner, {
+                transports: [testOwnerTransport],
+                deleteWhenUnused: true,
+              }),
+            Error,
+          ).message,
+          message,
+        );
+        // A ShardOwner created from the AppOwner's secret has its ID.
+        assertSame(
+          assertThrowsInstanceOf(
+            () =>
+              evolu.useOwner(createShardOwner(testOwnerSecret), {
+                transports: [testOwnerTransport],
+                deleteWhenUnused: true,
+              }),
+            Error,
+          ).message,
+          message,
+        );
+        await testWaitForWorkerMessage();
+        assertEqual(setup.evoluInputs, []);
       });
 
       it("syncs its own AppOwner and throws for another one", async () => {
@@ -2257,7 +2937,10 @@ describe("Evolu", () => {
         const evolu = await setup.run.ok(testCreateEvolu);
 
         const error = assertThrowsInstanceOf(
-          () => evolu.useOwner(testOtherAppOwner, [testOwnerTransport]),
+          () =>
+            evolu.useOwner(testOtherAppOwner, {
+              transports: [testOwnerTransport],
+            }),
           Error,
         );
         assertTrue(
@@ -2265,7 +2948,7 @@ describe("Evolu", () => {
             "An AppOwner's data lives only in its own database",
           ),
         );
-        evolu.useOwner(evolu.appOwner, [testOwnerTransport]);
+        evolu.useOwner(evolu.appOwner, { transports: [testOwnerTransport] });
         await testWaitForWorkerMessage();
 
         // The other AppOwner was never posted, and the own one syncs.
@@ -2289,7 +2972,7 @@ describe("Evolu", () => {
           const id = TodoId.orThrow(createIdFromString("device-todo"));
           const title = NonEmptyTrimmedString100.orThrow("Device");
           // @ts-expect-error A device database syncs no AppOwner, whose data lives only in its own database.
-          device.useOwner(appOwner, [testOwnerTransport]);
+          device.useOwner(appOwner, { transports: [testOwnerTransport] });
           // @ts-expect-error A device database writes no AppOwner's rows, whose data lives only in its own database.
           device.insert("todo", { title }, { owner: appOwner });
           // @ts-expect-error A device database writes no AppOwner's rows, whose data lives only in its own database.
@@ -2318,7 +3001,11 @@ describe("Evolu", () => {
           const title = NonEmptyTrimmedString100.orThrow("Device");
           // @ts-expect-error The device instance has no default transports, so useOwner takes them.
           device.useOwner(testSharedOwner);
-          device.useOwner(testSharedOwner, [testOwnerTransport]);
+          // @ts-expect-error The device instance has no default transports, so its options take them.
+          device.useOwner(testSharedOwner, { deleteWhenUnused: true });
+          device.useOwner(testSharedOwner, {
+            transports: [testOwnerTransport],
+          });
           // @ts-expect-error The device owner never syncs, so a mutation of a synced table takes the owner it syncs with.
           device.insert("todo", { title });
           // @ts-expect-error The device owner never syncs, so a mutation of a synced table takes the owner it syncs with.
@@ -2365,6 +3052,7 @@ describe("Evolu", () => {
                   transports: [testOwnerTransport],
                 },
                 action: "add",
+                deleteWhenUnused: false,
                 id,
               },
             ],
@@ -2403,6 +3091,7 @@ describe("Evolu", () => {
                   transports: [testOwnerTransport],
                 },
                 action: "add",
+                deleteWhenUnused: false,
                 id,
               },
             ],
@@ -2418,8 +3107,8 @@ describe("Evolu", () => {
           createSharedOwner(createOwnerSecret(run.deps)),
         );
 
-        evolu.useOwner(testAppOwner, [testOwnerTransport]);
-        evolu.useOwner(readonlyOwner, [testOwnerTransport]);
+        evolu.useOwner(testAppOwner, { transports: [testOwnerTransport] });
+        evolu.useOwner(readonlyOwner, { transports: [testOwnerTransport] });
         await testWaitForWorkerMessage();
 
         const [appOwnerId, readonlyOwnerId] = getRegistrationIds(evoluInputs);
@@ -2433,6 +3122,7 @@ describe("Evolu", () => {
                   transports: [testOwnerTransport],
                 },
                 action: "add",
+                deleteWhenUnused: false,
                 id: appOwnerId,
               },
               {
@@ -2444,6 +3134,7 @@ describe("Evolu", () => {
                   transports: [testOwnerTransport],
                 },
                 action: "add",
+                deleteWhenUnused: false,
                 id: readonlyOwnerId,
               },
             ],
@@ -2456,7 +3147,9 @@ describe("Evolu", () => {
         const { run, evoluInputs } = setup;
         const evolu = await run.ok(testCreateEvolu);
 
-        const unuseOwner = evolu.useOwner(testAppOwner, [testOwnerTransport]);
+        const unuseOwner = evolu.useOwner(testAppOwner, {
+          transports: [testOwnerTransport],
+        });
         unuseOwner();
 
         assertEqual(evoluInputs, []);
@@ -2474,6 +3167,7 @@ describe("Evolu", () => {
                   transports: [testOwnerTransport],
                 },
                 action: "add",
+                deleteWhenUnused: false,
                 id,
               },
               { action: "remove", id },
@@ -2487,8 +3181,10 @@ describe("Evolu", () => {
         const { run, evoluInputs } = setup;
         const evolu = await run.ok(testCreateEvolu);
 
-        const unuseFirst = evolu.useOwner(testAppOwner, [testOwnerTransport]);
-        evolu.useOwner(testAppOwner, [testOwnerTransport]);
+        const unuseFirst = evolu.useOwner(testAppOwner, {
+          transports: [testOwnerTransport],
+        });
+        evolu.useOwner(testAppOwner, { transports: [testOwnerTransport] });
         unuseFirst();
         await testWaitForWorkerMessage();
 
@@ -2504,10 +3200,9 @@ describe("Evolu", () => {
 
         assertEqual(
           assertThrowsInstanceOf(() => {
-            evolu.useOwner(testAppOwner, [
-              testOwnerTransport,
-              { ...testOwnerTransport },
-            ]);
+            evolu.useOwner(testAppOwner, {
+              transports: [testOwnerTransport, { ...testOwnerTransport }],
+            });
           }, Error).message,
           "Transports must be distinct.",
         );
@@ -2516,7 +3211,9 @@ describe("Evolu", () => {
           url: RelayUrl.orThrow("wss://other.example.com/"),
           ownerId: testAppOwner.id,
         });
-        evolu.useOwner(testAppOwner, [testOwnerTransport, otherTransport]);
+        evolu.useOwner(testAppOwner, {
+          transports: [testOwnerTransport, otherTransport],
+        });
         await testWaitForWorkerMessage();
 
         const [id] = getRegistrationIds(evoluInputs);
@@ -2530,6 +3227,7 @@ describe("Evolu", () => {
                   transports: [testOwnerTransport, otherTransport],
                 },
                 action: "add",
+                deleteWhenUnused: false,
                 id,
               },
             ],
@@ -2572,7 +3270,9 @@ describe("Evolu", () => {
         const { run, evoluInputs } = setup;
         const evolu = await run.ok(testCreateEvolu);
 
-        const unuseOwner = evolu.useOwner(testAppOwner, [testOwnerTransport]);
+        const unuseOwner = evolu.useOwner(testAppOwner, {
+          transports: [testOwnerTransport],
+        });
         await testWaitForWorkerMessage();
         const [id] = getRegistrationIds(evoluInputs);
         evoluInputs.length = 0;
@@ -2604,7 +3304,7 @@ describe("Evolu", () => {
           }),
         );
 
-        evolu.useOwner(testAppOwner, [testOwnerTransport]);
+        evolu.useOwner(testAppOwner, { transports: [testOwnerTransport] });
         evolu.insert("todo", {
           title: NonEmptyTrimmedString100.orThrow("Queued after useOwner"),
         });
@@ -2621,6 +3321,7 @@ describe("Evolu", () => {
                 transports: [testOwnerTransport],
               },
               action: "add",
+              deleteWhenUnused: false,
               id,
             },
           ],
@@ -2860,7 +3561,7 @@ describe("Evolu", () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run } = setup;
       const evolu = await run.ok(testCreateEvolu);
-      evolu.useOwner(testAppOwner, [testOwnerTransport]);
+      evolu.useOwner(testAppOwner, { transports: [testOwnerTransport] });
 
       await evolu[Symbol.asyncDispose]();
 
@@ -2946,7 +3647,7 @@ describe("Evolu", () => {
 
       assertEqual(
         assertThrowsInstanceOf(() => {
-          evolu.useOwner(testAppOwner, [testOwnerTransport]);
+          evolu.useOwner(testAppOwner, { transports: [testOwnerTransport] });
         }, Error).message,
         disposedMessage,
       );
@@ -2964,7 +3665,9 @@ describe("Evolu", () => {
       const { run } = setup;
       const evolu = await run.ok(testCreateEvolu);
 
-      const unuseOwner = evolu.useOwner(testAppOwner, [testOwnerTransport]);
+      const unuseOwner = evolu.useOwner(testAppOwner, {
+        transports: [testOwnerTransport],
+      });
 
       await evolu[Symbol.asyncDispose]();
 
@@ -3059,7 +3762,7 @@ describe("Evolu", () => {
       const { evoluInputs, run } = setup;
       const evolu = await run.ok(testCreateEvolu);
 
-      evolu.useOwner(testAppOwner, [testOwnerTransport]);
+      evolu.useOwner(testAppOwner, { transports: [testOwnerTransport] });
 
       await evolu[Symbol.asyncDispose]();
 
@@ -5177,7 +5880,7 @@ describe("Evolu", () => {
       const { run, evoluInputs } = setup;
       const evolu = await run.ok(testCreateEvolu);
 
-      evolu.useOwner(testAppOwner, [testOwnerTransport]);
+      evolu.useOwner(testAppOwner, { transports: [testOwnerTransport] });
       void evolu.deleteDatabase();
       await testWaitForWorkerMessage();
 
@@ -5548,7 +6251,9 @@ describe("Evolu", () => {
       const { run, evoluInputs } = setup;
       const evolu = await run.ok(testCreateEvolu);
 
-      const unuseOwner = evolu.useOwner(testSharedOwner, [testOwnerTransport]);
+      const unuseOwner = evolu.useOwner(testSharedOwner, {
+        transports: [testOwnerTransport],
+      });
       evolu.insert(
         "todo",
         { title: NonEmptyTrimmedString100.orThrow("Deleted with its owner") },
@@ -5561,7 +6266,7 @@ describe("Evolu", () => {
 
       assertEqual(
         evoluInputs.map(({ type }) => type),
-        ["UseOwner", "Mutate", "Query", "DeleteOwner"],
+        ["UseOwner", "Mutate", "UseOwner", "Query", "DeleteOwner"],
       );
       assertEqual(evoluInputs.at(-1), {
         type: "DeleteOwner",

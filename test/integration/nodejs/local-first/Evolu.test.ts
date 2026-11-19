@@ -62,6 +62,7 @@ import {
   isDatabaseDeleted,
   testAppName,
   unlockWrappedDeviceSecret,
+  type UseOwnerOptions,
 } from "../../../../packages/common/src/local-first/Evolu.ts";
 import {
   createDeviceSecret,
@@ -659,7 +660,7 @@ describe("Evolu integration", () => {
       url: RelayUrl.orThrow("wss://skipped-change-batch.example/"),
       ownerId: testAppOwner.id,
     });
-    evolu.useOwner(testAppOwner, [transport]);
+    evolu.useOwner(testAppOwner, { transports: [transport] });
     assertEqual(await evolu.loadQuery(todoTitlesQuery), []);
     await testWaitForWorkerMessage();
     const messages = createProtocolBroadcastMessagesFromCrdtMessages({
@@ -758,7 +759,7 @@ describe("Evolu integration", () => {
     foreignDevice.setOnMessage(() => {
       if (relayA.getTimestamps().length > 0) seeded.resolve();
     });
-    foreign.useOwner(foreignOwner, [transport]);
+    foreign.useOwner(foreignOwner, { transports: [transport] });
     {
       using _seedingTimeout = setTimeout(() => {
         seeded.reject(
@@ -797,7 +798,7 @@ describe("Evolu integration", () => {
       )
         uploaded.resolve();
     });
-    evolu.useOwner(testAppOwner, [transport]);
+    evolu.useOwner(testAppOwner, { transports: [transport] });
     {
       using _uploadTimeout = setTimeout(() => {
         uploaded.reject(
@@ -868,8 +869,8 @@ describe("Evolu integration", () => {
         transports: [],
       }),
     );
-    receiver.useOwner(testAppOwner, [transport]);
-    foreign.useOwner(foreignOwner, [transport]);
+    receiver.useOwner(testAppOwner, { transports: [transport] });
+    foreign.useOwner(foreignOwner, { transports: [transport] });
     await states.waitForState(
       () =>
         getRoute(receiver.name)?.type === "Complete" &&
@@ -1002,14 +1003,14 @@ describe("Evolu integration", () => {
         url: RelayUrl.orThrow(`ws://127.0.0.1:${relay.port}/`),
         ownerId: testAppOwner.id,
       });
-      evolu.useOwner(testAppOwner, [transport]);
+      evolu.useOwner(testAppOwner, { transports: [transport] });
       if (instanceCount === 2) {
         const laterTab = instances.use(setup.connectLaterTab());
         const laterRun = instances.use(
           run.create({ ...run.deps, storedWorker: Promise.resolve(laterTab) }),
         );
         const second = instances.use(await laterRun.ok(createIntegrationEvolu));
-        second.useOwner(testAppOwner, [transport]);
+        second.useOwner(testAppOwner, { transports: [transport] });
       }
       await opened.promise;
       await testWaitForWorkerMessage();
@@ -1106,7 +1107,7 @@ describe("Evolu integration", () => {
       if (relayA.getTimestamps().length === localTimestamps.length)
         seeded.resolve();
     });
-    first.useOwner(testAppOwner, [transportA]);
+    first.useOwner(testAppOwner, { transports: [transportA] });
     {
       using _seedingTimeout = setTimeout(() => {
         seeded.reject(
@@ -1129,7 +1130,7 @@ describe("Evolu integration", () => {
     await using second = await secondDevice.setup.run.ok(
       secondDevice.setup.createIntegrationEvolu,
     );
-    second.useOwner(testAppOwner, [transportA, transportB]);
+    second.useOwner(testAppOwner, { transports: [transportA, transportB] });
     using _propagationTimeout = setTimeout(() => {
       propagated.reject(
         new Error("Timed out waiting for relay B to receive the change"),
@@ -1175,7 +1176,7 @@ describe("Evolu integration", () => {
     device.setOnMessage((url) => {
       if (url === transportB.url) firstRound.resolve();
     });
-    first.useOwner(testAppOwner, [transportB]);
+    first.useOwner(testAppOwner, { transports: [transportB] });
     {
       using _firstRoundTimeout = setTimeout(() => {
         firstRound.reject(
@@ -1210,7 +1211,7 @@ describe("Evolu integration", () => {
         propagated.resolve();
       }
     });
-    second.useOwner(testAppOwner, [transportA]);
+    second.useOwner(testAppOwner, { transports: [transportA] });
     const siblingReceived = Promise.withResolvers<void>();
     const unsubscribe = first.subscribeQuery(todoTitlesQuery)(() => {
       if (first.getQueryRows(todoTitlesQuery).length === 1)
@@ -1322,7 +1323,8 @@ describe("Evolu integration", () => {
     await using first = await createTenant("FirstTenant");
     await using second = await createTenant("SecondTenant");
     const tenants = [first, second];
-    for (const tenant of tenants) tenant.useOwner(testAppOwner, [transport]);
+    for (const tenant of tenants)
+      tenant.useOwner(testAppOwner, { transports: [transport] });
 
     await states.waitForState(() =>
       tenants.every(
@@ -1392,7 +1394,7 @@ describe("Evolu integration", () => {
       ownerId: testAppOwner.id,
     });
     await using source = await createTenant("ContinuationSource");
-    source.useOwner(testAppOwner, [transportB]);
+    source.useOwner(testAppOwner, { transports: [transportB] });
     await states.waitForState(
       () => getRoute(source.name, relayB.port)?.type === "Complete",
     );
@@ -1414,7 +1416,7 @@ describe("Evolu integration", () => {
 
     // The empty sibling legitimately converges with the still-empty relay B.
     await using sibling = await createTenant("ContinuationSibling");
-    sibling.useOwner(testAppOwner, [transportB]);
+    sibling.useOwner(testAppOwner, { transports: [transportB] });
     await states.waitForState(
       () => getRoute(sibling.name, relayB.port)?.type === "Complete",
     );
@@ -1426,7 +1428,7 @@ describe("Evolu integration", () => {
     // uploads only to A and delivers a local copy to the sibling. That copy
     // requires a fresh B round; hold B's write to inspect the pending route.
     rejectB = false;
-    source.useOwner(testAppOwner, [transportA]);
+    source.useOwner(testAppOwner, { transports: [transportA] });
     {
       using _quotaTimeout = setTimeout(() => {
         quotaEntered.reject(
@@ -1487,8 +1489,8 @@ describe("Evolu integration", () => {
     });
     const initialRound = Promise.withResolvers<void>();
     device.setOnMessage(() => initialRound.resolve());
-    writer.useOwner(testAppOwner, [transport]);
-    sibling.useOwner(testAppOwner, [transport]);
+    writer.useOwner(testAppOwner, { transports: [transport] });
+    sibling.useOwner(testAppOwner, { transports: [transport] });
     {
       using _roundTimeout = setTimeout(() => {
         initialRound.reject(new Error("Timed out waiting for the first round"));
@@ -1594,12 +1596,14 @@ describe("Evolu integration", () => {
           setImmediate(resolve);
         });
     };
-    evolu.useOwner(testAppOwner, [
-      createOwnerWebSocketTransport({
-        url: RelayUrl.orThrow(`ws://127.0.0.1:${proxy.port}/`),
-        ownerId: testAppOwner.id,
-      }),
-    ]);
+    evolu.useOwner(testAppOwner, {
+      transports: [
+        createOwnerWebSocketTransport({
+          url: RelayUrl.orThrow(`ws://127.0.0.1:${proxy.port}/`),
+          ownerId: testAppOwner.id,
+        }),
+      ],
+    });
     await states.waitForState(isComplete);
     const opened = connection();
     assertSame(opened?.type, "Open");
@@ -1662,8 +1666,8 @@ describe("Evolu integration", () => {
       }),
     );
     assertNonEmptyArray(transports);
-    writer.useOwner(testAppOwner, transports);
-    sibling.useOwner(testAppOwner, transports);
+    writer.useOwner(testAppOwner, { transports });
+    sibling.useOwner(testAppOwner, { transports });
     await testWaitForWorkerMessage();
     assertEqual(await sibling.loadQuery(titlesQuery), []);
     const received = Promise.withResolvers<void>();
@@ -2419,6 +2423,119 @@ describe("Evolu integration", () => {
       assertEqual(await deletedInOtherTab.promise, settingsOwner.id);
     });
 
+    it("deletes an owner the device instance used with deleteWhenUnused from the device database once its relay has it, keeping the other rows", async () => {
+      await using relayRun = testCreateRun({
+        ...createRelayDeps(),
+        createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
+      });
+      await using relay = await relayRun.ok(
+        createRelay({
+          port: Port.orThrow(0),
+          name: Name.orThrow("evolu-device-delete-when-unused"),
+          isOwnerWithinQuota: () => true,
+        }),
+      );
+      const time = testCreateTime();
+      using drivers = createSqliteDriverPerName();
+      await using setup = await setupRunWithEvoluDeps({
+        time,
+        createWebSocket,
+        createSqliteDriver: drivers.createSqliteDriver,
+      });
+      const { run } = setup;
+      using states = setupSyncStates(setup.syncStateChannelName);
+      await using app = await run.orThrow(
+        createEvoluApp(Schema, {
+          ...instantStartConfig,
+          device: { schema: DeviceSchema },
+        }),
+      );
+      const createDeviceQuery = createQueryBuilder(DeviceSchema);
+      const languagesQuery = createDeviceQuery((db) =>
+        db
+          .selectFrom("sharedSettings")
+          .select(["language"])
+          .orderBy("language"),
+      );
+      const themesQuery = createDeviceQuery((db) =>
+        db.selectFrom("_settings").select(["theme"]).orderBy("theme"),
+      );
+      const shardOwner = createShardOwner(
+        createOwnerSecret(
+          testCreateDeps({ seed: "device-delete-when-unused" }),
+        ),
+      );
+      const otherOwner = createShardOwner(
+        createOwnerSecret(testCreateDeps({ seed: "device-kept-owner" })),
+      );
+      app.device.insert(
+        "sharedSettings",
+        { language: NonEmptyTrimmedString100.orThrow("cs") },
+        { owner: otherOwner },
+      );
+      app.device.insert("_settings", {
+        theme: NonEmptyTrimmedString100.orThrow("Kept"),
+      });
+      app.device.insert(
+        "sharedSettings",
+        { language: NonEmptyTrimmedString100.orThrow("en") },
+        { owner: shardOwner },
+      );
+      app.device.insert(
+        "_settings",
+        { theme: NonEmptyTrimmedString100.orThrow("Shard") },
+        { owner: shardOwner },
+      );
+      const unuseOwner = app.device.useOwner(shardOwner, {
+        transports: [
+          createOwnerWebSocketTransport({
+            url: RelayUrl.orThrow(`ws://127.0.0.1:${relay.port}/`),
+            ownerId: shardOwner.id,
+          }),
+        ],
+        deleteWhenUnused: true,
+      });
+      await states.waitForState(
+        () =>
+          syncStateToRelaySyncStates(
+            states.getState(),
+            app.device.name,
+            shardOwner.id,
+          ).at(0)?.route.type === "Complete",
+      );
+      assertEqual(await app.device.loadQuery(languagesQuery), [
+        { language: "cs" },
+        { language: "en" },
+      ]);
+      assertEqual(await app.device.loadQuery(themesQuery), [
+        { theme: "Kept" },
+        { theme: "Shard" },
+      ]);
+      const refreshed = Promise.withResolvers<void>();
+      using subscriptions = new DisposableStack();
+      subscriptions.defer(
+        app.device.subscribeQuery(languagesQuery)(() => {
+          if (app.device.getQueryRows(languagesQuery).length === 1)
+            refreshed.resolve();
+        }),
+      );
+
+      unuseOwner();
+      await testWaitForWorkerMessage();
+      time.advance("10s");
+
+      assertSame(
+        await settleWithinWorkerMessages(refreshed.promise),
+        undefined,
+      );
+      assertEqual(await app.device.loadQuery(languagesQuery), [
+        { language: "cs" },
+      ]);
+      assertEqual(await app.device.loadQuery(themesQuery), [{ theme: "Kept" }]);
+      assertEqual(setup.tabErrors, []);
+      assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+    });
+
     it("rejects in its instances an owner with another listed AppOwner's ID, whatever its type", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run } = setup;
@@ -2457,7 +2574,7 @@ describe("Evolu integration", () => {
         createShardOwner(mnemonicToOwnerSecret(appOwner.mnemonic)),
       ]) {
         assertThrowsInstanceOf(
-          () => secondEvolu.useOwner(owner, [transport]),
+          () => secondEvolu.useOwner(owner, { transports: [transport] }),
           Error,
         );
         assertThrowsInstanceOf(
@@ -2466,7 +2583,8 @@ describe("Evolu integration", () => {
         );
         // The device instance's types take no AppOwner; untyped callers throw.
         assertThrowsInstanceOf(
-          () => app.device.useOwner(owner as never, [transport]),
+          () =>
+            app.device.useOwner(owner as never, { transports: [transport] }),
           Error,
         );
         assertThrowsInstanceOf(
@@ -8420,12 +8538,14 @@ describe("Evolu integration", () => {
       const evolu = disposer.use(
         await run.ok(device.setup.createIntegrationEvolu),
       );
-      evolu.useOwner(testAppOwner, [
-        createOwnerWebSocketTransport({
-          url: RelayUrl.orThrow(relayUrl),
-          ownerId: testAppOwner.id,
-        }),
-      ]);
+      evolu.useOwner(testAppOwner, {
+        transports: [
+          createOwnerWebSocketTransport({
+            url: RelayUrl.orThrow(relayUrl),
+            ownerId: testAppOwner.id,
+          }),
+        ],
+      });
 
       let evolu7Reads = 0;
       const disposables = disposer.move();
@@ -8814,12 +8934,14 @@ describe("Evolu integration", () => {
         }),
       );
       assertLength(await evolu.loadQuery(todoTitlesQuery), 2);
-      evolu.useOwner(testAppOwner, [
-        createOwnerWebSocketTransport({
-          url: RelayUrl.orThrow(`ws://127.0.0.1:${relays.relayA.port}/`),
-          ownerId: testAppOwner.id,
-        }),
-      ]);
+      evolu.useOwner(testAppOwner, {
+        transports: [
+          createOwnerWebSocketTransport({
+            url: RelayUrl.orThrow(`ws://127.0.0.1:${relays.relayA.port}/`),
+            ownerId: testAppOwner.id,
+          }),
+        ],
+      });
 
       const deadline = performance.now() + 5000;
       while (
@@ -9868,6 +9990,168 @@ describe("Evolu integration", () => {
         assertEqual(await evolu.loadQuery(todoTitlesQuery), [
           { title: "Kept" },
         ]);
+    });
+  });
+
+  describe("deleteWhenUnused", () => {
+    it("deletes an unused owner's synced and local-only rows in every tab once its relay has them, without calling onOwnerDeleted, keeps the AppOwner's rows, and syncs only the synced ones again on its next use", async () => {
+      await using relayRun = testCreateRun({
+        ...createRelayDeps(),
+        createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
+      });
+      await using relay = await relayRun.ok(
+        createRelay({
+          port: Port.orThrow(0),
+          name: Name.orThrow("evolu-delete-when-unused"),
+          isOwnerWithinQuota: () => true,
+        }),
+      );
+      const time = testCreateTime();
+      await using setup = await setupRunWithEvoluDeps({
+        time,
+        createWebSocket,
+      });
+      const { run } = setup;
+      using states = setupSyncStates(setup.syncStateChannelName);
+      const NoteSchema = {
+        ...Schema,
+        _note: { id: id("Note"), title: NonEmptyTrimmedString100 },
+      };
+      const createNoteQuery = createQueryBuilder(NoteSchema);
+      const todosQuery = createNoteQuery((db) =>
+        db.selectFrom("todo").select(["title"]).orderBy("title"),
+      );
+      const notesQuery = createNoteQuery((db) =>
+        db.selectFrom("_note").select(["title"]).orderBy("title"),
+      );
+      const callerDeletedOwnerIds: Array<OwnerId> = [];
+      await using caller = await run.ok(
+        createEvolu(NoteSchema, {
+          appName: testAppName,
+          appOwner: testAppOwner,
+          transports: [],
+          onOwnerDeleted: (ownerId) => {
+            callerDeletedOwnerIds.push(ownerId);
+          },
+        }),
+      );
+      using laterTabDeps = createEvoluDeps({
+        ...run.deps,
+        createStoredWorker: setup.connectLaterTab,
+      });
+      await using laterTabRun = run.create(laterTabDeps);
+      const otherTabDeletedOwnerIds: Array<OwnerId> = [];
+      await using otherTab = await laterTabRun.ok(
+        createEvolu(NoteSchema, {
+          appName: testAppName,
+          appOwner: testAppOwner,
+          transports: [],
+          onOwnerDeleted: (ownerId) => {
+            otherTabDeletedOwnerIds.push(ownerId);
+          },
+        }),
+      );
+      const shardOwner = deriveShardOwner(testAppOwner, ["shard", 1]);
+      const options: UseOwnerOptions = {
+        transports: [
+          createOwnerWebSocketTransport({
+            url: RelayUrl.orThrow(`ws://127.0.0.1:${relay.port}/`),
+            ownerId: shardOwner.id,
+          }),
+        ],
+        deleteWhenUnused: true,
+      };
+      const isComplete = () =>
+        syncStateToRelaySyncStates(
+          states.getState(),
+          caller.name,
+          shardOwner.id,
+        ).at(0)?.route.type === "Complete";
+      caller.insert("todo", {
+        title: NonEmptyTrimmedString100.orThrow("Kept"),
+      });
+      caller.insert("_note", {
+        title: NonEmptyTrimmedString100.orThrow("Kept note"),
+      });
+      caller.insert(
+        "todo",
+        { title: NonEmptyTrimmedString100.orThrow("Shard") },
+        { owner: shardOwner },
+      );
+      caller.insert(
+        "_note",
+        { title: NonEmptyTrimmedString100.orThrow("Shard note") },
+        { owner: shardOwner },
+      );
+      const unuseOwner = caller.useOwner(shardOwner, options);
+      await states.waitForState(isComplete);
+      // The caller's loads stay cached, and the other tab subscribes.
+      const allTodos = [{ title: "Kept" }, { title: "Shard" }];
+      const allNotes = [{ title: "Kept note" }, { title: "Shard note" }];
+      for (const evolu of [caller, otherTab]) {
+        assertEqual(await evolu.loadQuery(todosQuery), allTodos);
+        assertEqual(await evolu.loadQuery(notesQuery), allNotes);
+      }
+      const otherTabRefreshed = Promise.withResolvers<void>();
+      const onOtherTabRows = () => {
+        if (otherTab.getQueryRows(todosQuery).length < allTodos.length)
+          otherTabRefreshed.resolve();
+      };
+      using subscriptions = new DisposableStack();
+      subscriptions.defer(otherTab.subscribeQuery(todosQuery)(onOtherTabRows));
+      subscriptions.defer(otherTab.subscribeQuery(notesQuery)(onOtherTabRows));
+
+      // A write made right before the release reaches the relay within the
+      // delay, before the deletion.
+      const pending = states.waitForState(() => !isComplete());
+      caller.insert(
+        "todo",
+        { title: NonEmptyTrimmedString100.orThrow("Last") },
+        { owner: shardOwner },
+      );
+      unuseOwner();
+      await pending;
+      await states.waitForState(isComplete);
+      time.advance("10s");
+      assertSame(
+        await settleWithinWorkerMessages(otherTabRefreshed.promise),
+        undefined,
+      );
+      // Nothing used the owner, so no tab is told.
+      assertEqual(callerDeletedOwnerIds, []);
+      assertEqual(otherTabDeletedOwnerIds, []);
+      const keptTodos = [{ title: "Kept" }];
+      const keptNotes = [{ title: "Kept note" }];
+      assertEqual(otherTab.getQueryRows(todosQuery), keptTodos);
+      assertEqual(otherTab.getQueryRows(notesQuery), keptNotes);
+      assertEqual(await caller.loadQuery(todosQuery), keptTodos);
+      assertEqual(await caller.loadQuery(notesQuery), keptNotes);
+
+      // The next use downloads the synced rows from the relay, also the last
+      // write, and local-only rows never sync.
+      const restoredTodos = [
+        { title: "Kept" },
+        { title: "Last" },
+        { title: "Shard" },
+      ];
+      const restored = Promise.withResolvers<void>();
+      subscriptions.defer(
+        caller.subscribeQuery(todosQuery)(() => {
+          if (caller.getQueryRows(todosQuery).length === restoredTodos.length)
+            restored.resolve();
+        }),
+      );
+      subscriptions.defer(caller.useOwner(shardOwner, options));
+      {
+        using _timeout = setTimeout(() => {
+          restored.reject(new Error("Timed out waiting for the rows"));
+        }, 5_000);
+        await restored.promise;
+      }
+      assertEqual(await caller.loadQuery(todosQuery), restoredTodos);
+      assertEqual(await caller.loadQuery(notesQuery), keptNotes);
+      assertEqual(setup.tabErrors, []);
+      assertEqual(setup.run.deps.reportDefect.getDefects(), []);
     });
   });
 });

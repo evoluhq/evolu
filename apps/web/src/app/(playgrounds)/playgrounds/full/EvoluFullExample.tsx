@@ -169,7 +169,7 @@ export const createApp = ({
       createFirstAppOwner,
 
       // `transports: []` keeps everything on this device. Sync can be added
-      // later with `evolu.useOwner(evolu.appOwner, transports)`, which syncs
+      // later with `evolu.useOwner(evolu.appOwner, { transports })`, which syncs
       // the data made before.
       transports: [{ type: "WebSocket", url: configRelayUrl }],
 
@@ -1371,9 +1371,9 @@ const Relays: FC = () => {
 // leaves the others connected.
 const RelayRegistration: FC<{ url: RelayUrl }> = ({ url }) => {
   const { appOwner } = useEvolu();
-  useOwner(appOwner, [
-    createOwnerWebSocketTransport({ url, ownerId: appOwner.id }),
-  ]);
+  useOwner(appOwner, {
+    transports: [createOwnerWebSocketTransport({ url, ownerId: appOwner.id })],
+  });
   return null;
 };
 

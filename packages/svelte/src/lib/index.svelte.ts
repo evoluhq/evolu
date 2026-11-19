@@ -2,10 +2,10 @@
 // compiler in the app itself.
 
 import {
+  assert,
   constVoid,
   emptyArray,
   structuralLookup,
-  type NonEmptyReadonlyArray,
   type ReadonlyStore,
   type UnknownError,
 } from "@evolu/common";
@@ -24,13 +24,13 @@ import {
   type EvoluSchema,
   type Owner,
   type OwnerSyncStatus,
-  type OwnerTransport,
   type Query,
   type QueryRows,
   type ReadonlyOwner,
   type Row,
   type SyncState,
   type SyncStateDep,
+  type UseOwnerOptions,
 } from "@evolu/common/local-first";
 import { createEvoluDeps } from "@evolu/web";
 import { untrack } from "svelte";
@@ -333,14 +333,16 @@ export const evoluAppState = <
 /**
  * Uses an owner for sync through {@link Evolu.useOwner} while the component or
  * root that calls it lives, and stops when it's destroyed or when the owner
- * that `observedOwner` returns, or the transports that `observedTransports`
- * returns, change. Without transports, the owner syncs with the transports of
- * the instance's config. A null owner uses none, for a component that waits for
- * one. The owner and transports are compared by content, so recreating them,
- * such as in a `$derived`, keeps the same registration.
- * {@link Evolu.deleteOwner} of the owner ends its use, and it uses the owner
- * again only once the component mounts again or the owner or transports change.
- * An instance whose database was deleted uses none.
+ * that `observedOwner` returns, or the options that `observedOptions` returns,
+ * change. Without transports, the owner syncs with the transports of the
+ * instance's config. With {@link UseOwnerOptions.deleteWhenUnused}, the owner's
+ * rows are deleted once no component or other code uses it. A null owner uses
+ * none, for a component that waits for one, and `observedOptions` isn't called
+ * then, so it can build the options from the owner. The owner and options are
+ * compared by content, so recreating them, such as in a `$derived`, keeps the
+ * same registration. {@link Evolu.deleteOwner} of the owner ends its use, and it
+ * uses the owner again only once the component mounts again or the owner or
+ * options change. An instance whose database was deleted uses none.
  *
  * It creates an `$effect`, so call it where Svelte allows one, such as during
  * component initialization or inside `$effect.root`. Server rendering runs no
@@ -378,31 +380,39 @@ export const evoluAppState = <
 export const ownerSync = <S extends EvoluSchema>(
   evolu: AppOwnerEvolu<S>,
   observedOwner: () => ReadonlyOwner | Owner | null,
-  observedTransports?: () => NonEmptyReadonlyArray<OwnerTransport> | undefined,
+  observedOptions?: () => UseOwnerOptions | undefined,
 ): void => {
-  // What identifies a registration: the keys, not other Owner fields. A
-  // string, so a recreated owner with the same content derives the same key.
+  // What identifies a registration: the keys and the options, not other Owner
+  // fields. A string, so a recreated owner with the same content derives the
+  // same key.
   const key = $derived.by(() => {
     const owner = observedOwner();
-    return (
-      owner &&
-      structuralLookup({
-        id: owner.id,
-        encryptionKey: owner.encryptionKey,
-        writeKey: "writeKey" in owner ? owner.writeKey : null,
-        transports: observedTransports?.() ?? null,
-      })
+    // Options may be built from the owner, so only once there is one.
+    if (!owner) return null;
+    const options = observedOptions?.();
+    // An array, the transports argument before the options, would read as
+    // options without transports, so a later array wouldn't even reach
+    // Evolu's useOwner, which throws for it.
+    assert(
+      !Array.isArray(options),
+      "ownerSync takes options from its third argument, such as () => ({ transports }).",
     );
+    return structuralLookup({
+      id: owner.id,
+      encryptionKey: owner.encryptionKey,
+      writeKey: "writeKey" in owner ? owner.writeKey : null,
+      transports: options?.transports ?? null,
+      deleteWhenUnused: options?.deleteWhenUnused ?? false,
+    });
   });
 
   $effect(() => {
     // The deletion of its database disposed the instance, whose methods throw.
     if (key === null || isDatabaseDeleted(evolu)) return;
-    // The key stands for the owner and transports, so the effect tracks only
-    // it.
+    // The key stands for the owner and options, so the effect tracks only it.
     return untrack(() => {
       const owner = observedOwner();
-      return owner ? evolu.useOwner(owner, observedTransports?.()) : undefined;
+      return owner ? evolu.useOwner(owner, observedOptions?.()) : undefined;
     });
   });
 };

@@ -166,6 +166,7 @@ describe("createEvoluDeps", () => {
         {
           owner: { owner: testAppOwner, transports: [transport, transport] },
           action: "add",
+          deleteWhenUnused: false,
           id: testCreateId()<"OwnerRegistration">(),
         },
       ],

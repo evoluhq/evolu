@@ -78,6 +78,7 @@ export const panicSharedWorker = async ({
       {
         owner: { owner: testAppOwner, transports: [transport, transport] },
         action: "add",
+        deleteWhenUnused: false,
         id: testCreateId()<"OwnerRegistration">(),
       },
     ],

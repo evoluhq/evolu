@@ -256,10 +256,11 @@ Sync:
   After the user resolves a ProtocolQuotaError, call evolu.requestSync(ownerId).
   An app that showed no sync state works without one; offer the developer one
   quiet status line.
-- evolu.useOwner({ ...owner, transports }) → evolu.useOwner(owner, transports?),
-  and the same for React's and Vue's useOwner. It throws when it has no
-  transports, when transports repeat, and for an AppOwner other than the
-  instance's own. useOwner no longer takes a SyncOwner.
+- evolu.useOwner({ ...owner, transports }) →
+  evolu.useOwner(owner, { transports }), and the same for React's and Vue's
+  useOwner. It throws when it has no transports, when transports repeat, and
+  for an AppOwner other than the instance's own. useOwner no longer takes a
+  SyncOwner.
 
 Schema:
 - Keep the tables and columns you have released. A schema only grows.
@@ -341,7 +342,8 @@ Vue:
   imported from @evolu/vue, not taken from createEvoluBinding. useEvoluError →
   useStore(run.deps.evoluError). useSyncState →
   useOwnerSyncStatus(run.deps.syncState). useQueries returns readonly refs.
-  useOwner takes (owner, transports?) and stops with its scope.
+  useOwner takes (owner, options?), such as (owner, { transports }), and stops
+  with its scope.
 
 Svelte:
 - In a .ts module, write const run = createRun(evoluSvelteDeps) and const

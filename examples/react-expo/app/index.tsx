@@ -130,7 +130,7 @@ const createApp = (secret: DeviceSecret): Promise<App> =>
 
       // Omitted, Evolu syncs with its free relay, which is for testing.
       // `transports: []` keeps everything on this device. Sync can be added
-      // later with `evolu.useOwner(evolu.appOwner, transports)`, which syncs
+      // later with `evolu.useOwner(evolu.appOwner, { transports })`, which syncs
       // the data made before.
       ...(process.env.NODE_ENV === "development" && {
         transports: [

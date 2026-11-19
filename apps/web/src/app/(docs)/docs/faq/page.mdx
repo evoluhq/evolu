@@ -512,9 +512,11 @@ if (isFirstLogin) {
 }
 
 // Enable sync on the same instance. Call unuseOwner() to release this use.
-const unuseOwner = evolu.useOwner(appOwner, [
-  { type: "WebSocket", url: WebSocketUrl.orThrow("wss://free.evoluhq.com/") },
-]);
+const unuseOwner = evolu.useOwner(appOwner, {
+  transports: [
+    { type: "WebSocket", url: WebSocketUrl.orThrow("wss://free.evoluhq.com/") },
+  ],
+});
 // ---cut-start---
 
 const createQuery = createQueryBuilder(CategorySchema);

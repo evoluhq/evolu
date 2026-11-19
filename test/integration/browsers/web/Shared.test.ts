@@ -206,14 +206,14 @@ test("requestSync crosses browser worker ports while two clients retain the owne
   await using first = await firstRun.ok(createInstance);
   onTestFinished(() => removeTestDatabase(first.name));
   const initial = nextMessage.promise;
-  first.useOwner(testAppOwner, [transport]);
+  first.useOwner(testAppOwner, { transports: [transport] });
   await initial;
 
   using secondDeps = setupClient();
   await using secondRun = createRun(secondDeps);
   await using second = await secondRun.ok(createInstance);
   const secondSync = nextMessage.promise;
-  second.useOwner(testAppOwner, [transport]);
+  second.useOwner(testAppOwner, { transports: [transport] });
   second.requestSync(testAppOwner.id);
   await secondSync;
 
@@ -285,7 +285,7 @@ test("a skipped encrypted change shows on its route across browser worker ports 
     url: RelayUrl.orThrow("wss://skipped-change.example/"),
     ownerId: testAppOwner.id,
   });
-  evolu.useOwner(testAppOwner, [transport]);
+  evolu.useOwner(testAppOwner, { transports: [transport] });
   await initial.promise;
 
   const createMessage = (name: string, millis: number) => ({

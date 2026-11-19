@@ -18,6 +18,7 @@ import {
   assertEqual,
   assertNonNullable,
   assertSame,
+  assertTrue,
 } from "../../../../packages/common/src/Assert.ts";
 import { emptyArray } from "../../../../packages/common/src/Array.ts";
 import { createConsoleStoreOutput } from "../../../../packages/common/src/Console.ts";
@@ -34,6 +35,7 @@ import {
   type EvoluApp,
   type EvoluPlatformDeps,
   type StoredWorkerDep,
+  type UseOwnerOptions,
 } from "../../../../packages/common/src/local-first/Evolu.ts";
 import {
   createAppOwner,
@@ -106,8 +108,11 @@ const { EvoluContext, useOwner, useOwnerSyncStatus, useQueries, useQuery } =
 const createEvoluStub = (calls: Array<string>): Evolu =>
   // Only useOwner is used by these components.
   ({
-    useOwner: (owner, transports) => {
-      const label = `${"writeKey" in owner ? "writable" : "readonly"} ${transports?.map(({ url }) => url.split("?")[0]).join(",")}`;
+    useOwner: (owner, options) => {
+      const transports = options?.transports
+        ? ` ${options.transports.map(({ url }) => url.split("?")[0]).join(",")}`
+        : "";
+      const label = `${"writeKey" in owner ? "writable" : "readonly"}${transports}${options?.deleteWhenUnused ? " deleting" : ""}`;
       calls.push(`use ${label}`);
       return () => {
         calls.push(`unuse ${label}`);
@@ -148,10 +153,14 @@ const relayB = RelayUrl.orThrow("wss://b.example/");
 const Registration: FC<{
   owner: ReadonlyOwner | Owner | null;
   url: RelayUrl;
-}> = ({ owner, url }) => {
-  useOwner(owner && { ...owner }, [
-    createOwnerWebSocketTransport({ url, ownerId: testAppOwner.id }),
-  ]);
+  deleteWhenUnused?: boolean;
+}> = ({ owner, url, deleteWhenUnused = false }) => {
+  useOwner(owner && { ...owner }, {
+    transports: [
+      createOwnerWebSocketTransport({ url, ownerId: testAppOwner.id }),
+    ],
+    deleteWhenUnused,
+  });
   return null;
 };
 
@@ -238,6 +247,14 @@ test("useQueries throws a query SQLite failed to the error boundary without an u
     root.unmount();
   });
 });
+
+// Recreates the owner on every render and passes the options as given.
+const OptionsRegistration: FC<{ options?: UseOwnerOptions }> = ({
+  options,
+}) => {
+  useOwner({ ...testAppOwner }, options);
+  return null;
+};
 
 test("useQuery and useQueries handle the loads they start while server rendering", async () => {
   using unhandledRejections = testGlobalUnhandledRejections();
@@ -486,9 +503,14 @@ test("waits instead of throwing when a deletion disposes the instance before Rea
   // Each hook subscribes or registers in an effect after the commit.
   const Subscriber: FC = () => {
     deletionBinding.useQuery(todoIdsQuery, { once: true });
-    deletionBinding.useOwner(testAppOwner, [
-      createOwnerWebSocketTransport({ url: relayA, ownerId: testAppOwner.id }),
-    ]);
+    deletionBinding.useOwner(testAppOwner, {
+      transports: [
+        createOwnerWebSocketTransport({
+          url: relayA,
+          ownerId: testAppOwner.id,
+        }),
+      ],
+    });
     return createElement(Todos);
   };
   // Layout effects run before those effects, so the deletion lands between
@@ -552,8 +574,69 @@ test("registers an equal owner once and releases it on change and unmount", () =
     "use readonly wss://b.example/",
   ]);
 
+  render(
+    createElement(Registration, {
+      owner: { id, encryptionKey },
+      url: relayB,
+      deleteWhenUnused: true,
+    }),
+  );
+  assertEqual(calls.splice(0), [
+    "unuse readonly wss://b.example/",
+    "use readonly wss://b.example/ deleting",
+  ]);
+
   render(createElement("div"));
-  assertEqual(calls, ["unuse readonly wss://b.example/"]);
+  assertEqual(calls, ["unuse readonly wss://b.example/ deleting"]);
+});
+
+test("keeps one registration across omitted options, empty options, and deleteWhenUnused false", () => {
+  using setup = setupUseOwner();
+  const { calls, render } = setup;
+
+  render(createElement(OptionsRegistration));
+  render(createElement(OptionsRegistration, { options: {} }));
+  render(
+    createElement(OptionsRegistration, {
+      options: { deleteWhenUnused: false },
+    }),
+  );
+  render(createElement(OptionsRegistration));
+  assertEqual(calls, ["use writable"]);
+});
+
+test("keeps a deleting registration with recreated options and replaces it when deleteWhenUnused becomes false", () => {
+  using setup = setupUseOwner();
+  const { calls, render } = setup;
+
+  render(
+    createElement(Registration, {
+      owner: testAppOwner,
+      url: relayA,
+      deleteWhenUnused: true,
+    }),
+  );
+  render(
+    createElement(Registration, {
+      owner: testAppOwner,
+      url: relayA,
+      deleteWhenUnused: true,
+    }),
+  );
+  assertEqual(calls, ["use writable wss://a.example/ deleting"]);
+
+  render(
+    createElement(Registration, {
+      owner: testAppOwner,
+      url: relayA,
+      deleteWhenUnused: false,
+    }),
+  );
+  assertEqual(calls, [
+    "use writable wss://a.example/ deleting",
+    "unuse writable wss://a.example/ deleting",
+    "use writable wss://a.example/",
+  ]);
 });
 
 test("moves the registration to another Evolu instance", () => {
@@ -612,6 +695,119 @@ test("keeps one registration in StrictMode", () => {
   // cleanup in between. Either way, one registration remains.
   const useCount = calls.filter((call) => call.startsWith("use ")).length;
   assertEqual(useCount - (calls.length - useCount), 1);
+});
+
+test("keeps one deleting registration in StrictMode", () => {
+  using setup = setupUseOwner();
+  const { calls, render } = setup;
+
+  render(
+    createElement(
+      StrictMode,
+      null,
+      createElement(Registration, {
+        owner: testAppOwner,
+        url: relayA,
+        deleteWhenUnused: true,
+      }),
+    ),
+  );
+  // As above, one registration remains, and it deletes the owner's rows when
+  // unused. The stub has only useOwner, so the binding deletes nothing itself.
+  const useCount = calls.filter((call) => call.startsWith("use ")).length;
+  assertEqual(useCount - (calls.length - useCount), 1);
+  assertSame(calls.at(-1), "use writable wss://a.example/ deleting");
+});
+
+test("replaces the registration when transports are added and removed", () => {
+  using setup = setupUseOwner();
+  const { calls, render } = setup;
+
+  render(createElement(OptionsRegistration));
+  render(
+    createElement(OptionsRegistration, {
+      options: {
+        transports: [
+          createOwnerWebSocketTransport({
+            url: relayA,
+            ownerId: testAppOwner.id,
+          }),
+        ],
+      },
+    }),
+  );
+  render(createElement(OptionsRegistration));
+  assertEqual(calls, [
+    "use writable",
+    "unuse writable",
+    "use writable wss://a.example/",
+    "unuse writable wss://a.example/",
+    "use writable",
+  ]);
+});
+
+test("replaces a deleting registration when deleteWhenUnused is omitted", () => {
+  using setup = setupUseOwner();
+  const { calls, render } = setup;
+
+  render(
+    createElement(OptionsRegistration, { options: { deleteWhenUnused: true } }),
+  );
+  render(createElement(OptionsRegistration));
+  assertEqual(calls, [
+    "use writable deleting",
+    "unuse writable deleting",
+    "use writable",
+  ]);
+});
+
+test("rejects transports in place of the options", () => {
+  const calls: Array<string> = [];
+  const caught: Array<unknown> = [];
+  const transport = createOwnerWebSocketTransport({
+    url: relayA,
+    ownerId: testAppOwner.id,
+  });
+  const TransportsRegistration: FC = () => {
+    // @ts-expect-error Transports go in the options object.
+    useOwner(testAppOwner, [transport]);
+    return null;
+  };
+  // React would log the error the boundary catches on purpose.
+  const root = createRoot(document.createElement("div"), {
+    onCaughtError: constVoid,
+  });
+
+  act(() => {
+    root.render(
+      createElement(
+        EvoluContext,
+        { value: createEvoluStub(calls) },
+        createElement(
+          ErrorBoundary,
+          {
+            onError: (error) => {
+              caught.push(error);
+            },
+          },
+          createElement(TransportsRegistration),
+        ),
+      ),
+    );
+  });
+  act(() => {
+    root.unmount();
+  });
+
+  // Read as options, the array would have no transports, so the owner would
+  // sync with the default ones.
+  assertEqual(caught.length, 1);
+  const [error] = caught;
+  assert(error instanceof Error, "Expected the Error of assert.");
+  assertTrue(
+    error.message.startsWith("useOwner takes its transports in the options"),
+  );
+  assertEqual(calls, []);
 });
 
 /** An Evolu stub of the database a component shows the sync status of. */

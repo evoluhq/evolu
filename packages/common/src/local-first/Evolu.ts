@@ -369,10 +369,12 @@ export interface EvoluConfig {
    * instance's local database, whether this or another instance in any tab
    * asked.
    *
-   * The owner no longer syncs in any instance of the database, so the app stops
+   * The owner then syncs in no instance of the database, so the app stops
    * showing it here, such as by leaving a screen of its data, whichever tab
    * deleted it. It runs once per deletion, so an owner deleted twice, such as
-   * from two tabs at once, gets two calls.
+   * from two tabs at once, gets two calls. A deletion by
+   * {@link UseOwnerOptions.deleteWhenUnused} doesn't call it, because nothing
+   * uses that owner then.
    */
   readonly onOwnerDeleted?: (ownerId: OwnerId) => void;
 
@@ -944,6 +946,7 @@ export interface Evolu<
    * The exported file is not encrypted, even when the local database is. Any
    * SQLite tool can read all local data from it, so treat it as plaintext.
    *
+   * The export runs after the mutations made before it, so the file holds them.
    * Exports are sequential: concurrent calls share one pending export instead
    * of starting parallel exports.
    *
@@ -1098,14 +1101,16 @@ export interface Evolu<
   /**
    * Use an Owner for sync. Returns a {@link UnuseOwner}.
    *
-   * Using an Owner means syncing it with the provided transports, or with the
-   * default transports defined in {@link EvoluConfig} when transports are
-   * omitted. An AppOwner's data lives only in its own database, which its
-   * deletion deletes, so an instance syncs its own AppOwner but throws for
-   * another one. An instance of {@link createEvoluApp} recognizes another
-   * AppOwner by the IDs the app lists; one of {@link createEvolu} only by its
-   * type, so it misses an owner with another AppOwner's ID but another type,
-   * such as one created from that AppOwner's secret.
+   * Using an Owner means syncing it with {@link UseOwnerOptions.transports}, or
+   * with the default transports defined in {@link EvoluConfig} when they are
+   * omitted. With {@link UseOwnerOptions.deleteWhenUnused}, the owner's rows are
+   * deleted once nothing uses the owner. An AppOwner's data lives only in its
+   * own database, which its deletion deletes, so an instance syncs its own
+   * AppOwner but throws for another one. An instance of {@link createEvoluApp}
+   * recognizes another AppOwner by the IDs the app lists; one of
+   * {@link createEvolu} only by its type, so it misses an owner with another
+   * AppOwner's ID but another type, such as one created from that AppOwner's
+   * secret.
    *
    * If {@link EvoluConfig.transports} is an empty array, this method must be
    * called with explicit non-empty transports.
@@ -1136,19 +1141,29 @@ export interface Evolu<
    *   ownerId: shardOwner.id,
    * });
    * const _useShardOwner = (evolu: Evolu): UnuseOwner =>
-   *   evolu.useOwner(shardOwner, [shardTransport]);
+   *   evolu.useOwner(shardOwner, { transports: [shardTransport] });
+   *
+   * // Its rows are deleted 10 seconds after this and every other use of it in
+   * // any tab ends, if its relays have its changes by then.
+   * const _useShardOwnerOnPage = (evolu: Evolu): UnuseOwner =>
+   *   evolu.useOwner(shardOwner, {
+   *     transports: [shardTransport],
+   *     deleteWhenUnused: true,
+   *   });
    *
    * const _useOwners = (
    *   evolu: Evolu,
    *   owners: ReadonlyArray<ReadonlyOwner>,
    * ): UnuseOwner => {
    *   const unuseOwners = owners.map((owner) =>
-   *     evolu.useOwner(owner, [
-   *       createOwnerWebSocketTransport({
-   *         url: relayUrl,
-   *         ownerId: owner.id,
-   *       }),
-   *     ]),
+   *     evolu.useOwner(owner, {
+   *       transports: [
+   *         createOwnerWebSocketTransport({
+   *           url: relayUrl,
+   *           ownerId: owner.id,
+   *         }),
+   *       ],
+   *     }),
    *   );
    *   return () => {
    *     for (const unuse of unuseOwners) unuse();
@@ -1160,11 +1175,15 @@ export interface Evolu<
    *   type: "WebSocket",
    *   url: `wss://relay.example.com/?ownerId=${shardOwner.id}`,
    * });
+   *
+   * const _useOwnerWithTransportsArray = (evolu: Evolu): UnuseOwner =>
+   *   // @ts-expect-error Transports go in the options object.
+   *   evolu.useOwner(shardOwner, [shardTransport]);
    * ```
    */
   readonly useOwner: (
     owner: ReadonlyOwner | Owner,
-    transports?: NonEmptyReadonlyArray<OwnerTransport>,
+    options?: UseOwnerOptions,
   ) => UnuseOwner;
 
   /**
@@ -1234,6 +1253,40 @@ export interface LoadQueryOptions {
    * throws.
    */
   readonly cache?: boolean;
+}
+
+/**
+ * Options of {@link Evolu.useOwner}.
+ *
+ * @group Core
+ */
+export interface UseOwnerOptions {
+  /** The transports that sync the owner, instead of the default ones. */
+  readonly transports?: NonEmptyReadonlyArray<OwnerTransport>;
+
+  /**
+   * With `true`, this database keeps syncing the owner for 10 seconds after its
+   * last registration in any instance of the database, in any tab, ends, and
+   * then deletes the owner's rows if every relay has all of the owner's changes
+   * by then. It deletes them as {@link Evolu.deleteOwner} does, local-only rows
+   * included, and refreshes the queries of every instance, but calls no
+   * {@link EvoluConfig.onOwnerDeleted}, because nothing uses the owner then. A
+   * new registration within those 10 seconds keeps the rows. The delay covers a
+   * page that unmounts and mounts again, a change of relays, and a quick return
+   * to the page, any of which would otherwise delete the rows and download them
+   * again.
+   *
+   * The rows stay if the app closes within those 10 seconds, if a relay still
+   * lacks changes when they end, also a relay the owner stopped syncing with
+   * while another registration remained or after one replaced it within those
+   * 10 seconds, or if any registration while the owner was in use didn't set
+   * this option to `true` or was readonly, which sends nothing, so Evolu can't
+   * tell whether relays have the owner's rows. They then stay until the owner
+   * is used with this option and released again. Throws for the instance's own
+   * AppOwner and any owner with its ID, which names the database;
+   * {@link Evolu.deleteDatabase} deletes the whole database instead.
+   */
+  readonly deleteWhenUnused?: boolean;
 }
 
 /**
@@ -2109,11 +2162,13 @@ export interface DeviceEvolu<D extends EvoluSchema> extends Omit<
 > {
   /**
    * {@link Evolu.useOwner}, for an owner that isn't an AppOwner. The device
-   * instance has no default transports, so it takes them.
+   * instance has no default transports, so its options take them.
    */
   readonly useOwner: (
     owner: ShardOwner | SharedOwner | SharedReadonlyOwner,
-    transports: NonEmptyReadonlyArray<OwnerTransport>,
+    options: UseOwnerOptions & {
+      readonly transports: NonEmptyReadonlyArray<OwnerTransport>;
+    },
   ) => UnuseOwner;
   /** {@link Evolu.insert}, as a {@link DeviceMutation}. */
   readonly insert: DeviceMutation<D, "insert">;
@@ -4127,26 +4182,106 @@ const createEvoluInstance =
       postMessage = evoluChannel.port1.postMessage;
     }
 
-    const mutateBatch = disposer.use(
-      createMicrotaskBatch<{
-        readonly change: ConditionalMutationChange;
-        readonly callback: Callback<Result<void, UnknownError>> | null;
-      }>((items) => {
+    // Changes and owner actions in call order, consecutive ones of a kind in
+    // one message, so the worker gets the changes made before an owner's
+    // release before the release; see Deletion in Shared.ts. The removes of an
+    // owner between its other owner actions go together at the last of them,
+    // so they end together, and changes made among them come before them,
+    // which is safe, because the registrations then end with the changes.
+    const orderedBatch = disposer.use(
+      createMicrotaskBatch<
+        | {
+            readonly type: "Mutate";
+            readonly change: ConditionalMutationChange;
+            readonly callback: Callback<Result<void, UnknownError>> | null;
+          }
+        | {
+            readonly type: "UseOwner";
+            readonly ownerId: OwnerId;
+            readonly action: ExtractTyped<
+              EvoluInput,
+              "UseOwner"
+            >["actions"][number];
+          }
+      >((items) => {
         if (disposed) return;
-        console.debug("mutateBatch", { changeCount: items.length });
-        // Each mutation also releases them when it is made. This catches a
-        // load made after a mutation but queued with an earlier load in the
-        // same tick, which was sent before this batch.
-        releaseUnsubscribedLoadingPromises();
-
-        postMessage({
-          type: "Mutate",
-          changes: mapArray(items, (item) => item.change),
-          callbackIds: items.flatMap(({ callback }) =>
-            callback ? [mutationCallbacks.register(callback)] : [],
-          ),
-          subscribedQueries: subscribedQueriesRefCount.keys(),
-        });
+        // An owner's last remove before another action of the owner or the
+        // batch's end.
+        const lastRemoves = new Set<(typeof items)[number]>();
+        const ownerIdsAhead = new Set<OwnerId>();
+        for (const item of items.toReversed()) {
+          if (item.type !== "UseOwner") continue;
+          if (item.action.action !== "remove")
+            ownerIdsAhead.delete(item.ownerId);
+          else if (!ownerIdsAhead.has(item.ownerId)) {
+            lastRemoves.add(item);
+            ownerIdsAhead.add(item.ownerId);
+          }
+        }
+        let mutations: Array<ExtractTyped<(typeof items)[number], "Mutate">> =
+          [];
+        let actions: Array<
+          ExtractTyped<EvoluInput, "UseOwner">["actions"][number]
+        > = [];
+        const postMutate = () => {
+          if (!isNonEmptyArray(mutations)) return;
+          console.debug("mutateBatch", { changeCount: mutations.length });
+          // Each mutation also releases them when it is made. This catches a
+          // load made after a mutation but queued with an earlier load in the
+          // same tick, which was sent before this batch.
+          releaseUnsubscribedLoadingPromises();
+          postMessage({
+            type: "Mutate",
+            changes: mapArray(mutations, (item) => item.change),
+            callbackIds: mutations.flatMap(({ callback }) =>
+              callback ? [mutationCallbacks.register(callback)] : [],
+            ),
+            subscribedQueries: subscribedQueriesRefCount.keys(),
+          });
+          mutations = [];
+        };
+        const postUseOwner = () => {
+          if (!isNonEmptyArray(actions)) return;
+          postMessage({ type: "UseOwner", actions });
+          actions = [];
+        };
+        // The owner actions first, which were made before the changes.
+        const postInCallOrder = () => {
+          postUseOwner();
+          postMutate();
+        };
+        const removesByOwnerId = new Map<
+          OwnerId,
+          Array<(typeof actions)[number]>
+        >();
+        for (const item of items)
+          switch (item.type) {
+            case "Mutate":
+              mutations.push(item);
+              break;
+            case "UseOwner": {
+              const { ownerId, action } = item;
+              if (action.action === "remove") {
+                let removes = removesByOwnerId.get(ownerId);
+                if (!removes) {
+                  removes = [];
+                  removesByOwnerId.set(ownerId, removes);
+                }
+                removes.push(action);
+                if (!lastRemoves.has(item)) break;
+                removesByOwnerId.delete(ownerId);
+                if (isNonEmptyArray(mutations)) postInCallOrder();
+                actions.push(...removes);
+              } else {
+                if (isNonEmptyArray(mutations)) postInCallOrder();
+                actions.push(action);
+              }
+              break;
+            }
+            default:
+              exhaustiveCheck(item);
+          }
+        postInCallOrder();
       }),
     );
 
@@ -4163,15 +4298,6 @@ const createEvoluInstance =
       }),
     );
 
-    const useOwnerBatch = disposer.use(
-      createMicrotaskBatch<
-        ExtractTyped<EvoluInput, "UseOwner">["actions"][number]
-      >((actions) => {
-        if (disposed) return;
-        postMessage({ type: "UseOwner", actions });
-      }),
-    );
-
     const mutate = (
       change: ConditionalMutationChange,
       { onSuccess, onError }: MutationOptions = {},
@@ -4183,7 +4309,8 @@ const createEvoluInstance =
       // Released now, not only when the batch is sent, so a load right after
       // the mutation does not return rows cached before it.
       releaseUnsubscribedLoadingPromises();
-      mutateBatch.push({
+      orderedBatch.push({
+        type: "Mutate",
         change,
         callback:
           onSuccess || onError
@@ -4339,8 +4466,7 @@ const createEvoluInstance =
         // Sent now, after the owner actions and changes made before it, so it
         // reads exactly those changes, and before any made after it or a
         // later deletion.
-        useOwnerBatch.flushNow();
-        mutateBatch.flushNow();
+        orderedBatch.flushNow();
         if (!disposed)
           postMessage({
             type: "Query",
@@ -4376,12 +4502,19 @@ const createEvoluInstance =
 
     const useOwner = (
       owner: ReadonlyOwner | Owner,
-      ownerTransports?: NonEmptyReadonlyArray<OwnerTransport>,
+      options: UseOwnerOptions = {},
     ): UnuseOwner => {
+      // An array, the transports argument before the options, would sync the
+      // owner with the default transports, sending its ID to their relays.
+      assert(
+        !Array.isArray(options),
+        "useOwner takes its transports in the options, such as useOwner(owner, { transports }).",
+      );
+      const { transports: ownerTransports, deleteWhenUnused = false } = options;
       const effectiveTransports = ownerTransports ?? transports;
       assertNonEmptyReadonlyArray(
         effectiveTransports,
-        "useOwner requires explicit non-empty transports when config.transports is empty.",
+        "useOwner requires non-empty transports, in its options or in config.transports.",
       );
       // Its keys are public, so anyone could read and write what it syncs.
       assert(
@@ -4389,6 +4522,10 @@ const createEvoluInstance =
         "useOwner can't sync instant start's public device owner.",
       );
       assertNoOtherAppOwner(owner);
+      assert(
+        !deleteWhenUnused || owner.id !== instanceOwner.id,
+        "deleteWhenUnused can't delete the owner with the AppOwner's ID, which names the database. Use deleteDatabase.",
+      );
       assertDistinctTransports(effectiveTransports);
 
       // Post only what workers use. Forwarding the caller's object would copy
@@ -4403,10 +4540,15 @@ const createEvoluInstance =
       };
 
       const registrationId = createId<"OwnerRegistration">(run.deps);
-      useOwnerBatch.push({
-        action: "add",
-        id: registrationId,
-        owner: syncOwner,
+      orderedBatch.push({
+        type: "UseOwner",
+        ownerId: id,
+        action: {
+          action: "add",
+          id: registrationId,
+          owner: syncOwner,
+          deleteWhenUnused,
+        },
       });
 
       let isUsed = true;
@@ -4415,7 +4557,11 @@ const createEvoluInstance =
         if (disposed) return;
         assert(isUsed, "UnuseOwner can be called only once.");
         isUsed = false;
-        useOwnerBatch.push({ action: "remove", id: registrationId });
+        orderedBatch.push({
+          type: "UseOwner",
+          ownerId: id,
+          action: { action: "remove", id: registrationId },
+        });
       };
     };
 
@@ -4437,8 +4583,7 @@ const createEvoluInstance =
         releaseUnsubscribedLoadingPromises();
         // After the owner actions and changes made before it, such as an add
         // of the same AppOwner.
-        useOwnerBatch.flushNow();
-        mutateBatch.flushNow();
+        orderedBatch.flushNow();
         if (!disposed)
           postMessage({
             type: "RemoveAppOwner",
@@ -4566,6 +4711,8 @@ const createEvoluInstance =
           if (!exportDatabasePending) {
             exportDatabasePending =
               Promise.withResolvers<Uint8Array<ArrayBuffer>>();
+            // After the changes made before it, so the file holds them.
+            orderedBatch.flushNow();
             postMessage({ type: "Export" });
           }
           return exportDatabasePending.promise;
@@ -4577,8 +4724,7 @@ const createEvoluInstance =
               Promise.withResolvers<Result<void, DeleteDatabaseError>>();
             // Queue the changes and queries made before it, so the changes are
             // deleted rather than dropped and the queries are answered.
-            useOwnerBatch.flushNow();
-            mutateBatch.flushNow();
+            orderedBatch.flushNow();
             queryBatch.flushNow();
             postMessage({ type: "DeleteDatabase" });
           }
@@ -4597,8 +4743,7 @@ const createEvoluInstance =
           // the deletion ends the registrations made before it, even those
           // still waiting for their turn, deletes the changes, and comes after
           // the queries, which read the rows.
-          useOwnerBatch.flushNow();
-          mutateBatch.flushNow();
+          orderedBatch.flushNow();
           queryBatch.flushNow();
           // Only the ID, so the owner's keys reach no other tab.
           postMessage({ type: "DeleteOwner", ownerId: owner.id });
@@ -4607,11 +4752,12 @@ const createEvoluInstance =
 
         useOwner,
         requestSync: (ownerId) => {
-          // Do not let the forced mutation flush overtake pending owner actions.
-          useOwnerBatch.flushNow();
-          // Queue preceding mutations before the reconciliation request.
-          mutateBatch.flushNow();
-          useOwnerBatch.push({ action: "sync", ownerId });
+          // After the owner actions and changes made before it.
+          orderedBatch.push({
+            type: "UseOwner",
+            ownerId,
+            action: { action: "sync", ownerId },
+          });
         },
       },
       disposer,
