@@ -50,7 +50,6 @@
     "version": "changeset version && node scripts/version-sqlite-wasm.mts",
     "ios": "node packages/react-native/scripts/vendor-native.mts && pnpm --dir examples/react-expo ios",
     "android": "node packages/react-native/scripts/vendor-native.mts && pnpm --dir examples/react-expo android",
-    "examples:toggle-deps": "node ./scripts/toggle-examples-deps.mts",
     "examples:build": "pnpm --filter \"@example/*...\" -r run build",
     "examples:react-nextjs:dev": "pnpm --filter \"@example/react-nextjs...\" -r run dev",
     "examples:react-vite-pwa:dev": "pnpm --filter \"@example/react-vite-pwa...\" -r run dev",

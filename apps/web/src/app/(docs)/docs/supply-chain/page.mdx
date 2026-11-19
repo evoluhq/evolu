@@ -36,7 +36,7 @@ The Trezor stays locked until its PIN is entered on its own touchscreen. Two sec
 
 - Published packages pin their direct runtime dependencies to exact versions. Before a release updates one, the maintainer reads its `npm diff` and compares the publishers, maintainers, and provenance of both versions.
 - The dependencies of those dependencies use version ranges, so new versions reach apps when apps update their lockfiles, and reach the relay image at its next build once they're a day old.
-- Every npm and pnpm install the project runs takes only versions at least a day old, except Evolu's own packages, and pnpm also refuses trust downgrades, apart from exceptions checked by hand in `pnpm-workspace.yaml`.
+- Every npm and pnpm install the project runs takes only versions at least a day old, except the relay image's build, which takes Evolu's own packages as soon as npm serves them. pnpm also refuses trust downgrades, apart from exceptions checked by hand in `pnpm-workspace.yaml`.
 - No package in the dependency trees of Evolu's published packages runs an install script. `@evolu/nodejs` ships its SQLite addon prebuilt inside its own package, with no build files, so pnpm needs no `allowBuilds` entry for it.
 
 ## Verify a release

@@ -1,6 +1,5 @@
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
-import path from "node:path";
 import electron from "vite-plugin-electron/simple";
 import react from "@vitejs/plugin-react";
 
@@ -16,15 +15,6 @@ export default defineConfig({
       renderer: process.env.NODE_ENV === "test" ? undefined : {},
     }),
   ],
-  server: {
-    fs: {
-      allow: [
-        path.resolve(__dirname),
-        path.resolve(__dirname, "../../packages/web/src"),
-        path.resolve(__dirname, "../../packages/sqlite-wasm/wasm"),
-      ],
-    },
-  },
   optimizeDeps: {
     exclude: ["@evolu/sqlite-wasm", "kysely", "@evolu/react-web"],
   },

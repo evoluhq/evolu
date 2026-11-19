@@ -20,12 +20,8 @@ allowBuilds:
 # Installs take only versions published at least a day ago, when most malicious
 # releases have been caught and removed, and no version published with weaker
 # trust evidence than an earlier one, such as one missing the provenance its
-# predecessors had. Setting the age makes pnpm enforce it strictly. Evolu's own
-# packages install as soon as they are released, which examples switched to the
-# published packages (pnpm examples:toggle-deps) need right after a release.
+# predecessors had. Setting the age makes pnpm enforce it strictly.
 minimumReleaseAge: 1440
-minimumReleaseAgeExclude:
-  - "@evolu/*"
 trustPolicy: no-downgrade
 # Versions published with weaker evidence than an earlier version of the same
 # package, each checked by hand. Each entry covers one version only.
