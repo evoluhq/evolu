@@ -37,7 +37,7 @@ client work, not protocol work, and is out of scope.
 Only public protocol entry points drive the sync:
 
 1. The client builds the first request with `createProtocolMessageForSync`, or
-   with `createProtocolMessageFromCrdtMessages` in push scenarios.
+   with `createProtocolUploadFromCrdtMessages` in push scenarios.
 2. The relay answers with `applyProtocolMessageAsRelay`.
 3. The client replies with `applyProtocolMessageAsClient`, passing its write key,
    and `onChangeTooLarge` when the loaded version supports it.

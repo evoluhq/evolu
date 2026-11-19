@@ -86,7 +86,7 @@ import {
 } from "../../../../packages/common/src/local-first/Owner.ts";
 import {
   createProtocolBroadcastMessagesFromCrdtMessages,
-  createProtocolMessageFromCrdtMessages,
+  createProtocolUploadFromCrdtMessages,
 } from "../../../../packages/common/src/local-first/Protocol.ts";
 import {
   createQueryBuilder,
@@ -1270,7 +1270,8 @@ describe("Evolu integration", () => {
         const chunk = messages.slice(i, i + 2_000);
         assertNonEmptyArray(chunk);
         frames.push(
-          createProtocolMessageFromCrdtMessages(deps)(testAppOwner, chunk),
+          createProtocolUploadFromCrdtMessages(deps)(testAppOwner, chunk)
+            .message,
         );
       }
       const seeded = Promise.withResolvers<void>();

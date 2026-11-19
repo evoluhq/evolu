@@ -303,7 +303,7 @@ const createMicro = (modules: Modules, name: MicroName): Micro => {
       const workloadSha256 = hashOf(JSON.stringify({ inputs, randomSeed }));
 
       if (name === "upload-builder-5000") {
-        const build = localFirst.createProtocolMessageFromCrdtMessages({
+        const build = localFirst.createProtocolUploadFromCrdtMessages({
           randomBytes: randomBytes.randomBytes,
           ...modules.xChaCha20Poly1305Dep,
         });
@@ -312,7 +312,7 @@ const createMicro = (modules: Modules, name: MicroName): Micro => {
           workloadSha256,
           prepare: randomBytes.reset,
           call: () => {
-            output = build(owner, messages);
+            output = build(owner, messages).message;
           },
           verify: async () => {
             if (output === null) throw new Error(`${name} built nothing.`);

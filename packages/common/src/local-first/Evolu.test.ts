@@ -67,7 +67,7 @@ import {
 import {
   createProtocolBroadcastMessagesFromCrdtMessages,
   createProtocolMessageBuffer,
-  createProtocolMessageFromCrdtMessages,
+  createProtocolUploadFromCrdtMessages,
   createTimestampsBuffer,
   encodeAndEncryptDbChange,
   encodeDbChange,
@@ -5601,8 +5601,8 @@ describe("Evolu", () => {
       // round instead, so it must be longer than the change. A broadcast
       // throws when the change does not fit.
       assertTrue(
-        createProtocolMessageFromCrdtMessages(deps)(testAppOwner, [message])
-          .length > change.length,
+        createProtocolUploadFromCrdtMessages(deps)(testAppOwner, [message])
+          .message.length > change.length,
       );
       createProtocolBroadcastMessagesFromCrdtMessages(deps)(testAppOwner, [
         message,

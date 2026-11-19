@@ -201,10 +201,10 @@ export const measureReconcile = async (
           ? localFirst.createProtocolMessageForSync({ storage: clientStorage })(
               owner.id,
             )
-          : localFirst.createProtocolMessageFromCrdtMessages({
+          : localFirst.createProtocolUploadFromCrdtMessages({
               randomBytes: pushRandomBytes.randomBytes,
               ...modules.xChaCha20Poly1305Dep,
-            })(owner, push.crdtMessages);
+            })(owner, push.crdtMessages).message;
       client = addTiming(client, end());
       frames.push(message);
 

@@ -54,7 +54,7 @@ Eight scenarios of the protocol benchmark, with its datasets from
 
 Only public entry points drive the sync, as in the protocol benchmark: the
 client's first request from `createProtocolMessageForSync`, or from
-`createProtocolMessageFromCrdtMessages` when it pushes, then
+`createProtocolUploadFromCrdtMessages` when it pushes, then
 `applyProtocolMessageAsRelay` and `applyProtocolMessageAsClient` until the
 client converges. The relay gets the production options, including a
 `broadcast` callback, so it builds broadcast frames and only delivery is
@@ -90,7 +90,7 @@ a base comparison can run it. A call is one batch:
 | `encrypt-1000`                     | `encodeAndEncryptDbChange` on 1,000 todo inserts with titles of 1 to 500 letters.                            |
 | `decrypt-1000`                     | `decryptAndDecodeDbChange` on the same 1,000 changes.                                                        |
 | `timestamps-buffer-5000`           | `createTimestampsBuffer`, `add` of 5,000 typical timestamps, and `append`.                                   |
-| `upload-builder-5000`              | `createProtocolMessageFromCrdtMessages` over 5,000 messages, which fills one frame with about 3,000.         |
+| `upload-builder-5000`              | `createProtocolUploadFromCrdtMessages` over 5,000 messages, which fills one frame with about 3,000.          |
 | `broadcast-builder-5000`           | `createProtocolBroadcastMessagesFromCrdtMessages` over 5,000 messages, which builds two frames.              |
 | `relay-max-skip-ranges`            | A relay applies the largest ranges section it accepts, 200,000 bytes of about 100,000 Skip ranges.           |
 | `relay-max-timestamps-range`       | A relay applies a 200,000-byte ranges section holding one Timestamps range of about 200,000 timestamps.      |

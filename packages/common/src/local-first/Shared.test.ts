@@ -6944,6 +6944,858 @@ describe("sync state", () => {
       assertSame(routeOf(latest()).type, "Complete");
     });
 
+    it("leaves a sibling's write to its upload only when the upload carries every message", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      using disposer = new DisposableStack();
+      const { latest } = setupSyncStates(setup, disposer);
+      const first = await setup.createEvolu();
+      const secondName = Name.orThrow("second");
+      const second = await setup.createEvolu({ tenantName: secondName });
+      const transport = createOwnerWebSocketTransport({
+        url: RelayUrl.orThrow("wss://sibling-upload.example/"),
+        ownerId: testAppOwner.id,
+      });
+      for (const instance of [first, second]) {
+        instance.evoluChannel.port2.postMessage({
+          type: "UseOwner",
+          actions: [
+            {
+              owner: { owner: testAppOwner, transports: [transport] },
+              action: "add",
+              deleteWhenUnused: false,
+              id: createRegistrationId(),
+            },
+          ],
+        });
+        await testWaitForWorkerMessage();
+        await respondToSyncRound(instance, createWebSocket);
+      }
+      const converged = { ok: true, value: { type: "Converged" } } as const;
+      for (const _ of [first, second]) {
+        createWebSocket.message(transport.url, relayResponse());
+        await testWaitForWorkerMessage();
+        await respondToApplySync(first, false, converged);
+        await respondToApplySync(second, false, converged);
+      }
+      assertSame(routeOf(latest()).type, "Complete");
+      /**
+       * Answers the second database's write and applies each frame of its copy
+       * in the first one.
+       */
+      const write = async (
+        names: ReadonlyArray<string>,
+        copyFrameCount: number,
+      ): Promise<void> => {
+        const messages = names.map((name, index) =>
+          testCreateCrdtMessage(createId(setup.run.deps), index + 1, name),
+        );
+        assertNonEmptyArray(messages);
+        await queueMutation(second);
+        const mutateInput = second.dbInputs.at(-1);
+        assertNotUndefined(mutateInput);
+        second.dbWorkerPort.postMessage({
+          type: "OnQueuedResponse",
+          attemptId: mutateInput.attemptId,
+          response: {
+            type: "ForEvolu",
+            id: second.id,
+            message: {
+              clock: createTimestamp(),
+              type: "Mutate",
+              messagesByOwnerId: new Map([[testAppOwner.id, messages]]),
+              rowsByQuery: new Map(),
+            },
+          },
+        });
+        await testWaitForWorkerMessage();
+        for (let frame = 0; frame < copyFrameCount; frame++)
+          await respondToApplySync(first, true, {
+            ok: true,
+            value: { type: "Broadcast" },
+          });
+      };
+
+      // An upload of the whole write.
+      const dispatchedCount = first.dbInputs.length;
+      await write(["small"], 1);
+      createWebSocket.message(transport.url, relayResponse());
+      await testWaitForWorkerMessage();
+      await respondToApplySync(second, false, converged);
+      await respondToApplySync(first, false, converged);
+      assertFalse(
+        first.dbInputs
+          .slice(dispatchedCount)
+          .some(({ request }) => request.message.type === "CreateSyncMessages"),
+      );
+      assertSame(routeOf(latest()).type, "Complete");
+
+      // Each change fits a message alone, but not both together, so the
+      // upload leaves one to the second database's later rounds.
+      await write(["a".repeat(800_000), "b".repeat(800_000)], 2);
+      assertEqual(first.dbInputs.at(-1)?.request, {
+        type: "ForSharedWorker",
+        message: { type: "CreateSyncMessages", owners: [testAppOwner] },
+      });
+      assertSame(routeOf(latest()).type, "Pending");
+    });
+
+    it("reconciles a sibling's write through a transport that opens after the writing database ended, when its upload went only through the open one", async () => {
+      const openWebSocket = testCreateWebSocket();
+      const closedWebSocket = testCreateWebSocket({ isOpen: false });
+      const transport = createOwnerWebSocketTransport({
+        url: RelayUrl.orThrow("wss://sibling-open.example/"),
+        ownerId: testAppOwner.id,
+      });
+      const laterTransport = createOwnerWebSocketTransport({
+        url: RelayUrl.orThrow("wss://sibling-later.example/"),
+        ownerId: testAppOwner.id,
+      });
+      await using setup = await setupSharedWorker({
+        createWebSocket: (url, options) =>
+          url === laterTransport.url
+            ? closedWebSocket(url, options)
+            : openWebSocket(url, options),
+      });
+      const first = await setup.createEvolu();
+      const second = await setup.createEvolu({
+        tenantName: Name.orThrow("second"),
+      });
+      for (const instance of [first, second]) {
+        instance.evoluChannel.port2.postMessage({
+          type: "UseOwner",
+          actions: [
+            {
+              owner: {
+                owner: testAppOwner,
+                transports: [transport, laterTransport],
+              },
+              action: "add",
+              deleteWhenUnused: false,
+              id: createRegistrationId(),
+            },
+          ],
+        });
+        await testWaitForWorkerMessage();
+        await respondToSyncRound(instance, openWebSocket);
+      }
+      const converged = { ok: true, value: { type: "Converged" } } as const;
+      for (const _ of [first, second]) {
+        openWebSocket.message(transport.url, relayResponse());
+        await testWaitForWorkerMessage();
+        await respondToApplySync(first, false, converged);
+        await respondToApplySync(second, false, converged);
+      }
+      openWebSocket.sentMessages.length = 0;
+
+      // The second database's upload carries the whole write, but only
+      // through the open transport, and the first database stores its copy.
+      await postMutation(second, setup.run);
+      assertEqual(
+        openWebSocket.sentMessages.splice(0).map(({ url }) => url),
+        [transport.url],
+      );
+      await respondToApplySync(first, true, {
+        ok: true,
+        value: { type: "Broadcast" },
+      });
+      openWebSocket.message(transport.url, relayResponse());
+      await testWaitForWorkerMessage();
+      await respondToApplySync(second, false, converged);
+      await respondToApplySync(first, false, converged);
+      await second[Symbol.asyncDispose]();
+      const dispatchedCount = first.dbInputs.length;
+
+      closedWebSocket.open(laterTransport.url);
+      await testWaitForWorkerMessage();
+
+      // The first database's round uploads the copy the relay lacks.
+      assertSame(first.dbInputs.length, dispatchedCount + 1);
+      assertEqual(await respondToSyncRound(first, closedWebSocket), [
+        laterTransport.url,
+      ]);
+    });
+
+    it("reconciles a sibling's write made while every transport was closed once one opens after the writing database ended", async () => {
+      const createWebSocket = testCreateWebSocket();
+      const transport = createOwnerWebSocketTransport({
+        url: RelayUrl.orThrow("wss://sibling-closed.example/"),
+        ownerId: testAppOwner.id,
+      });
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const first = await setup.createEvolu();
+      const second = await setup.createEvolu({
+        tenantName: Name.orThrow("second"),
+      });
+      for (const instance of [first, second]) {
+        instance.evoluChannel.port2.postMessage({
+          type: "UseOwner",
+          actions: [
+            {
+              owner: { owner: testAppOwner, transports: [transport] },
+              action: "add",
+              deleteWhenUnused: false,
+              id: createRegistrationId(),
+            },
+          ],
+        });
+        await testWaitForWorkerMessage();
+        await respondToSyncRound(instance, createWebSocket);
+      }
+      const converged = { ok: true, value: { type: "Converged" } } as const;
+      for (const _ of [first, second]) {
+        createWebSocket.message(transport.url, relayResponse());
+        await testWaitForWorkerMessage();
+        await respondToApplySync(first, false, converged);
+        await respondToApplySync(second, false, converged);
+      }
+      createWebSocket.sentMessages.length = 0;
+      createWebSocket.close(transport.url);
+      await testWaitForWorkerMessage();
+
+      // No upload carries the second database's write, and the first
+      // database stores its copy.
+      await postMutation(second, setup.run);
+      assertEqual(createWebSocket.sentMessages, []);
+      await respondToApplySync(first, true, {
+        ok: true,
+        value: { type: "Broadcast" },
+      });
+      await second[Symbol.asyncDispose]();
+      const dispatchedCount = first.dbInputs.length;
+
+      createWebSocket.open(transport.url);
+      await testWaitForWorkerMessage();
+
+      // The first database's round uploads the copy the relay lacks.
+      assertSame(first.dbInputs.length, dispatchedCount + 1);
+      assertEqual(await respondToSyncRound(first, createWebSocket), [
+        transport.url,
+      ]);
+    });
+
+    it("reconciles a sibling's write whose upload leaves messages out through every open transport", async () => {
+      const createWebSocket = testCreateWebSocket();
+      const laterWebSocket = testCreateWebSocket({ isOpen: false });
+      const transport = createOwnerWebSocketTransport({
+        url: RelayUrl.orThrow("wss://sibling-every-a.example/"),
+        ownerId: testAppOwner.id,
+      });
+      const laterTransport = createOwnerWebSocketTransport({
+        url: RelayUrl.orThrow("wss://sibling-every-b.example/"),
+        ownerId: testAppOwner.id,
+      });
+      await using setup = await setupSharedWorker({
+        createWebSocket: (url, options) =>
+          url === laterTransport.url
+            ? laterWebSocket(url, options)
+            : createWebSocket(url, options),
+      });
+      using disposer = new DisposableStack();
+      const { latest } = setupSyncStates(setup, disposer);
+      const first = await setup.createEvolu();
+      const second = await setup.createEvolu({
+        tenantName: Name.orThrow("second"),
+      });
+      for (const instance of [first, second]) {
+        instance.evoluChannel.port2.postMessage({
+          type: "UseOwner",
+          actions: [
+            {
+              owner: {
+                owner: testAppOwner,
+                transports: [transport, laterTransport],
+              },
+              action: "add",
+              deleteWhenUnused: false,
+              id: createRegistrationId(),
+            },
+          ],
+        });
+        await testWaitForWorkerMessage();
+        await respondToSyncRound(instance, createWebSocket);
+      }
+      const converged = { ok: true, value: { type: "Converged" } } as const;
+      for (const _ of [first, second]) {
+        createWebSocket.message(transport.url, relayResponse());
+        await testWaitForWorkerMessage();
+        await respondToApplySync(first, false, converged);
+        await respondToApplySync(second, false, converged);
+      }
+      // The other relay's routes complete too.
+      laterWebSocket.open(laterTransport.url);
+      await testWaitForWorkerMessage();
+      await respondToSyncRound(first, laterWebSocket);
+      await respondToSyncRound(second, laterWebSocket);
+      for (const _ of [first, second]) {
+        laterWebSocket.message(laterTransport.url, relayResponse());
+        await testWaitForWorkerMessage();
+        await respondToApplySync(first, false, converged);
+        await respondToApplySync(second, false, converged);
+      }
+      assertEqual(
+        [0, 1].map((index) => routeOf(latest(), testName, index).type),
+        ["Complete", "Complete"],
+      );
+
+      // Each change fits a message alone, but not both together, so the
+      // second database's upload leaves one out.
+      await queueMutation(second);
+      const mutateInput = second.dbInputs.at(-1);
+      assertNotUndefined(mutateInput);
+      second.dbWorkerPort.postMessage({
+        type: "OnQueuedResponse",
+        attemptId: mutateInput.attemptId,
+        response: {
+          type: "ForEvolu",
+          id: second.id,
+          message: {
+            clock: createTimestamp(),
+            type: "Mutate",
+            messagesByOwnerId: new Map([
+              [
+                testAppOwner.id,
+                [
+                  testCreateCrdtMessage(
+                    createId(setup.run.deps),
+                    1,
+                    "a".repeat(800_000),
+                  ),
+                  testCreateCrdtMessage(
+                    createId(setup.run.deps),
+                    2,
+                    "b".repeat(800_000),
+                  ),
+                ],
+              ],
+            ]),
+            rowsByQuery: new Map(),
+          },
+        },
+      });
+      await testWaitForWorkerMessage();
+      createWebSocket.sentMessages.length = 0;
+      laterWebSocket.sentMessages.length = 0;
+      for (const _ of [0, 1])
+        await respondToApplySync(first, true, {
+          ok: true,
+          value: { type: "Broadcast" },
+        });
+
+      // The first database reconciles the copy with a round through each
+      // relay, whose requests wait for the answers to the upload.
+      const dispatchedCount = first.dbInputs.length;
+      assertEqual(await respondToSyncRound(first, createWebSocket), []);
+      assertEqual(await respondToSyncRound(first, createWebSocket), []);
+      assertEqual(laterWebSocket.sentMessages, []);
+      assertSame(first.dbInputs.length, dispatchedCount + 1);
+      assertEqual(
+        [0, 1].map((index) => routeOf(latest(), testName, index).type),
+        ["Pending", "Pending"],
+      );
+
+      // Once a relay answers the upload, it gets the first database's round
+      // through it, whose request keeps the route pending.
+      const relays = [
+        [createWebSocket, transport.url],
+        [laterWebSocket, laterTransport.url],
+      ] as const;
+      for (const [webSocket, relayUrl] of relays) {
+        webSocket.message(relayUrl, relayResponse());
+        await testWaitForWorkerMessage();
+        await respondToApplySync(first, false, converged);
+        await respondToApplySync(second, false, converged);
+        assertEqual(
+          webSocket.sentMessages.splice(0).map(({ url }) => url),
+          [relayUrl],
+        );
+      }
+      assertEqual(
+        [0, 1].map((index) => routeOf(latest(), testName, index).type),
+        ["Pending", "Pending"],
+      );
+
+      // The answers to its rounds complete both routes.
+      for (const [webSocket, relayUrl] of relays) {
+        webSocket.message(relayUrl, relayResponse());
+        await testWaitForWorkerMessage();
+        await respondToApplySync(first, false, converged);
+        await respondToApplySync(second, false, converged);
+      }
+      assertEqual(
+        [0, 1].map((index) => routeOf(latest(), testName, index).type),
+        ["Complete", "Complete"],
+      );
+    });
+
+    /**
+     * Registers the owner in two databases, whose routes complete, and writes
+     * two changes in the second one, each of which fits a message alone, but
+     * not both together. The relay answers its upload, which carries one,
+     * before the first database applies the copy, so only the copy keeps the
+     * first database's route from completing. The second database then ends
+     * before it continues the upload.
+     */
+    const setupEndedIncompleteUpload = async (
+      setup: SharedWorkerSetup,
+      createWebSocket: TestCreateWebSocket,
+      { deleteWhenUnused = false }: { deleteWhenUnused?: boolean } = {},
+    ) => {
+      const first = await setup.createEvolu();
+      const second = await setup.createEvolu({
+        tenantName: Name.orThrow("second"),
+      });
+      const transport = createOwnerWebSocketTransport({
+        url: RelayUrl.orThrow("wss://ended-upload.example/"),
+        ownerId: testAppOwner.id,
+      });
+      const firstRegistration = createRegistrationId();
+      for (const [instance, id] of [
+        [first, firstRegistration],
+        [second, createRegistrationId()],
+      ] as const) {
+        instance.evoluChannel.port2.postMessage({
+          type: "UseOwner",
+          actions: [
+            {
+              owner: { owner: testAppOwner, transports: [transport] },
+              action: "add",
+              deleteWhenUnused: instance === first && deleteWhenUnused,
+              id,
+            },
+          ],
+        });
+        await testWaitForWorkerMessage();
+        await respondToSyncRound(instance, createWebSocket);
+      }
+      const converged = { ok: true, value: { type: "Converged" } } as const;
+      for (const _ of [first, second]) {
+        createWebSocket.message(transport.url, relayResponse());
+        await testWaitForWorkerMessage();
+        await respondToApplySync(first, false, converged);
+        await respondToApplySync(second, false, converged);
+      }
+      // The second database's round waited for the answer to the first's.
+      assertEqual(
+        createWebSocket.sentMessages.splice(0).map(({ url }) => url),
+        [transport.url],
+      );
+
+      await queueMutation(second);
+      const mutateInput = second.dbInputs.at(-1);
+      assertNotUndefined(mutateInput);
+      second.dbWorkerPort.postMessage({
+        type: "OnQueuedResponse",
+        attemptId: mutateInput.attemptId,
+        response: {
+          type: "ForEvolu",
+          id: second.id,
+          message: {
+            clock: createTimestamp(),
+            type: "Mutate",
+            messagesByOwnerId: new Map([
+              [
+                testAppOwner.id,
+                [
+                  testCreateCrdtMessage(
+                    createId(setup.run.deps),
+                    1,
+                    "a".repeat(800_000),
+                  ),
+                  testCreateCrdtMessage(
+                    createId(setup.run.deps),
+                    2,
+                    "b".repeat(800_000),
+                  ),
+                ],
+              ],
+            ]),
+            rowsByQuery: new Map(),
+          },
+        },
+      });
+      await testWaitForWorkerMessage();
+      assertEqual(
+        createWebSocket.sentMessages.splice(0).map(({ url }) => url),
+        [transport.url],
+      );
+      createWebSocket.message(transport.url, relayResponse());
+      await testWaitForWorkerMessage();
+      await second[Symbol.asyncDispose]();
+      for (let frame = 0; frame < 2; frame++)
+        await respondToApplySync(first, true, {
+          ok: true,
+          value: { type: "Broadcast" },
+        });
+      await respondToApplySync(first, false, converged);
+      return { first, transport, firstRegistration };
+    };
+
+    it("keeps a route pending until its own round converges when a sibling ends before continuing its upload", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      using disposer = new DisposableStack();
+      const { latest } = setupSyncStates(setup, disposer);
+      const { first, transport } = await setupEndedIncompleteUpload(
+        setup,
+        createWebSocket,
+      );
+
+      // The relay lacks the change the upload left out.
+      assertSame(routeOf(latest()).type, "Pending");
+
+      // The first database's own round reconciles it.
+      assertEqual(await respondToSyncRound(first, createWebSocket), [
+        transport.url,
+      ]);
+      assertSame(routeOf(latest()).type, "Pending");
+      createWebSocket.message(transport.url, relayResponse());
+      await testWaitForWorkerMessage();
+      await respondToApplySync(first, false, {
+        ok: true,
+        value: { type: "Converged" },
+      });
+      assertSame(routeOf(latest()).type, "Complete");
+    });
+
+    it("keeps an unused owner's rows when its delay ends before its round for a sibling's incomplete upload", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const { first, firstRegistration } = await setupEndedIncompleteUpload(
+        setup,
+        createWebSocket,
+        { deleteWhenUnused: true },
+      );
+      first.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ action: "remove", id: firstRegistration }],
+      });
+      await testWaitForWorkerMessage();
+      const dispatchedCount = first.dbInputs.length;
+
+      setup.run.deps.time.advance("10s");
+      await testWaitForWorkerMessage();
+
+      // The round still waits, and no deletion waits behind it.
+      await respondToSyncRound(first, createWebSocket);
+      assertSame(first.dbInputs.length, dispatchedCount);
+    });
+
+    it("completes a skipped route whose recheck waits behind a sibling copy that stored new messages", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      using disposer = new DisposableStack();
+      const { latest } = setupSyncStates(setup, disposer);
+      const first = await setup.createEvolu();
+      const second = await setup.createEvolu({
+        tenantName: Name.orThrow("second"),
+      });
+      const transport = createOwnerWebSocketTransport({
+        url: RelayUrl.orThrow("wss://recheck-behind-copy.example/"),
+        ownerId: testAppOwner.id,
+      });
+      for (const instance of [first, second]) {
+        instance.evoluChannel.port2.postMessage({
+          type: "UseOwner",
+          actions: [
+            {
+              owner: { owner: testAppOwner, transports: [transport] },
+              action: "add",
+              deleteWhenUnused: false,
+              id: createRegistrationId(),
+            },
+          ],
+        });
+        await testWaitForWorkerMessage();
+        await respondToSyncRound(instance, createWebSocket);
+      }
+      const converged = { ok: true, value: { type: "Converged" } } as const;
+      for (const _ of [first, second]) {
+        createWebSocket.message(transport.url, relayResponse());
+        await testWaitForWorkerMessage();
+        await respondToApplySync(first, false, converged);
+        await respondToApplySync(second, false, converged);
+      }
+      // The first database's round skips a message its relay offers.
+      first.evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ action: "sync", ownerId: testAppOwner.id }],
+      });
+      await testWaitForWorkerMessage();
+      await respondToSyncRound(first, createWebSocket);
+      createWebSocket.message(transport.url, relayResponse());
+      await testWaitForWorkerMessage();
+      await respondToApplySync(first, false, converged, skippedError);
+      await respondToApplySync(second, false, converged);
+      assertSame(routeOf(latest()).type, "Settled");
+      // While the socket is closed, the second database writes, and its copy,
+      // which no upload carries, reaches the first one.
+      createWebSocket.close(transport.url);
+      await testWaitForWorkerMessage();
+      await queueMutation(second);
+      await answerMutation(second, setup.run);
+      assertSame(
+        first.dbInputs.at(-1)?.request.message.type,
+        "ApplySyncMessage",
+      );
+      // The reopen requests a round, which waits behind the copy.
+      createWebSocket.open(transport.url);
+      await testWaitForWorkerMessage();
+
+      await respondToApplySync(first, true, {
+        ok: true,
+        value: { type: "Broadcast" },
+      });
+      await respondToSyncRound(first, createWebSocket);
+      createWebSocket.message(transport.url, relayResponse());
+      await testWaitForWorkerMessage();
+      await respondToApplySync(first, false, converged);
+
+      // The round read the copy's messages and skipped nothing.
+      assertSame(routeOf(latest()).type, "Complete");
+    });
+
+    for (const behind of ["another owner", "another transport"] as const)
+      it(`stops rechecking a skipped route when only a round of ${behind} waits behind a sibling copy that stored new messages`, async () => {
+        const createWebSocket = testCreateWebSocket();
+        await using setup = await setupSharedWorker({ createWebSocket });
+        using disposer = new DisposableStack();
+        const { latest } = setupSyncStates(setup, disposer);
+        const first = await setup.createEvolu();
+        const second = await setup.createEvolu({
+          tenantName: Name.orThrow("second"),
+        });
+        const transport = createOwnerWebSocketTransport({
+          url: RelayUrl.orThrow("wss://recheck-not-behind-copy.example/"),
+          ownerId: testAppOwner.id,
+        });
+        const otherOwner =
+          behind === "another owner" ? testAppOwner2 : testAppOwner;
+        const otherTransport = createOwnerWebSocketTransport({
+          url: RelayUrl.orThrow("wss://recheck-other.example/"),
+          ownerId: otherOwner.id,
+        });
+        const register = (
+          instance: TestEvoluInstance,
+          owner: SyncOwner["owner"],
+          transports: SyncOwner["transports"],
+        ): void => {
+          instance.evoluChannel.port2.postMessage({
+            type: "UseOwner",
+            actions: [
+              {
+                owner: { owner, transports },
+                action: "add",
+                deleteWhenUnused: false,
+                id: createRegistrationId(),
+              },
+            ],
+          });
+        };
+        const converged = { ok: true, value: { type: "Converged" } } as const;
+        for (const instance of [first, second]) {
+          register(instance, testAppOwner, [transport]);
+          await testWaitForWorkerMessage();
+          await respondToSyncRound(instance, createWebSocket);
+        }
+        for (const _ of [first, second]) {
+          createWebSocket.message(transport.url, relayResponse());
+          await testWaitForWorkerMessage();
+          await respondToApplySync(first, false, converged);
+          await respondToApplySync(second, false, converged);
+        }
+        if (behind === "another owner") {
+          register(first, testAppOwner2, [otherTransport]);
+          await testWaitForWorkerMessage();
+          await respondToSyncRound(first, createWebSocket, testAppOwner2);
+          createWebSocket.message(
+            otherTransport.url,
+            relayResponse(testAppOwner2.id),
+          );
+          await testWaitForWorkerMessage();
+          await respondToApplySync(first, false, converged);
+        }
+        // The first database's round skips a message its relay offers.
+        first.evoluChannel.port2.postMessage({
+          type: "UseOwner",
+          actions: [{ action: "sync", ownerId: testAppOwner.id }],
+        });
+        await testWaitForWorkerMessage();
+        await respondToSyncRound(first, createWebSocket);
+        createWebSocket.message(transport.url, relayResponse());
+        await testWaitForWorkerMessage();
+        await respondToApplySync(first, false, converged, skippedError);
+        await respondToApplySync(second, false, converged);
+        assertSame(routeOf(latest()).type, "Settled");
+        // Its next round rechecks the skip, and its request reaches the relay.
+        first.evoluChannel.port2.postMessage({
+          type: "UseOwner",
+          actions: [{ action: "sync", ownerId: testAppOwner.id }],
+        });
+        await testWaitForWorkerMessage();
+        await respondToSyncRound(first, createWebSocket);
+
+        // The second database writes two changes, each of which fits a
+        // message alone, but not both together, so its upload leaves one out
+        // and the first database reconciles its copy.
+        await queueMutation(second);
+        const mutateInput = second.dbInputs.at(-1);
+        assertNotUndefined(mutateInput);
+        second.dbWorkerPort.postMessage({
+          type: "OnQueuedResponse",
+          attemptId: mutateInput.attemptId,
+          response: {
+            type: "ForEvolu",
+            id: second.id,
+            message: {
+              clock: createTimestamp(),
+              type: "Mutate",
+              messagesByOwnerId: new Map([
+                [
+                  testAppOwner.id,
+                  [
+                    testCreateCrdtMessage(
+                      createId(setup.run.deps),
+                      1,
+                      "a".repeat(800_000),
+                    ),
+                    testCreateCrdtMessage(
+                      createId(setup.run.deps),
+                      2,
+                      "b".repeat(800_000),
+                    ),
+                  ],
+                ],
+              ]),
+              rowsByQuery: new Map(),
+            },
+          },
+        });
+        await testWaitForWorkerMessage();
+        // Only a round of another owner or through another transport waits
+        // behind the copy.
+        if (behind === "another owner")
+          first.evoluChannel.port2.postMessage({
+            type: "UseOwner",
+            actions: [{ action: "sync", ownerId: testAppOwner2.id }],
+          });
+        else register(first, testAppOwner, [otherTransport]);
+        await testWaitForWorkerMessage();
+        // A transport first claimed for the owner starts every database's
+        // round through it.
+        if (behind === "another transport")
+          await respondToSyncRound(second, createWebSocket);
+        for (const _ of [0, 1])
+          await respondToApplySync(first, true, {
+            ok: true,
+            value: { type: "Broadcast" },
+          });
+        await respondToSyncRound(first, createWebSocket, otherOwner);
+
+        // The relay answers the round, which read the database before the
+        // copy stored its messages.
+        createWebSocket.message(transport.url, relayResponse());
+        await testWaitForWorkerMessage();
+        await respondToApplySync(first, false, converged);
+        await respondToApplySync(second, false, converged);
+        // The second database continues its upload, which the relay answers.
+        assertEqual(
+          createWebSocket.sentMessages.splice(0).map(({ url }) => url),
+          [transport.url],
+        );
+        createWebSocket.message(transport.url, relayResponse());
+        await testWaitForWorkerMessage();
+        await respondToApplySync(first, false, converged);
+        await respondToApplySync(second, false, converged);
+
+        assertSame(routeOf(latest()).type, "Settled");
+      });
+
+    for (const outcome of ["fails to apply", "skips a message"] as const)
+      it(`settles a skipped route whose recheck waits behind a sibling copy that ${outcome}`, async () => {
+        const createWebSocket = testCreateWebSocket();
+        await using setup = await setupSharedWorker({ createWebSocket });
+        using disposer = new DisposableStack();
+        const { latest } = setupSyncStates(setup, disposer);
+        const first = await setup.createEvolu();
+        const second = await setup.createEvolu({
+          tenantName: Name.orThrow("second"),
+        });
+        const transport = createOwnerWebSocketTransport({
+          url: RelayUrl.orThrow("wss://recheck-behind-unstored-copy.example/"),
+          ownerId: testAppOwner.id,
+        });
+        for (const instance of [first, second]) {
+          instance.evoluChannel.port2.postMessage({
+            type: "UseOwner",
+            actions: [
+              {
+                owner: { owner: testAppOwner, transports: [transport] },
+                action: "add",
+                deleteWhenUnused: false,
+                id: createRegistrationId(),
+              },
+            ],
+          });
+          await testWaitForWorkerMessage();
+          await respondToSyncRound(instance, createWebSocket);
+        }
+        const converged = { ok: true, value: { type: "Converged" } } as const;
+        for (const _ of [first, second]) {
+          createWebSocket.message(transport.url, relayResponse());
+          await testWaitForWorkerMessage();
+          await respondToApplySync(first, false, converged);
+          await respondToApplySync(second, false, converged);
+        }
+        // The first database's round skips a message its relay offers.
+        first.evoluChannel.port2.postMessage({
+          type: "UseOwner",
+          actions: [{ action: "sync", ownerId: testAppOwner.id }],
+        });
+        await testWaitForWorkerMessage();
+        await respondToSyncRound(first, createWebSocket);
+        createWebSocket.message(transport.url, relayResponse());
+        await testWaitForWorkerMessage();
+        await respondToApplySync(first, false, converged, skippedError);
+        await respondToApplySync(second, false, converged);
+        assertSame(routeOf(latest()).type, "Settled");
+        // While the socket is closed, the second database writes, and its copy,
+        // which no upload carries, reaches the first one.
+        createWebSocket.close(transport.url);
+        await testWaitForWorkerMessage();
+        await queueMutation(second);
+        await answerMutation(second, setup.run);
+        assertSame(
+          first.dbInputs.at(-1)?.request.message.type,
+          "ApplySyncMessage",
+        );
+        // The reopen requests a round, which waits behind the copy.
+        createWebSocket.open(transport.url);
+        await testWaitForWorkerMessage();
+
+        // The copy leaves some of the second database's messages unstored, so
+        // the round, although it reads the database after the copy, lacks
+        // them.
+        if (outcome === "fails to apply")
+          await respondToApplySync(first, false, {
+            ok: false,
+            error: { type: "StorageQuotaError", ownerId: testAppOwner.id },
+          });
+        else
+          await respondToApplySync(
+            first,
+            false,
+            { ok: true, value: { type: "Broadcast" } },
+            skippedError,
+          );
+        await respondToSyncRound(first, createWebSocket);
+        createWebSocket.message(transport.url, relayResponse());
+        await testWaitForWorkerMessage();
+        await respondToApplySync(first, false, converged);
+
+        assertSame(routeOf(latest()).type, "Settled");
+      });
+
     it("retries every route after a sibling continuation copy fails without blaming its source relay", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
@@ -21970,6 +22822,123 @@ describe("owner deletion", () => {
         await advance(setup, 10_000);
 
         assertSame(isDeletionDispatched(instance, dispatchedCount), isComplete);
+        assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+      });
+
+    /**
+     * Registers the owner with deleteWhenUnused in one database and without it
+     * in another one, completes both databases' routes, and ends the first
+     * database's registration, which starts its delay.
+     */
+    const setupSiblingDatabase = async (
+      setup: SharedWorkerSetup,
+      createWebSocket: TestCreateWebSocket,
+    ) => {
+      const instance = await setup.createEvolu();
+      const other = await setup.createEvolu({
+        tenantName: Name.orThrow("other"),
+      });
+      // oxlint-disable-next-line react-hooks/rules-of-hooks -- The test helper posts a registration, it is no React Hook.
+      const registration = useOwner(
+        instance.evoluChannel.port2,
+        syncOwner,
+        true,
+      );
+      await testWaitForWorkerMessage();
+      await completeRoute(instance, createWebSocket);
+      // oxlint-disable-next-line react-hooks/rules-of-hooks -- The test helper posts a registration, it is no React Hook.
+      useOwner(other.evoluChannel.port2, syncOwner);
+      await testWaitForWorkerMessage();
+      await respondToSyncRound(other, createWebSocket, testAppOwner2);
+      createWebSocket.message(ownerTransport.url, relayResponse());
+      await testWaitForWorkerMessage();
+      for (const database of [instance, other])
+        await respondToApplySync(database, false, {
+          ok: true,
+          value: { type: "Converged" },
+        });
+      unuseOwner(instance.evoluChannel.port2, registration);
+      await testWaitForWorkerMessage();
+      createWebSocket.sentMessages.length = 0;
+      return { instance, other };
+    };
+
+    for (const isAnswered of [false, true])
+      it(`${isAnswered ? "deletes" : "keeps"} the rows when the delay ends ${isAnswered ? "after" : "before"} the reopened relay answers the round that uploads another database's write made while every relay was closed`, async () => {
+        const createWebSocket = testCreateWebSocket();
+        await using setup = await setupSharedWorker({ createWebSocket });
+        const { instance, other } = await setupSiblingDatabase(
+          setup,
+          createWebSocket,
+        );
+        createWebSocket.close(ownerTransport.url);
+        await testWaitForWorkerMessage();
+
+        // No upload carries the other database's write, and this database
+        // stores its copy before the other one ends.
+        writeOwner(other.evoluChannel.port2);
+        await testWaitForWorkerMessage();
+        await answerWrite(other, setup);
+        assertEqual(createWebSocket.sentMessages, []);
+        await respondToApplySync(instance, true, {
+          ok: true,
+          value: { type: "Broadcast" },
+        });
+        await other[Symbol.asyncDispose]();
+        createWebSocket.open(ownerTransport.url);
+        await testWaitForWorkerMessage();
+        assertEqual(
+          await respondToSyncRound(instance, createWebSocket, testAppOwner2),
+          [ownerTransport.url],
+        );
+        if (isAnswered) {
+          createWebSocket.message(ownerTransport.url, relayResponse());
+          await testWaitForWorkerMessage();
+          await respondToApplySync(instance, false, {
+            ok: true,
+            value: { type: "Converged" },
+          });
+        }
+        const dispatchedCount = instance.dbInputs.length;
+        await advance(setup, 10_000);
+
+        assertSame(isDeletionDispatched(instance, dispatchedCount), isAnswered);
+        assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+      });
+
+    for (const isAnswered of [false, true])
+      it(`${isAnswered ? "deletes" : "keeps"} the rows when the delay ends ${isAnswered ? "after" : "before"} the relay answers another database's upload of a write whose copy this database stored, which the upload carries`, async () => {
+        const createWebSocket = testCreateWebSocket();
+        await using setup = await setupSharedWorker({ createWebSocket });
+        const { instance, other } = await setupSiblingDatabase(
+          setup,
+          createWebSocket,
+        );
+
+        writeOwner(other.evoluChannel.port2);
+        await testWaitForWorkerMessage();
+        await answerWrite(other, setup);
+        assertEqual(
+          ownerTransportMessages(createWebSocket).map(({ url }) => url),
+          [ownerTransport.url],
+        );
+        await respondToApplySync(instance, true, {
+          ok: true,
+          value: { type: "Broadcast" },
+        });
+        if (isAnswered) {
+          createWebSocket.message(ownerTransport.url, relayResponse());
+          await testWaitForWorkerMessage();
+          for (const database of [other, instance])
+            await respondToApplySync(database, false, {
+              ok: true,
+              value: { type: "Converged" },
+            });
+        }
+        const dispatchedCount = instance.dbInputs.length;
+        await advance(setup, 10_000);
+
+        assertSame(isDeletionDispatched(instance, dispatchedCount), isAnswered);
         assertEqual(setup.run.deps.reportDefect.getDefects(), []);
       });
   });

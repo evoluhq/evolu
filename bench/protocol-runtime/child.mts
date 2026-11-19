@@ -74,7 +74,7 @@ const requiredExports: RequiredExports = {
     "createBaseSqliteStorageTables",
     "createProtocolBroadcastMessagesFromCrdtMessages",
     "createProtocolMessageForSync",
-    "createProtocolMessageFromCrdtMessages",
+    "createProtocolUploadFromCrdtMessages",
     "createRelaySqliteStorage",
     "createRelayStorageTables",
     "createTimestampsBuffer",

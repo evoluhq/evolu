@@ -244,7 +244,7 @@ const requiredExports: RequiredExports = {
     "Counter",
     "createBaseSqliteStorageTables",
     "createProtocolMessageForSync",
-    "createProtocolMessageFromCrdtMessages",
+    "createProtocolUploadFromCrdtMessages",
     "createRelaySqliteStorage",
     "createRelayStorageTables",
     "DbChange",
@@ -380,10 +380,10 @@ const runScenario = async (
         ? localFirst.createProtocolMessageForSync({ storage: client.storage })(
             owner.id,
           )
-        : localFirst.createProtocolMessageFromCrdtMessages({
+        : localFirst.createProtocolUploadFromCrdtMessages({
             randomBytes: createSeededRandomBytes(scenario.push.encryptionSeed),
             ...modules.xChaCha20Poly1305Dep,
-          })(owner, scenario.push.crdtMessages);
+          })(owner, scenario.push.crdtMessages).message;
     firstRequestMessages = addFrame("request", message, defaultRangesMaxSize);
 
     for (;;) {

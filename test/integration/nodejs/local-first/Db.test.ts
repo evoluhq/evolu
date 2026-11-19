@@ -62,7 +62,7 @@ import {
 import {
   applyProtocolMessageAsRelay,
   createProtocolMessageBuffer,
-  createProtocolMessageFromCrdtMessages,
+  createProtocolUploadFromCrdtMessages,
   decryptAndDecodeDbChange,
   defaultProtocolMessageMaxSize,
   encodeAndEncryptDbChange,
@@ -276,13 +276,13 @@ const createMutationChange = ({
 
 const createBroadcastProtocolMessage = async (
   messages: Parameters<
-    ReturnType<typeof createProtocolMessageFromCrdtMessages>
+    ReturnType<typeof createProtocolUploadFromCrdtMessages>
   >[1],
   owner = testAppOwner,
 ): Promise<Uint8Array> => {
-  const requestMessage = createProtocolMessageFromCrdtMessages(
+  const requestMessage = createProtocolUploadFromCrdtMessages(
     setupCryptoDeps(testCreateDeps()),
-  )(owner, messages);
+  )(owner, messages).message;
 
   await using relay = await setupSqliteAndRelayStorage();
   const broadcastMessages: Array<Uint8Array> = [];
@@ -3542,23 +3542,24 @@ describe("sync message flow", () => {
     await using relay = await setupSqliteAndRelayStorage();
     await relay.run.orThrow(
       applyProtocolMessageAsRelay(
-        createProtocolMessageFromCrdtMessages(
-          setupCryptoDeps(testCreateDeps()),
-        )(testAppOwner, [
-          {
-            timestamp: createTimestamp({
-              millis: Millis.orThrow(1),
-              counter: 0 as never,
-            }),
-            change: DbChange.orThrow({
-              table: "testTable",
-              id: setup.createId(),
-              values: { name: "remote" },
-              isInsert: true,
-              isDelete: null,
-            }),
-          },
-        ]),
+        createProtocolUploadFromCrdtMessages(setupCryptoDeps(testCreateDeps()))(
+          testAppOwner,
+          [
+            {
+              timestamp: createTimestamp({
+                millis: Millis.orThrow(1),
+                counter: 0 as never,
+              }),
+              change: DbChange.orThrow({
+                table: "testTable",
+                id: setup.createId(),
+                values: { name: "remote" },
+                isInsert: true,
+                isDelete: null,
+              }),
+            },
+          ],
+        ).message,
       ),
     );
     const request = getQueuedSharedWorkerMessage(
@@ -3628,20 +3629,21 @@ describe("sync message flow", () => {
     await using relay = await setupSqliteAndRelayStorage();
     await relay.run.orThrow(
       applyProtocolMessageAsRelay(
-        createProtocolMessageFromCrdtMessages(
-          setupCryptoDeps(testCreateDeps()),
-        )(testAppOwner, [
-          {
-            timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
-            change: DbChange.orThrow({
-              table: "testTable",
-              id: setup.createId(),
-              values: { name: "remote" },
-              isInsert: true,
-              isDelete: null,
-            }),
-          },
-        ]),
+        createProtocolUploadFromCrdtMessages(setupCryptoDeps(testCreateDeps()))(
+          testAppOwner,
+          [
+            {
+              timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
+              change: DbChange.orThrow({
+                table: "testTable",
+                id: setup.createId(),
+                values: { name: "remote" },
+                isInsert: true,
+                isDelete: null,
+              }),
+            },
+          ],
+        ).message,
       ),
     );
     const request = getQueuedSharedWorkerMessage(
@@ -3699,20 +3701,21 @@ describe("sync message flow", () => {
     await using relay = await setupSqliteAndRelayStorage();
     await relay.run.orThrow(
       applyProtocolMessageAsRelay(
-        createProtocolMessageFromCrdtMessages(
-          setupCryptoDeps(testCreateDeps()),
-        )(testAppOwner, [
-          {
-            timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
-            change: DbChange.orThrow({
-              table: "testTable",
-              id: setup.createId(),
-              values: { name: "remote" },
-              isInsert: true,
-              isDelete: null,
-            }),
-          },
-        ]),
+        createProtocolUploadFromCrdtMessages(setupCryptoDeps(testCreateDeps()))(
+          testAppOwner,
+          [
+            {
+              timestamp: createTimestamp({ millis: Millis.orThrow(1) }),
+              change: DbChange.orThrow({
+                table: "testTable",
+                id: setup.createId(),
+                values: { name: "remote" },
+                isInsert: true,
+                isDelete: null,
+              }),
+            },
+          ],
+        ).message,
       ),
     );
     const request = getQueuedSharedWorkerMessage(
@@ -3980,10 +3983,10 @@ describe("sync message flow", () => {
       for (const [message, encryptionKey] of messages) {
         await relay.run.orThrow(
           applyProtocolMessageAsRelay(
-            createProtocolMessageFromCrdtMessages(setupCryptoDeps(deps))(
+            createProtocolUploadFromCrdtMessages(setupCryptoDeps(deps))(
               { ...testAppOwner, encryptionKey },
               [message],
-            ),
+            ).message,
           ),
         );
       }

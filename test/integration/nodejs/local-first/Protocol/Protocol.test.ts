@@ -21,7 +21,7 @@ import {
   applyProtocolMessageAsRelay,
   createProtocolMessageBuffer,
   createProtocolMessageForSync,
-  createProtocolMessageFromCrdtMessages,
+  createProtocolUploadFromCrdtMessages,
   createTimestampsBuffer,
   defaultProtocolMessageMaxSize,
   defaultProtocolMessageRangesMaxSize,
@@ -1735,7 +1735,7 @@ describe("E2E sync", { timeout: 15_000 }, () => {
     });
   });
 
-  it("starts sync from createProtocolMessageFromCrdtMessages", async () => {
+  it("starts sync from createProtocolUploadFromCrdtMessages", async () => {
     const { deps } = setupE2eSync();
     const owner = testAppOwner;
     const crdtMessages = testTimestampsAsc.map((t): CrdtMessage => ({
@@ -1750,7 +1750,7 @@ describe("E2E sync", { timeout: 15_000 }, () => {
     }));
     assertNonEmptyArray(crdtMessages);
 
-    const protocolMessage = createProtocolMessageFromCrdtMessages({
+    const protocolMessage = createProtocolUploadFromCrdtMessages({
       ...deps,
       xChaCha20Poly1305: createXChaCha20Poly1305(),
     })(
@@ -1758,7 +1758,7 @@ describe("E2E sync", { timeout: 15_000 }, () => {
       crdtMessages,
       // This is technically invalid, we use it to enforce a sync.
       1000 as ProtocolMessageMaxSize,
-    );
+    ).message;
 
     await using setup = await setupSqliteAndRelayStorage();
     const { run } = setup;

@@ -343,12 +343,14 @@
  * Relays omit the sending socket when broadcasting an upload, so the uploader
  * also delivers it as local Broadcast frames to every other tenant with
  * writable access to the owner, even while sockets are closed. A copy keeps the
- * uploader's target, and a recipient that stores new continuation messages
- * reconciles them through the transports outside that target, except through a
- * route that skipped a message. Local delivery forwards uploads, including
- * historical messages sent during reconciliation, but does not reconcile local
- * database histories with each other. That waits until replication scopes and
- * retention semantics are defined.
+ * uploader's target when that upload carries every message of the copy, and
+ * otherwise, as when a write does not fit one message or no socket is open, it
+ * has none. A recipient that stores new messages from a copy reconciles them
+ * through the transports outside that target, except through a route that
+ * skipped a message. Local delivery forwards uploads, including historical
+ * messages sent during reconciliation, but does not reconcile local database
+ * histories with each other. That waits until replication scopes and retention
+ * semantics are defined.
  *
  * ## Sync state
  *
@@ -428,9 +430,10 @@
  *   failed result has arrived on the route since.
  * - No result that skipped a received message or a stored change too large to
  *   send has arrived on the route since a round was last requested through it,
- *   and since that request, no messages have been stored from another
- *   transport, directly or through a sibling copy uploaded outside this
- *   transport, and no sibling copy has failed to apply or skipped a message.
+ *   that round read every message stored from another transport since that
+ *   request, directly or through a sibling copy whose upload doesn't carry them
+ *   through this transport, and no sibling copy has failed to apply or skipped
+ *   a message since.
  *
  * A route is settled when every condition except the last holds, so a complete
  * route is settled too. A settled route that is incomplete has ended its
@@ -448,7 +451,9 @@
  * local Broadcast from a sibling tenant holds every route of its owner until it
  * is applied, because it arrives without a request of its own; one that fails
  * to apply or skips a message requires a round through every transport whose
- * route has not skipped one.
+ * route has not skipped one. So does one whose sender's upload carries only
+ * some of its messages, leaving the rest to later rounds, which may never run,
+ * as when the sender's database ends, or none, because no socket was open.
  *
  * A failed result on a route requests one round through it. Any further failure
  * before the route settles requests no round of its own and waits for the next
@@ -672,7 +677,7 @@ import {
 import {
   createProtocolBroadcastMessagesFromCrdtMessages,
   createProtocolMessageForUnsubscribe,
-  createProtocolMessageFromCrdtMessages,
+  createProtocolUploadFromCrdtMessages,
   MessageType,
   parseProtocolHeader,
   type ApplyProtocolMessageAsClientResult,
@@ -2196,7 +2201,12 @@ type ApplySyncMessageSource =
   | {
       /** A local copy holds every route, whichever target its upload uses. */
       readonly type: "Local";
-      readonly uploadTarget: SyncTarget;
+      /**
+       * The transports whose upload carries every message of the copy, which
+       * leave them to that upload. Null when no upload carries every one, so
+       * the copy's messages are reconciled through every transport.
+       */
+      readonly uploadTarget: SyncTarget | null;
     };
 
 const allTransports: SyncTarget = { type: "AllTransports" };
@@ -4334,14 +4344,14 @@ const createEvoluTenant =
               // The round a transport starts when it opens reads the write
               // from the database, so an upload is encrypted only while one is
               // open.
-              if (isAnyTransportOpen(ownerId, allTransports))
-                protocolMessagesByOwnerId.set(
-                  ownerId,
-                  createProtocolMessageFromCrdtMessages(run.deps)(
+              const upload = isAnyTransportOpen(ownerId, allTransports)
+                ? createProtocolUploadFromCrdtMessages(run.deps)(
                     owner,
                     messages,
-                  ),
-                );
+                  )
+                : null;
+              if (upload)
+                protocolMessagesByOwnerId.set(ownerId, upload.message);
               // Other tenants drop a copy unless they apply sync messages for
               // the owner, so encrypt one only when one of them does.
               if (
@@ -4350,13 +4360,17 @@ const createEvoluTenant =
                     tenantName !== name && tenant.isApplyingOwner(ownerId),
                 )
               ) {
+                // They leave the messages to an upload that carries every
+                // one. One that leaves some to its later rounds, which may
+                // never run, as when this database ends, leaves them to no
+                // transport, so the other tenants reconcile them themselves.
                 broadcastProtocolMessages(
                   ownerId,
                   createProtocolBroadcastMessagesFromCrdtMessages(run.deps)(
                     owner,
                     messages,
                   ),
-                  allTransports,
+                  upload?.isComplete ? allTransports : null,
                 );
               }
             }
@@ -4741,6 +4755,9 @@ const createEvoluTenant =
           if (result.ok) {
             switch (result.value.type) {
               case "Response":
+                // A sibling's copy is a Broadcast, which gets no Response,
+                // so the reply came through a transport.
+                assertNonNullable(target);
                 if (result.value.broadcast) {
                   broadcastProtocolMessages(
                     ownerId,
@@ -4774,7 +4791,7 @@ const createEvoluTenant =
     const broadcastProtocolMessages = (
       ownerId: OwnerId,
       messages: ReadonlyArray<ProtocolMessage>,
-      target: SyncTarget,
+      uploadTarget: SyncTarget | null,
     ): void => {
       for (const [tenantName, tenant] of currentTenantsByName) {
         if (tenantName === name) continue;
@@ -4782,7 +4799,7 @@ const createEvoluTenant =
           tenant.requestApplySyncMessage(
             ownerId,
             message,
-            { type: "Local", uploadTarget: target },
+            { type: "Local", uploadTarget },
             true,
           );
       }
@@ -4835,8 +4852,10 @@ const createEvoluTenant =
      * their source. A route that skipped a message gets none, because its relay
      * would offer that message again or the round would skip a stored change
      * too large to send again. A route rechecking one stops rechecking, because
-     * its round may have read the database before this event. A later requested
-     * round through such a route reconciles it.
+     * its round may have read the database before this event, unless the
+     * messages were stored by the apply at the queue's head and a round through
+     * the route waits behind it, which reads them. A later requested round
+     * through such a route reconciles it.
      */
     const requestRoundsForReceivedMessages = (
       ownerId: OwnerId,
@@ -4853,11 +4872,23 @@ const createEvoluTenant =
         if (route?.progress.type === "Settled") return;
         if (route?.progress.type === "Pending" && route.progress.skip) {
           // A round already requested may have read the database before these
-          // messages were stored, so it can no longer complete the route.
-          route.progress = {
-            ...route.progress,
-            skip: { ...route.progress.skip, isRechecking: false },
-          };
+          // messages were stored, so it can no longer complete the route. The
+          // apply that stored them is still at the queue's head, and the queue
+          // runs in order, so a queued round waits behind it and reads them.
+          const isRoundAfter =
+            !afterQueuedWrites &&
+            queue.some(
+              (entry) =>
+                entry.type === "CreateSyncMessages" &&
+                (entry.target.type === "AllTransports" ||
+                  entry.target.key === key) &&
+                entry.request.message.owners.some(({ id }) => id === ownerId),
+            );
+          if (!isRoundAfter)
+            route.progress = {
+              ...route.progress,
+              skip: { ...route.progress.skip, isRechecking: false },
+            };
           return;
         }
         keys.push(key);

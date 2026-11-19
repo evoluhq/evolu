@@ -54,7 +54,7 @@ import {
   ProtocolMessageMaxSize,
   ProtocolMessageRangesMaxSize,
   ProtocolErrorCode,
-  createProtocolMessageFromCrdtMessages,
+  createProtocolUploadFromCrdtMessages,
   createProtocolMessageForSync,
   createTimestampsBuffer,
   decodeSqliteValue,
@@ -713,7 +713,7 @@ test("encodeAndEncryptDbChange, decryptAndDecodeDbChange and the CRDT message bu
   assertSame(decrypt.mock.callCount(), 1);
   assertSame(decrypt.mock.calls[0].arguments[2], key);
 
-  createProtocolMessageFromCrdtMessages({ ...deps, xChaCha20Poly1305 })(
+  createProtocolUploadFromCrdtMessages({ ...deps, xChaCha20Poly1305 })(
     testAppOwner,
     [crdtMessage],
   );
@@ -1413,6 +1413,62 @@ describe("ProtocolMessageBuffer tryWrite", () => {
   });
 });
 
+test("createProtocolUploadFromCrdtMessages tells whether the message holds every CRDT message", () => {
+  const deps = setupCryptoDeps();
+  // Each fits a message alone, but not both together.
+  const [first, second] = [1, 2].map((millis) => ({
+    timestamp: createTimestamp({ millis: Millis.orThrow(millis) }),
+    change: DbChange.orThrow({
+      table: "employee",
+      id: createId(deps),
+      values: { note: "a".repeat(800_000) },
+      isInsert: true,
+      isDelete: null,
+    }),
+  }));
+  assertNonNullable(first);
+  assertNonNullable(second);
+  const upload = createProtocolUploadFromCrdtMessages(deps);
+
+  assertTrue(upload(testAppOwner, [first]).isComplete);
+  assertFalse(upload(testAppOwner, [first, second]).isComplete);
+  // Both fit a larger message.
+  assertTrue(
+    upload(
+      testAppOwner,
+      [first, second],
+      ProtocolMessageMaxSize.orThrow(2_000_000),
+    ).isComplete,
+  );
+
+  // A change too large for a message of the default size is left out, so
+  // only the range that asks for the rest remains, whose fingerprint is
+  // random.
+  const tooLarge = upload(testAppOwner, [
+    {
+      ...first,
+      change: DbChange.orThrow({
+        ...first.change,
+        values: { note: "a".repeat(1_400_000) },
+      }),
+    },
+  ]);
+  assertFalse(tooLarge.isComplete);
+  const rangeOnly = createProtocolMessageBuffer(testAppOwner.id, {
+    messageType: MessageType.Request,
+    writeKey: testAppOwner.writeKey,
+  });
+  rangeOnly.addRange({
+    type: RangeType.Fingerprint,
+    upperBound: InfiniteUpperBound,
+    fingerprint: zeroFingerprint,
+  });
+  assertEqualBytes(
+    tooLarge.message.subarray(0, -zeroFingerprint.length),
+    rangeOnly.unwrap().subarray(0, -zeroFingerprint.length),
+  );
+});
+
 describe("createProtocolMessageBuffer", () => {
   it("unwraps repeatedly without changing the builder", () => {
     const deps = setupCryptoDeps();
@@ -1987,10 +2043,10 @@ describe("E2E errors", () => {
       { timestamp, change: dbChange },
     ];
 
-    const initiatorMessage = createProtocolMessageFromCrdtMessages(deps)(
+    const initiatorMessage = createProtocolUploadFromCrdtMessages(deps)(
       testAppOwner,
       messages,
-    );
+    ).message;
 
     let responseMessage: Uint8Array;
     {
@@ -2029,7 +2085,7 @@ describe("E2E errors", () => {
 
   it("reports a rejected relay write as a quota and a failed one as a write failure", async () => {
     const deps = setupCryptoDeps();
-    const initiatorMessage = createProtocolMessageFromCrdtMessages(deps)(
+    const initiatorMessage = createProtocolUploadFromCrdtMessages(deps)(
       testAppOwner,
       [
         {
@@ -2037,7 +2093,7 @@ describe("E2E errors", () => {
           change: createDbChange(deps),
         },
       ],
-    );
+    ).message;
     let broadcastCount = 0;
     /** Returns the relay's response and what it logged for the write. */
     const relayResponseFor = async (
@@ -2158,9 +2214,9 @@ describe("E2E errors", () => {
 
     const result = await run.abortable(
       applyProtocolMessageAsRelay(
-        createProtocolMessageFromCrdtMessages(deps)(testAppOwner, [
+        createProtocolUploadFromCrdtMessages(deps)(testAppOwner, [
           createTestCrdtMessage(deps),
-        ]),
+        ]).message,
       ),
     );
 
@@ -2378,10 +2434,10 @@ describe("E2E relay options", () => {
       { timestamp, change: dbChange },
     ];
 
-    const initiatorMessage = createProtocolMessageFromCrdtMessages(deps)(
+    const initiatorMessage = createProtocolUploadFromCrdtMessages(deps)(
       testAppOwner,
       messages,
-    );
+    ).message;
 
     assertEqualBytes(
       initiatorMessage,
@@ -2804,9 +2860,9 @@ describe("decoding before applying", () => {
 
   it("relay propagates a throw from its broadcast callback as a defect", async () => {
     const deps = setupCryptoDeps();
-    const request = createProtocolMessageFromCrdtMessages(deps)(testAppOwner, [
+    const request = createProtocolUploadFromCrdtMessages(deps)(testAppOwner, [
       createTestCrdtMessage(deps),
-    ]);
+    ]).message;
     const defect = new Error("broadcast failed");
     await using run = testCreateRun({
       storage: {
@@ -2912,9 +2968,9 @@ describe("decoding before applying", () => {
 
   it("client rejects a Request before storing its changes", async () => {
     const deps = setupCryptoDeps();
-    const request = createProtocolMessageFromCrdtMessages(deps)(testAppOwner, [
+    const request = createProtocolUploadFromCrdtMessages(deps)(testAppOwner, [
       createTestCrdtMessage(deps),
-    ]);
+    ]).message;
     await using run = testCreateRun(shouldNotBeCalledStorageDep);
 
     const result = await run(
@@ -3293,11 +3349,11 @@ test("upload requests fill a frame exactly before their continuation range", asy
     [exactSize, [large]],
     [exactSize - 1, []],
   ] as const) {
-    const request = createProtocolMessageFromCrdtMessages(deps)(
+    const request = createProtocolUploadFromCrdtMessages(deps)(
       testAppOwner,
       [large, small],
       ProtocolMessageMaxSize.orThrow(maxSize),
-    );
+    ).message;
     assertTrue(request.length <= maxSize);
     if (expectedUploaded.length > 0) assertSame(request.length, maxSize);
     // The frame ends with one Fingerprint range and its fingerprint.
@@ -3334,6 +3390,68 @@ test("upload requests fill a frame exactly before their continuation range", asy
     );
     assertEqual(uploaded, expectedUploaded);
   }
+});
+
+test("createProtocolUploadFromCrdtMessages tells a message that fills the frame exactly complete only when its closing range would fit too", () => {
+  const deps = setupCryptoDeps();
+  const { large, measureFrame } = setupFrameFillingMessages(deps);
+  const exactSize =
+    measureFrame(
+      createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Request,
+        writeKey: testAppOwner.writeKey,
+        totalMaxSize: ProtocolMessageMaxSize.orThrow(2_000_000),
+      }),
+    ) + 14;
+
+  for (const [maxSize, isComplete] of [
+    [exactSize, true],
+    [exactSize - 1, false],
+  ] as const)
+    assertSame(
+      createProtocolUploadFromCrdtMessages(deps)(
+        testAppOwner,
+        [large],
+        ProtocolMessageMaxSize.orThrow(maxSize),
+      ).isComplete,
+      isComplete,
+    );
+});
+
+test("createProtocolUploadFromCrdtMessages leaves out every message after one that doesn't fit, also one that would", () => {
+  const deps = setupCryptoDeps();
+  const { large, measureFrame } = setupFrameFillingMessages(deps);
+  const exactSize =
+    measureFrame(
+      createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Request,
+        writeKey: testAppOwner.writeKey,
+        totalMaxSize: ProtocolMessageMaxSize.orThrow(2_000_000),
+      }),
+    ) + 14;
+  const tooLarge: CrdtMessage = {
+    timestamp: createTimestamp({ millis: Millis.orThrow(2) }),
+    change: DbChange.orThrow({
+      ...createDbChange(deps),
+      values: { data: new Uint8Array(1_000_000).fill(2) },
+    }),
+  };
+  const tiny: CrdtMessage = {
+    timestamp: createTimestamp({ millis: Millis.orThrow(3) }),
+    change: createDbChange(deps),
+  };
+  // Room for the tiny message after the large one, not for the too large one.
+  const maxSize = ProtocolMessageMaxSize.orThrow(exactSize + 1_000);
+  const upload = createProtocolUploadFromCrdtMessages(deps);
+
+  const withTiny = upload(testAppOwner, [large, tiny], maxSize);
+  assertTrue(withTiny.isComplete);
+  assertTrue(withTiny.message.length > exactSize - 14);
+
+  const leftOut = upload(testAppOwner, [large, tooLarge, tiny], maxSize);
+  assertFalse(leftOut.isComplete);
+  // Only the large message and the closing range.
+  assertSame(leftOut.message.length, exactSize);
 });
 
 test("local mutation broadcasts fill a frame exactly", () => {

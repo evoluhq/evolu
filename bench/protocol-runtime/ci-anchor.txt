@@ -1,1 +1,1 @@
-The harness's storages write with the writer's write key, which relay storage now checks, so its harness differs from the previous anchor's.
+The harness calls createProtocolUploadFromCrdtMessages, which replaced createProtocolMessageFromCrdtMessages, so its micro and reconcile modules differ from the previous anchor's.

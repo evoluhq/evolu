@@ -602,28 +602,69 @@ export interface ProtocolChangeTooLargeError extends Typed<"ProtocolChangeTooLar
 }
 
 /**
- * Creates a {@link ProtocolMessage} from CRDT messages.
+ * A {@link ProtocolMessage} that uploads CRDT messages, which
+ * {@link createProtocolUploadFromCrdtMessages} creates.
+ */
+export interface ProtocolUpload {
+  readonly message: ProtocolMessage;
+  /**
+   * Whether the message holds every CRDT message. Otherwise its receiver
+   * answers with ranges, and its sender sends the rest in later rounds.
+   */
+  readonly isComplete: boolean;
+}
+
+/**
+ * Creates the {@link ProtocolUpload} of CRDT messages.
  *
  * The message holds the leading CRDT messages that fit `maxSize`, by default
  * {@link defaultProtocolMessageMaxSize}, measured exactly. When one does not
  * fit, it and the rest are left out, and the message ends with a range that
  * makes the non-initiator answer with ranges. Sync then sends them in later
  * rounds, even over unidirectional and stateless transports, because every
- * change within {@link maxMutationSize} fits an empty message.
+ * change within {@link maxMutationSize} fits an empty message. `isComplete`
+ * tells whether the message holds every CRDT message, so its sender knows
+ * whether only its later rounds send the rest.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertSame,
+ *   createId,
+ *   createXChaCha20Poly1305,
+ *   testCreateDeps,
+ * } from "@evolu/common";
+ * import {
+ *   createProtocolUploadFromCrdtMessages,
+ *   testAppOwner,
+ *   testCreateCrdtMessage,
+ * } from "@evolu/common/local-first";
+ *
+ * const deps = {
+ *   ...testCreateDeps(),
+ *   xChaCha20Poly1305: createXChaCha20Poly1305(),
+ * };
+ * const upload = createProtocolUploadFromCrdtMessages(deps)(testAppOwner, [
+ *   testCreateCrdtMessage(createId(deps), 1, "Ada"),
+ * ]);
+ * assertSame(upload.isComplete, true);
+ * ```
  */
-export const createProtocolMessageFromCrdtMessages =
+export const createProtocolUploadFromCrdtMessages =
   (deps: RandomBytesDep & XChaCha20Poly1305Dep) =>
   (
     owner: Owner,
     messages: NonEmptyReadonlyArray<CrdtMessage>,
     maxSize?: ProtocolMessageMaxSize,
-  ): ProtocolMessage => {
+  ): ProtocolUpload => {
     const buffer = createProtocolMessageBuffer(owner.id, {
       messageType: MessageType.Request,
       totalMaxSize: maxSize ?? defaultProtocolMessageMaxSize,
       writeKey: owner.writeKey,
     });
 
+    let isComplete = true;
     for (const message of messages) {
       const change = encodeAndEncryptDbChange(deps)(
         message,
@@ -660,11 +701,12 @@ export const createProtocolMessageFromCrdtMessages =
           upperBound: InfiniteUpperBound,
           fingerprint: randomFingerprint,
         });
+        isComplete = false;
         break;
       }
     }
 
-    return buffer.unwrap();
+    return { message: buffer.unwrap(), isComplete };
   };
 
 /**
@@ -672,7 +714,7 @@ export const createProtocolMessageFromCrdtMessages =
  * supplied {@link CrdtMessage}.
  *
  * Broadcasts contain no synchronization ranges or write key. Unlike
- * {@link createProtocolMessageFromCrdtMessages}, this function splits all
+ * {@link createProtocolUploadFromCrdtMessages}, this function splits all
  * messages into complete frames rather than relying on later synchronization
  * rounds to deliver messages that do not fit. Each individual message must fit
  * the configured size limit.
