@@ -8,7 +8,7 @@ import { useLocalSearchParams } from "expo-router";
 import { useEffect, type FC } from "react";
 import { Platform, Text, View } from "react-native";
 import { runDeviceBench } from "../../../packages/react-native/test/device/bench.ts";
-import { createReactNativeSqliteDriver } from "../../../packages/react-native/src/sqlite/Driver.ts";
+import { createReactNativeSqliteDriver } from "../../../packages/react-native/src/Sqlite.ts";
 import {
   loadEvoluApp,
   loadNativeSqlite,
