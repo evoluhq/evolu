@@ -2009,18 +2009,32 @@ const syncStateItemToKey = (item: unknown): unknown =>
  *
  * @group Construction
  */
-export const createEvolu =
-  <S extends EvoluSchema>(
-    schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
-    config: EvoluConfig,
-  ): Task<Evolu<S>, never, EvoluPlatformDeps & StoredWorkerDep> =>
-  async (run) => {
-    const { appOwner, onDatabaseDeleted } = config;
+export const createEvolu = <S extends EvoluSchema>(
+  schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
+  config: EvoluConfig,
+): Task<Evolu<S>, never, EvoluPlatformDeps & StoredWorkerDep> => {
+  // Read at the call, with the transports copied, as useOwner copies them, so
+  // a later change of the caller's config changes nothing.
+  const {
+    appOwner,
+    onDatabaseDeleted,
+    transports: configTransports,
+    ...instanceConfig
+  } = config;
+  const transports =
+    configTransports && mapArray(configTransports, copyTransport);
+  return async (run) => {
+    // Before the instance starts its database, as useOwner of its AppOwner
+    // would only later. Its other checks of the owner can wait: the AppOwner's
+    // type rules out instant start's public device owner, which createAppOwner
+    // never derives.
+    if (transports) assertDistinctTransports(transports);
     const { evolu } = await run.ok(
       createEvoluInstance<S>(
         schema,
         {
-          ...config,
+          ...instanceConfig,
+          ...(transports && { transports }),
           // Called without the argument the app's callback doesn't expect.
           ...(onDatabaseDeleted && {
             onDatabaseDeleted: () => {
@@ -2035,6 +2049,7 @@ export const createEvolu =
     // The instance is still under construction: nothing outside holds it yet.
     return ok(Object.assign(evolu, { appOwner }));
   };
+};
 
 /**
  * Configuration for {@link createEvoluApp}. The other options apply to every
@@ -2596,7 +2611,10 @@ export const createEvoluApp = <
     deviceDatabaseSchema,
     device?.indexes,
   );
-  if (appConfig.transports) assertDistinctTransports(appConfig.transports);
+  // Copied as useOwner copies them, so instances use what was checked here.
+  const transports =
+    appConfig.transports && mapArray(appConfig.transports, copyTransport);
+  if (transports) assertDistinctTransports(transports);
   // A copy, checked at once, because the caller can change its bytes, even
   // from another thread through a SharedArrayBuffer. The Type rejects a cast
   // value too, which would silently open instant start's public device
@@ -2795,6 +2813,7 @@ export const createEvoluApp = <
                 schema,
                 {
                   ...appConfig,
+                  ...(transports && { transports }),
                   onDatabaseDeleted: (removed) => {
                     // A late deletion of an instance the app no longer owns, as
                     // each open has a promise of its own.
@@ -4511,11 +4530,12 @@ const createEvoluInstance =
         "useOwner takes its transports in the options, such as useOwner(owner, { transports }).",
       );
       const { transports: ownerTransports, deleteWhenUnused = false } = options;
-      const effectiveTransports = ownerTransports ?? transports;
+      const givenTransports = ownerTransports ?? transports;
       assertNonEmptyReadonlyArray(
-        effectiveTransports,
+        givenTransports,
         "useOwner requires non-empty transports, in its options or in config.transports.",
       );
+      const effectiveTransports = mapArray(givenTransports, copyTransport);
       // Its keys are public, so anyone could read and write what it syncs.
       assert(
         owner.id !== instantStartDeviceOwner.id,
@@ -4777,6 +4797,15 @@ const assertDistinctTransports = (
     "Transports must be distinct.",
   );
 };
+
+// A plain copy with only what Evolu uses, because the caller's transport may
+// be a framework's reactive proxy, such as Vue's or Svelte's, which a
+// worker can't receive, or carry other fields, which aren't sent and must not
+// make transports differ.
+const copyTransport = ({ type, url }: OwnerTransport): OwnerTransport => ({
+  type,
+  url,
+});
 
 // A stored database's name, which hashes the owner's ID, with the name input
 // of a database of Evolu's own; see EvoluInstanceKind.

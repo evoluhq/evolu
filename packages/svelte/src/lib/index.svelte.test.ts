@@ -42,6 +42,7 @@ import {
   type CurrentAppOwner,
   type DeviceEvolu,
   type EvoluApp,
+  type EvoluInput,
   type EvoluOutput,
   type Owner,
   type OwnerId,
@@ -114,6 +115,7 @@ const {
   effect_root: effectRoot,
   flush,
   get,
+  proxy,
   set,
   state,
   user_effect: userEffect,
@@ -123,6 +125,8 @@ const {
 )) as {
   readonly effect_root: (fn: () => void) => () => void;
   readonly flush: () => void;
+  /** What `$state` makes of an object or array, a deeply reactive proxy. */
+  readonly proxy: <T>(value: T) => T;
   readonly state: <T>(value: T) => Signal<T>;
   readonly get: <T>(signal: Signal<T>) => T;
   readonly set: <T>(signal: Signal<T>, value: T) => void;
@@ -276,13 +280,14 @@ test("has no rows without a query", async () => {
 
 /**
  * Creates an Evolu instance whose worker messages the test delivers, such as
- * the one that tells it a tab deleted its database.
+ * the one that tells it a tab deleted its database, and records what it posts.
  */
 const setupDeletableEvolu = async () => {
   const disposer = new AsyncDisposableStack();
   const ports: Array<{
     readonly onMessage: ((output: EvoluOutput) => void) | null;
   }> = [];
+  const posted: Array<EvoluInput> = [];
   const run = disposer.use(
     testCreateRun({
       createDbWorker: testCreateWorker,
@@ -290,6 +295,15 @@ const setupDeletableEvolu = async () => {
       createMessageChannel: <Input, Output = never>() => {
         const channel = testCreateMessageChannel<Input, Output>();
         ports.push(channel.port1 as never);
+        const { postMessage } = channel.port1;
+        // Records what is posted, which this port, unlike a web one, doesn't
+        // structured-clone.
+        Object.assign(channel.port1, {
+          postMessage: (...args: Parameters<typeof postMessage>) => {
+            posted.push(args[0] as never);
+            postMessage(...args);
+          },
+        });
         return channel;
       },
       getDevicePersistence: () => Promise.resolve("Unknown" as const),
@@ -317,6 +331,7 @@ const setupDeletableEvolu = async () => {
   return {
     evolu,
     deliver,
+    posted,
     deleteDatabase: (): void => {
       deliver({ type: "OnDatabaseDeleted", removed: false });
     },
@@ -825,6 +840,260 @@ test("ownerSync rejects transports in place of the options", () => {
   dispose();
 });
 
+test("ownerSync uses another registration when transports in deep `$state` change in place", async () => {
+  const { calls, evolu } = setupOwnerSync();
+  type Transport = ReturnType<typeof relayTransport>;
+  const options = proxy<{ transports: [Transport, ...Array<Transport>] }>({
+    transports: [relayTransport("wss://relay.example/")],
+  });
+  const dispose = effectRoot(() => {
+    ownerSync(
+      evolu,
+      () => testAppOwner,
+      () => options,
+    );
+  });
+  await setImmediate();
+
+  options.transports.push(relayTransport("wss://other.example/"));
+  await setImmediate();
+  options.transports[0] = relayTransport("wss://third.example/");
+  await setImmediate();
+  assertEqual(calls, [
+    "use app 1",
+    "unuse app 1",
+    "use app 2",
+    "unuse app 2",
+    "use app 2",
+  ]);
+  dispose();
+});
+
+test("ownerSync uses another registration when transports and options in deep `$state` shrink in place", async () => {
+  const { calls, evolu } = setupOwnerSync();
+  type Transport = ReturnType<typeof relayTransport>;
+  const options = proxy<{
+    transports?: [Transport, ...Array<Transport>];
+    deleteWhenUnused?: boolean;
+  }>({
+    transports: [
+      relayTransport("wss://relay.example/"),
+      relayTransport("wss://other.example/"),
+      relayTransport("wss://third.example/"),
+    ],
+    deleteWhenUnused: true,
+  });
+  const dispose = effectRoot(() => {
+    ownerSync(
+      evolu,
+      () => testAppOwner,
+      () => options,
+    );
+  });
+  await setImmediate();
+
+  options.transports?.pop();
+  await setImmediate();
+  options.transports?.splice(0, 1);
+  await setImmediate();
+  delete options.deleteWhenUnused;
+  await setImmediate();
+  delete options.transports;
+  await setImmediate();
+  assertEqual(calls, [
+    "use app 3 deleting",
+    "unuse app 3 deleting",
+    "use app 2 deleting",
+    "unuse app 2 deleting",
+    "use app 1 deleting",
+    "unuse app 1 deleting",
+    "use app 1",
+    "unuse app 1",
+    "use app",
+  ]);
+  dispose();
+});
+
+test("ownerSync uses another registration when an owner in deep `$state` changes in place", async () => {
+  const { calls, evolu } = setupOwnerSync();
+  const { id, encryptionKey, writeKey } = testAppOwner;
+  const owner = proxy<{
+    id: OwnerId;
+    encryptionKey: Owner["encryptionKey"];
+    writeKey?: Owner["writeKey"];
+  }>({ id, encryptionKey, writeKey });
+  const dispose = effectRoot(() => {
+    ownerSync(evolu, () => owner);
+  });
+  await setImmediate();
+
+  // Another owner's keys, set field by field.
+  const shardOwner = deriveShardOwner(testAppOwner, ["shard", 1]);
+  owner.id = shardOwner.id;
+  owner.encryptionKey = shardOwner.encryptionKey;
+  owner.writeKey = shardOwner.writeKey;
+  await setImmediate();
+  delete owner.writeKey;
+  await setImmediate();
+  assertEqual(calls, [
+    "use app",
+    "unuse app",
+    "use other",
+    "unuse other",
+    "use other readonly",
+  ]);
+  dispose();
+});
+
+test("ownerSync uses another registration when an owner and options in deep `$state` gain fields in place", async () => {
+  const { calls, evolu } = setupOwnerSync();
+  type Transport = ReturnType<typeof relayTransport>;
+  const { id, encryptionKey, writeKey } = testAppOwner;
+  const owner = proxy<{
+    id: OwnerId;
+    encryptionKey: Owner["encryptionKey"];
+    writeKey?: Owner["writeKey"];
+  }>({ id, encryptionKey });
+  const options = proxy<{
+    transports?: [Transport, ...Array<Transport>];
+    deleteWhenUnused?: boolean;
+  }>({});
+  const dispose = effectRoot(() => {
+    ownerSync(
+      evolu,
+      () => owner,
+      () => options,
+    );
+  });
+  await setImmediate();
+
+  owner.writeKey = writeKey;
+  await setImmediate();
+  options.transports = [relayTransport("wss://relay.example/")];
+  await setImmediate();
+  options.deleteWhenUnused = true;
+  await setImmediate();
+  assertEqual(calls, [
+    "use app readonly",
+    "unuse app readonly",
+    "use app",
+    "unuse app",
+    "use app 1",
+    "unuse app 1",
+    "use app 1 deleting",
+  ]);
+  dispose();
+});
+
+test("ownerSync uses another registration when fields of transports and options in deep `$state` change in place", async () => {
+  const { calls, evolu } = setupOwnerSync();
+  type Transport = {
+    -readonly [K in keyof ReturnType<typeof relayTransport>]: ReturnType<
+      typeof relayTransport
+    >[K];
+  };
+  const options = proxy<{
+    transports: [Transport, ...Array<Transport>];
+    deleteWhenUnused: boolean;
+  }>({
+    transports: [relayTransport("wss://relay.example/")],
+    deleteWhenUnused: false,
+  });
+  const dispose = effectRoot(() => {
+    ownerSync(
+      evolu,
+      () => testAppOwner,
+      () => options,
+    );
+  });
+  await setImmediate();
+
+  options.transports[0].url = relayTransport("wss://other.example/").url;
+  await setImmediate();
+  options.deleteWhenUnused = true;
+  await setImmediate();
+  assertEqual(calls, [
+    "use app 1",
+    "unuse app 1",
+    "use app 1",
+    "unuse app 1",
+    "use app 1 deleting",
+  ]);
+  dispose();
+});
+
+test("ownerSync uses another registration when options of a class with `$state` fields change", async () => {
+  const { calls, evolu } = setupOwnerSync();
+  type Transport = ReturnType<typeof relayTransport>;
+  // What Svelte compiles a class with `$state` fields to: a signal per field
+  // behind an accessor of the class.
+  class SyncOptions {
+    readonly #transports = state<readonly [Transport, ...Array<Transport>]>([
+      relayTransport("wss://relay.example/"),
+    ]);
+    readonly #deleteWhenUnused = state(false);
+    get transports() {
+      return get(this.#transports);
+    }
+    set transports(value) {
+      set(this.#transports, value);
+    }
+    get deleteWhenUnused() {
+      return get(this.#deleteWhenUnused);
+    }
+    set deleteWhenUnused(value) {
+      set(this.#deleteWhenUnused, value);
+    }
+  }
+  const options = new SyncOptions();
+  const dispose = effectRoot(() => {
+    ownerSync(
+      evolu,
+      () => testAppOwner,
+      () => options,
+    );
+  });
+  await setImmediate();
+
+  options.transports = [
+    relayTransport("wss://relay.example/"),
+    relayTransport("wss://other.example/"),
+  ];
+  await setImmediate();
+  options.deleteWhenUnused = true;
+  await setImmediate();
+  assertEqual(calls, [
+    "use app 1",
+    "unuse app 1",
+    "use app 2",
+    "unuse app 2",
+    "use app 2 deleting",
+  ]);
+  dispose();
+});
+
+test("ownerSync keeps the registration when a transport field Evolu doesn't send changes", async () => {
+  const { calls, evolu } = setupOwnerSync();
+  const transport = relayTransport("wss://relay.example/");
+  // A field structuralLookup refuses, and then another value of a field.
+  const unlabeled = { ...transport, label: undefined };
+  const labeled = { ...transport, label: "A" };
+  const transports = state<readonly [typeof transport]>([unlabeled]);
+  const dispose = effectRoot(() => {
+    ownerSync(
+      evolu,
+      () => testAppOwner,
+      () => ({ transports: get(transports) }),
+    );
+  });
+  await setImmediate();
+
+  set(transports, [labeled]);
+  await setImmediate();
+  assertEqual(calls, ["use app 1"]);
+  dispose();
+});
+
 test("ownerSync uses another registration when deleteWhenUnused changes", async () => {
   const { calls, evolu } = setupOwnerSync();
   const deleteWhenUnused = state(false);
@@ -965,6 +1234,41 @@ test("ownerSync uses no owner of an instance whose database was deleted", async 
     ownerSync(evolu, () => testAppOwner);
   });
   await setImmediate();
+  dispose();
+});
+
+test("ownerSync posts options in deep `$state` as plain data a worker can receive", async () => {
+  await using setup = await setupDeletableEvolu();
+  const { evolu, posted } = setup;
+  // A reactive owner too, whose fields Evolu copies.
+  const shardOwner = proxy({
+    ...deriveShardOwner(testAppOwner, ["shard", 1]),
+  });
+  const transport = createOwnerWebSocketTransport({
+    url: RelayUrl.orThrow("wss://relay.example/"),
+    ownerId: shardOwner.id,
+  });
+  const options = proxy<UseOwnerOptions>({
+    transports: [transport],
+    deleteWhenUnused: true,
+  });
+  const dispose = effectRoot(() => {
+    ownerSync(
+      evolu,
+      () => shardOwner,
+      () => options,
+    );
+  });
+  await setImmediate();
+
+  const message = posted.find(({ type }) => type === "UseOwner");
+  assert(message?.type === "UseOwner", "Expected a UseOwner message.");
+  // A web port posts a structured clone, which can't be made of a proxy.
+  assertEqual(structuredClone(message), message);
+  const [action] = message.actions;
+  assert(action?.action === "add", "Expected an add action.");
+  assertEqual(action.owner.transports, [transport]);
+  assertTrue(action.deleteWhenUnused);
   dispose();
 });
 

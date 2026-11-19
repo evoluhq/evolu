@@ -58,6 +58,7 @@ import {
   type AppOwner,
   type Owner,
   OwnerId,
+  type OwnerTransport,
   type ReadonlyOwner,
   RelayUrl,
   RelayUrlFromString,
@@ -2656,6 +2657,26 @@ describe("Evolu", () => {
     });
 
     describe("useOwner", () => {
+      it("posts plain copies of transports in a proxy, such as a framework's reactive state, which can't be posted", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        // A reactive proxy is deep, so the transport is one too.
+        const transport = new Proxy(testOwnerTransport, {});
+        assertThrowsInstanceOf(() => structuredClone(transport), DOMException);
+        const transports = new Proxy([transport] as const, {});
+
+        evolu.useOwner(testSharedOwner, new Proxy({ transports }, {}));
+        await testWaitForWorkerMessage();
+
+        const input = evoluInputs.at(-1);
+        assert(input?.type === "UseOwner", "Expected a UseOwner message.");
+        const [action] = input.actions;
+        assert(action?.action === "add", "Expected an add action.");
+        assertEqual(action.owner.transports, [testOwnerTransport]);
+        assertEqual(structuredClone(input), input);
+      });
+
       it("refuses instant start's public device owner", async () => {
         await using setup = await setupRunWithEvoluDeps();
         const { run } = setup;
@@ -3235,8 +3256,161 @@ describe("Evolu", () => {
         ]);
       });
 
-      it("fails createEvolu for equal config transports", async () => {
+      it("compares and posts transports by their type and url only", async () => {
         await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const named = { ...testOwnerTransport, name: "A" };
+        const renamed = { ...testOwnerTransport, name: "B" };
+        // A field structuralLookup refuses.
+        const unnamed = { ...testOwnerTransport, name: undefined };
+
+        assertEqual(
+          assertThrowsInstanceOf(() => {
+            evolu.useOwner(testAppOwner, { transports: [named, renamed] });
+          }, Error).message,
+          "Transports must be distinct.",
+        );
+        evolu.useOwner(testAppOwner, { transports: [unnamed] });
+        await testWaitForWorkerMessage();
+
+        const [id] = getRegistrationIds(evoluInputs);
+        assertEqual(evoluInputs, [
+          {
+            type: "UseOwner",
+            actions: [
+              {
+                owner: {
+                  owner: testPostedAppOwner,
+                  transports: [testOwnerTransport],
+                },
+                action: "add",
+                deleteWhenUnused: false,
+                id,
+              },
+            ],
+          },
+        ]);
+      });
+
+      it("posts the transports as they were when useOwner was called", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const transport = { ...testOwnerTransport };
+        const transports: [OwnerTransport, ...Array<OwnerTransport>] = [
+          transport,
+        ];
+
+        evolu.useOwner(testAppOwner, { transports });
+        // The caller changes its transport and array before the batch posts
+        // the registration.
+        transport.url = createOwnerWebSocketTransport({
+          url: RelayUrl.orThrow("wss://changed.example/"),
+          ownerId: testAppOwner.id,
+        }).url;
+        transports.push(
+          createOwnerWebSocketTransport({
+            url: RelayUrl.orThrow("wss://added.example/"),
+            ownerId: testAppOwner.id,
+          }),
+        );
+        await testWaitForWorkerMessage();
+
+        const [id] = getRegistrationIds(evoluInputs);
+        assertEqual(evoluInputs, [
+          {
+            type: "UseOwner",
+            actions: [
+              {
+                owner: {
+                  owner: testPostedAppOwner,
+                  transports: [testOwnerTransport],
+                },
+                action: "add",
+                deleteWhenUnused: false,
+                id,
+              },
+            ],
+          },
+        ]);
+      });
+
+      it("reads the config when createEvolu is called", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const config: {
+          appName: typeof testAppName;
+          appOwner: AppOwner;
+          transports?: ReadonlyArray<OwnerTransport>;
+        } = { appName: testAppName, appOwner: testAppOwner };
+        const creating = createEvolu(Schema, config);
+        // The caller adds equal transports, which would fail, and replaces its
+        // AppOwner before the instance starts.
+        config.transports = [testOwnerTransport, { ...testOwnerTransport }];
+        config.appOwner = testOtherAppOwner;
+
+        const evolu = await run.ok(creating);
+        await testWaitForWorkerMessage();
+
+        assertSame(evolu.appOwner, testAppOwner);
+        const input = evoluInputs.find((input) => input.type === "UseOwner");
+        assert(input?.type === "UseOwner", "Expected a UseOwner message.");
+        const [action] = input.actions;
+        assert(action?.action === "add", "Expected an add action.");
+        assertEqual(action.owner, {
+          owner: testPostedAppOwner,
+          transports: [{ type: "WebSocket", url: "wss://free.evoluhq.com/" }],
+        });
+      });
+
+      it("uses the config transports as they were when createEvolu was called", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const transport = { ...testOwnerTransport };
+        const transports = [transport];
+        const creating = createEvolu(Schema, {
+          appName: testAppName,
+          appOwner: testAppOwner,
+          transports,
+        });
+        // The caller changes its transport and array before the instance
+        // starts.
+        transport.url = createOwnerWebSocketTransport({
+          url: RelayUrl.orThrow("wss://changed.example/"),
+          ownerId: testAppOwner.id,
+        }).url;
+        transports.length = 0;
+
+        await run.ok(creating);
+        await testWaitForWorkerMessage();
+
+        const [id] = getRegistrationIds(evoluInputs);
+        assertEqual(evoluInputs, [
+          {
+            type: "UseOwner",
+            actions: [
+              {
+                owner: {
+                  owner: testPostedAppOwner,
+                  transports: [testOwnerTransport],
+                },
+                action: "add",
+                deleteWhenUnused: false,
+                id,
+              },
+            ],
+          },
+        ]);
+      });
+
+      it("fails createEvolu for equal config transports before it starts the database", async () => {
+        const posted: Array<SharedWorkerInput> = [];
+        await using setup = await setupRunWithEvoluDeps({
+          onSharedWorkerPostMessage: (message) => {
+            posted.push(message);
+          },
+        });
         const { run, evoluInputs } = setup;
 
         // Two spellings of one relay make equal transports.
@@ -3263,6 +3437,90 @@ describe("Evolu", () => {
         );
         await testWaitForWorkerMessage();
         assertEqual(evoluInputs, []);
+        // The worker got no CreateEvolu, which would create the database.
+        assertEqual(posted, []);
+      });
+
+      it("posts plain copies of config transports in a proxy or with fields Evolu doesn't send", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const namedTransport = createOwnerWebSocketTransport({
+          url: RelayUrl.orThrow("wss://named.example/"),
+          ownerId: testAppOwner.id,
+        });
+        const unnamedTransport = createOwnerWebSocketTransport({
+          url: RelayUrl.orThrow("wss://unnamed.example/"),
+          ownerId: testAppOwner.id,
+        });
+        // A framework's reactive proxy, which a worker can't receive.
+        const proxied = new Proxy(testOwnerTransport, {});
+        assertThrowsInstanceOf(() => structuredClone(proxied), DOMException);
+        const named = { ...namedTransport, name: "A" };
+        // A field structuralLookup refuses.
+        const unnamed = { ...unnamedTransport, name: undefined };
+
+        await run.ok(
+          createEvolu(Schema, {
+            appName: testAppName,
+            appOwner: testAppOwner,
+            transports: [proxied, named, unnamed],
+          }),
+        );
+        await testWaitForWorkerMessage();
+
+        const [id] = getRegistrationIds(evoluInputs);
+        assertEqual(evoluInputs, [
+          {
+            type: "UseOwner",
+            actions: [
+              {
+                owner: {
+                  owner: testPostedAppOwner,
+                  transports: [
+                    testOwnerTransport,
+                    namedTransport,
+                    unnamedTransport,
+                  ],
+                },
+                action: "add",
+                deleteWhenUnused: false,
+                id,
+              },
+            ],
+          },
+        ]);
+        assertEqual(structuredClone(evoluInputs), evoluInputs);
+      });
+
+      it("fails createEvolu for config transports that differ only in a field Evolu doesn't send", async () => {
+        const posted: Array<SharedWorkerInput> = [];
+        await using setup = await setupRunWithEvoluDeps({
+          onSharedWorkerPostMessage: (message) => {
+            posted.push(message);
+          },
+        });
+        const { run, evoluInputs } = setup;
+        const named = { ...testOwnerTransport, name: "A" };
+        const renamed = { ...testOwnerTransport, name: "B" };
+
+        const result = await run.abortable(
+          createEvolu(Schema, {
+            appName: testAppName,
+            appOwner: testAppOwner,
+            transports: [named, renamed],
+          }),
+        );
+
+        assertErr(result);
+        assertSame(result.error.reason.type, "PanicAbortReason");
+        assertInstanceOf(result.error.reason.defect, Error);
+        assertEqual(
+          result.error.reason.defect.message,
+          "Transports must be distinct.",
+        );
+        await testWaitForWorkerMessage();
+        assertEqual(evoluInputs, []);
+        assertEqual(posted, []);
       });
 
       it("throws when unuseOwner is called twice", async () => {

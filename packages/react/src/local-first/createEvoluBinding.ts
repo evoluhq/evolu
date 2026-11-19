@@ -338,14 +338,15 @@ export const createEvoluBinding = <
     );
     const evolu = useEvolu();
     // What identifies a registration: the keys and the options, not other
-    // Owner fields.
+    // Owner or transport fields, which Evolu doesn't send.
     const key =
       owner &&
       structuralLookup({
         id: owner.id,
         encryptionKey: owner.encryptionKey,
         writeKey: "writeKey" in owner ? owner.writeKey : null,
-        transports: options?.transports ?? null,
+        transports:
+          options?.transports?.map(({ type, url }) => ({ type, url })) ?? null,
         deleteWhenUnused: options?.deleteWhenUnused ?? false,
       });
 

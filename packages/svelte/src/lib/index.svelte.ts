@@ -389,6 +389,10 @@ export const ownerSync = <S extends EvoluSchema>(
     const owner = observedOwner();
     // Options may be built from the owner, so only once there is one.
     if (!owner) return null;
+    // Each field the key uses is read, so the key changes with options in
+    // `$state`, also with fields of a class, and the transports are copied,
+    // because a proxy keeps its identity, so the structural lookup would
+    // return the key it cached for it.
     const options = observedOptions?.();
     // An array, the transports argument before the options, would read as
     // options without transports, so a later array wouldn't even reach
@@ -397,11 +401,14 @@ export const ownerSync = <S extends EvoluSchema>(
       !Array.isArray(options),
       "ownerSync takes options from its third argument, such as () => ({ transports }).",
     );
+    const transports = options?.transports;
     return structuralLookup({
       id: owner.id,
       encryptionKey: owner.encryptionKey,
       writeKey: "writeKey" in owner ? owner.writeKey : null,
-      transports: options?.transports ?? null,
+      transports: transports
+        ? transports.map(({ type, url }) => ({ type, url }))
+        : null,
       deleteWhenUnused: options?.deleteWhenUnused ?? false,
     });
   });

@@ -57,6 +57,7 @@ import type {
   CompleteSyncRoute,
   DbWorkerInput,
   DbWorkerOutput,
+  EvoluInput,
   EvoluOutput,
   OwnerSyncStatus,
   PendingSyncRoute,
@@ -310,7 +311,8 @@ const todoIdsQuery = createDeletionQuery((db) =>
 
 /**
  * Creates an Evolu instance whose SharedWorker messages the test delivers
- * synchronously, so it controls when a deletion lands during a React commit.
+ * synchronously, so it controls when a deletion lands during a React commit,
+ * and records what the instance posts.
  */
 const setupEvolu = async (disposer: AsyncDisposableStack) => {
   const channels: Array<{
@@ -318,6 +320,7 @@ const setupEvolu = async (disposer: AsyncDisposableStack) => {
       onMessage: ((output: EvoluOutput) => void) | null;
     };
   }> = [];
+  const posted: Array<EvoluInput> = [];
   let reloadCount = 0;
   const evoluDeps: EvoluPlatformDeps & StoredWorkerDep = {
     createDbWorker: testCreateWorker,
@@ -325,6 +328,15 @@ const setupEvolu = async (disposer: AsyncDisposableStack) => {
     createMessageChannel: <Input, Output = never>() => {
       const channel = testCreateMessageChannel<Input, Output>();
       channels.push(channel as never);
+      const { postMessage } = channel.port1;
+      // Records what is posted, which this port, unlike a web one, doesn't
+      // structured-clone.
+      Object.assign(channel.port1, {
+        postMessage: (...args: Parameters<typeof postMessage>) => {
+          posted.push(args[0] as never);
+          postMessage(...args);
+        },
+      });
       return channel;
     },
     getDevicePersistence: () => Promise.resolve("Unknown"),
@@ -348,6 +360,7 @@ const setupEvolu = async (disposer: AsyncDisposableStack) => {
   );
   return {
     evolu,
+    posted,
     getReloadCount: () => reloadCount,
     deliver: (output: EvoluOutput): void => {
       const channel = channels.find(({ port1 }) => port1.onMessage);
@@ -761,6 +774,28 @@ test("replaces a deleting registration when deleteWhenUnused is omitted", () => 
   ]);
 });
 
+test("keeps the registration when a transport field Evolu doesn't send changes", () => {
+  using setup = setupUseOwner();
+  const { calls, render } = setup;
+  const transport = createOwnerWebSocketTransport({
+    url: relayA,
+    ownerId: testAppOwner.id,
+  });
+
+  // A field structuralLookup refuses, and then another value of a field.
+  const unlabeled = { ...transport, label: undefined };
+  const labeled = { ...transport, label: "A" };
+  render(
+    createElement(OptionsRegistration, {
+      options: { transports: [unlabeled] },
+    }),
+  );
+  render(
+    createElement(OptionsRegistration, { options: { transports: [labeled] } }),
+  );
+  assertEqual(calls, ["use writable wss://a.example/"]);
+});
+
 test("rejects transports in place of the options", () => {
   const calls: Array<string> = [];
   const caught: Array<unknown> = [];
@@ -808,6 +843,45 @@ test("rejects transports in place of the options", () => {
     error.message.startsWith("useOwner takes its transports in the options"),
   );
   assertEqual(calls, []);
+});
+
+test("posts a registration a worker can receive when transports carry a field Evolu doesn't send or come from a proxy", async () => {
+  await using disposer = new AsyncDisposableStack();
+  const { evolu, posted } = await setupEvolu(disposer);
+  const { caught, render } = setupDeletionRoot(disposer, evolu);
+  const transportA = createOwnerWebSocketTransport({
+    url: relayA,
+    ownerId: shardOwner.id,
+  });
+  const transportB = createOwnerWebSocketTransport({
+    url: relayB,
+    ownerId: shardOwner.id,
+  });
+  // A structured clone can copy neither a function nor a proxy.
+  const withCallback = { ...transportA, onOpen: constVoid };
+  const proxied = new Proxy(transportB, {});
+  const ProxiedRegistration: FC = () => {
+    deletionBinding.useOwner(shardOwner, {
+      transports: [withCallback, proxied],
+      deleteWhenUnused: true,
+    });
+    return null;
+  };
+
+  // oxlint-disable-next-line typescript/require-await -- An async act flushes the batch the effect's registration posts.
+  await act(async () => {
+    render(createElement(ProxiedRegistration));
+  });
+
+  assertEqual(caught, []);
+  const message = posted.find(({ type }) => type === "UseOwner");
+  assert(message?.type === "UseOwner", "Expected a UseOwner message.");
+  // A web port posts a structured clone.
+  assertEqual(structuredClone(message), message);
+  const [action] = message.actions;
+  assert(action?.action === "add", "Expected an add action.");
+  assertEqual(action.owner.transports, [transportA, transportB]);
+  assertTrue(action.deleteWhenUnused);
 });
 
 /** An Evolu stub of the database a component shows the sync status of. */

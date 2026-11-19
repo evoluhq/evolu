@@ -178,6 +178,7 @@ import {
   testCreateSharedWorker,
   testCreateWorker,
   testWaitForWorkerMessage,
+  type CreateMessageChannel,
 } from "../../../../packages/common/src/Worker.ts";
 import { testCreateSqliteDep } from "../_deps.ts";
 import { evolu7StartAt, setupEvolu7 } from "./_evolu7.ts";
@@ -2030,6 +2031,9 @@ describe("Evolu integration", () => {
         url: RelayUrl.orThrow("wss://relay.example/"),
         ownerId: testAppOwner.id,
       });
+      // Fields Evolu doesn't send don't make transports differ.
+      const relayA = { ...relay, name: "A" };
+      const relayB = { ...relay, name: "B" };
       const deviceSchema = {
         _settings: { id: id("Settings"), theme: NonEmptyTrimmedString100 },
       };
@@ -2065,6 +2069,7 @@ describe("Evolu integration", () => {
           "Unique indexes are not supported because they can prevent synchronization.",
         ],
         [{ transports: [relay, relay] }, "Transports must be distinct."],
+        [{ transports: [relayA, relayB] }, "Transports must be distinct."],
       ] as const satisfies ReadonlyArray<
         readonly [Partial<EvoluAppConfig<typeof deviceSchema>>, string]
       >;
@@ -2077,11 +2082,110 @@ describe("Evolu integration", () => {
           ).message,
           message,
         );
+      // A field structuralLookup refuses doesn't throw either.
+      const unnamed = { ...relay, name: undefined };
+      createEvoluApp(Schema, { ...instantStartConfig, transports: [unnamed] });
 
       // No instance was created, so nothing waits or failed.
       assertEqual(drivers.names(), []);
       assertFalse(run.signal.aborted);
       assertEqual(run.deps.reportDefect.getDefects(), []);
+    });
+
+    it("syncs an AppOwner through the transports as they were when createEvoluApp was called", async () => {
+      using drivers = createSqliteDriverPerName();
+      await using setup = await setupRunWithEvoluDeps({
+        createSqliteDriver: drivers.createSqliteDriver,
+        createWebSocket: testCreateWebSocket(),
+      });
+      const { run } = setup;
+      using states = setupSyncStates(setup.syncStateChannelName);
+      const relayUrl = RelayUrl.orThrow("wss://relay.example/");
+      const transport = {
+        ...createOwnerWebSocketTransport({
+          url: relayUrl,
+          ownerId: testAppOwner.id,
+        }),
+      };
+      const transports = [transport];
+      const creating = createEvoluApp(Schema, {
+        ...instantStartConfig,
+        transports,
+      });
+      // The caller changes its transport and array before the app opens an
+      // AppOwner.
+      transport.url = createOwnerWebSocketTransport({
+        url: RelayUrl.orThrow("wss://changed.example/"),
+        ownerId: testAppOwner.id,
+      }).url;
+      transports.length = 0;
+
+      await using _app = await run.orThrow(creating);
+
+      await states.waitForState(
+        () => (states.getState()?.transports.length ?? 0) > 0,
+      );
+      assertEqual(
+        states.getState()?.transports.map(({ label }) => label),
+        [relayUrl],
+      );
+      assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+    });
+
+    it("syncs an AppOwner through a transport in a proxy, such as a framework's reactive state, which a worker can't receive", async () => {
+      using drivers = createSqliteDriverPerName();
+      await using setup = await setupRunWithEvoluDeps({
+        createSqliteDriver: drivers.createSqliteDriver,
+        createWebSocket: testCreateWebSocket(),
+      });
+      using states = setupSyncStates(setup.syncStateChannelName);
+      // Its ports throw for what a web port can't post, which it
+      // structured-clones.
+      const createCloningMessageChannel: CreateMessageChannel = <
+        Input,
+        Output = never,
+      >() => {
+        const channel = createMessageChannel<Input, Output>();
+        const { postMessage } = channel.port1;
+        Object.assign(channel.port1, {
+          postMessage: (...args: Parameters<typeof postMessage>) => {
+            structuredClone(args[0]);
+            postMessage(...args);
+          },
+        });
+        return channel;
+      };
+      await using run = setup.run.create({
+        ...setup.run.deps,
+        createMessageChannel: createCloningMessageChannel,
+      });
+      const relayUrl = RelayUrl.orThrow("wss://relay.example/");
+      // A reactive proxy is deep, so the transport is one too.
+      const transport = new Proxy(
+        createOwnerWebSocketTransport({
+          url: relayUrl,
+          ownerId: testAppOwner.id,
+        }),
+        {},
+      );
+      assertThrowsInstanceOf(() => structuredClone(transport), DOMException);
+
+      await using _app = await run.orThrow(
+        createEvoluApp(Schema, {
+          ...instantStartConfig,
+          transports: new Proxy([transport], {}),
+        }),
+      );
+
+      await states.waitForState(
+        () => (states.getState()?.transports.length ?? 0) > 0,
+      );
+      assertEqual(
+        states.getState()?.transports.map(({ label }) => label),
+        [relayUrl],
+      );
+      assertEqual(setup.tabErrors, []);
+      assertEqual(setup.run.deps.reportDefect.getDefects(), []);
     });
 
     it("starts with the first AppOwner its device database created, in every tab", async () => {

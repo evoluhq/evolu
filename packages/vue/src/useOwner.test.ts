@@ -1,4 +1,5 @@
 import {
+  assert,
   assertEqual,
   assertNonNullable,
   assertThrows,
@@ -21,6 +22,7 @@ import {
   testAppName,
   testAppOwner,
   type Evolu,
+  type EvoluInput,
   type EvoluOutput,
   type Owner,
   type ReadonlyOwner,
@@ -38,6 +40,9 @@ import {
   effectScope,
   h,
   nextTick,
+  reactive,
+  readonly,
+  ref,
   shallowRef,
   type EffectScope,
   type PropType,
@@ -110,16 +115,6 @@ test("forwards the owner and no options when they are omitted", () => {
     useOwner(testAppOwner);
   });
   assertEqual(uses, [{ owner: testAppOwner, options: undefined }]);
-  scope.stop();
-});
-
-test("rejects transports in place of the options", () => {
-  const { runInScope } = setupUseOwner();
-
-  const scope = runInScope(() => {
-    // @ts-expect-error Transports go in the options object.
-    useOwner(testAppOwner, transports);
-  });
   scope.stop();
 });
 
@@ -266,14 +261,16 @@ test("releases the owner of a keyed child before its replacement uses another ow
 });
 
 /**
- * Creates an Evolu instance whose database the test deletes, as the message
- * that tells it a tab deleted its database does.
+ * Creates an Evolu instance whose database the test can delete, as the message
+ * that tells it a tab deleted its database does, and records what the instance
+ * posts to its worker.
  */
 const setupDeletableEvolu = async () => {
   const disposer = new AsyncDisposableStack();
   const ports: Array<{
     readonly onMessage: ((output: EvoluOutput) => void) | null;
   }> = [];
+  const posted: Array<EvoluInput> = [];
   const run = disposer.use(
     testCreateRun({
       createDbWorker: testCreateWorker,
@@ -281,6 +278,15 @@ const setupDeletableEvolu = async () => {
       createMessageChannel: <Input, Output = never>() => {
         const channel = testCreateMessageChannel<Input, Output>();
         ports.push(channel.port1 as never);
+        const { postMessage } = channel.port1;
+        // Records what is posted, which this port, unlike a web one, doesn't
+        // structured-clone.
+        Object.assign(channel.port1, {
+          postMessage: (...args: Parameters<typeof postMessage>) => {
+            posted.push(args[0] as never);
+            postMessage(...args);
+          },
+        });
         return channel;
       },
       getDevicePersistence: () => Promise.resolve("Unknown" as const),
@@ -302,6 +308,7 @@ const setupDeletableEvolu = async () => {
   );
   return {
     evolu,
+    posted,
     deleteDatabase: (): void => {
       const onMessage = ports.find((port) => port.onMessage)?.onMessage;
       assertNonNullable(onMessage);
@@ -336,4 +343,141 @@ test("uses no owner of an instance whose database was deleted", async () => {
   );
   after.stop();
   before.stop();
+});
+
+test("posts a reactive owner and options as plain data a worker can receive", async () => {
+  await using setup = await setupDeletableEvolu();
+  const { evolu, posted } = setup;
+  const owner = deriveShardOwner(testAppOwner, ["shard", 1]);
+  const transport = createOwnerWebSocketTransport({
+    url: RelayUrl.orThrow("wss://relay.example/"),
+    ownerId: owner.id,
+  });
+  const app = createApp({});
+  app.provide(EvoluContext, evolu);
+  const scope = effectScope();
+  app.runWithContext(() =>
+    scope.run(() => {
+      // Evolu copies the owner's fields it posts.
+      useOwner(
+        reactive({ ...owner }),
+        reactive<UseOwnerOptions>({
+          transports: [transport],
+          deleteWhenUnused: true,
+        }),
+      );
+    }),
+  );
+  await Promise.resolve();
+
+  const message = posted.find(({ type }) => type === "UseOwner");
+  assert(message?.type === "UseOwner", "Expected a UseOwner message.");
+  // A web port posts a structured clone, which can't be made of a proxy.
+  assertEqual(structuredClone(message), message);
+  const [action] = message.actions;
+  assert(action?.action === "add", "Expected an add action.");
+  assertEqual(action.owner.transports, [transport]);
+  assertTrue(action.deleteWhenUnused);
+  scope.stop();
+});
+
+test("posts an owner and transports of refs as plain data a worker can receive", async () => {
+  await using setup = await setupDeletableEvolu();
+  const { evolu, posted } = setup;
+  const owner = deriveShardOwner(testAppOwner, ["shard", 1]);
+  const transport = createOwnerWebSocketTransport({
+    url: RelayUrl.orThrow("wss://relay.example/"),
+    ownerId: owner.id,
+  });
+  const app = createApp({});
+  app.provide(EvoluContext, evolu);
+  const scope = effectScope();
+  app.runWithContext(() =>
+    scope.run(() => {
+      // A ref makes its object or array value deeply reactive.
+      useOwner(ref({ ...owner }).value, {
+        transports: ref([transport] as const).value,
+        deleteWhenUnused: true,
+      });
+    }),
+  );
+  await Promise.resolve();
+
+  const message = posted.find(({ type }) => type === "UseOwner");
+  assert(message?.type === "UseOwner", "Expected a UseOwner message.");
+  // A web port posts a structured clone, which can't be made of a proxy.
+  assertEqual(structuredClone(message), message);
+  const [action] = message.actions;
+  assert(action?.action === "add", "Expected an add action.");
+  assertEqual(action.owner.transports, [transport]);
+  assertTrue(action.deleteWhenUnused);
+  scope.stop();
+});
+
+test("posts a readonly owner and options as plain data a worker can receive", async () => {
+  await using setup = await setupDeletableEvolu();
+  const { evolu, posted } = setup;
+  const owner = deriveShardOwner(testAppOwner, ["shard", 1]);
+  const transport = createOwnerWebSocketTransport({
+    url: RelayUrl.orThrow("wss://relay.example/"),
+    ownerId: owner.id,
+  });
+  const app = createApp({});
+  app.provide(EvoluContext, evolu);
+  const scope = effectScope();
+  app.runWithContext(() =>
+    scope.run(() => {
+      useOwner(
+        readonly({ ...owner }),
+        readonly<UseOwnerOptions>({
+          transports: [transport],
+          deleteWhenUnused: true,
+        }),
+      );
+    }),
+  );
+  await Promise.resolve();
+
+  const message = posted.find(({ type }) => type === "UseOwner");
+  assert(message?.type === "UseOwner", "Expected a UseOwner message.");
+  // A web port posts a structured clone, which can't be made of a proxy.
+  assertEqual(structuredClone(message), message);
+  const [action] = message.actions;
+  assert(action?.action === "add", "Expected an add action.");
+  assertEqual(action.owner.transports, [transport]);
+  assertTrue(action.deleteWhenUnused);
+  scope.stop();
+});
+
+test("rejects transports in place of the options", async () => {
+  await using setup = await setupDeletableEvolu();
+  const { evolu, posted } = setup;
+  const app = createApp({});
+  app.provide(EvoluContext, evolu);
+  const scope = effectScope();
+
+  assertThrows(
+    () =>
+      app.runWithContext(() =>
+        scope.run(() => {
+          // @ts-expect-error Transports go in the options object.
+          useOwner(testAppOwner, transports);
+        }),
+      ),
+    (thrown) => {
+      assertTrue(thrown instanceof Error);
+      assertTrue(
+        thrown.message.startsWith(
+          "useOwner takes its transports in the options",
+        ),
+      );
+    },
+  );
+  scope.stop();
+  await Promise.resolve();
+  // Evolu throws before it registers the owner.
+  assertEqual(
+    posted.filter(({ type }) => type === "UseOwner"),
+    [],
+  );
 });
