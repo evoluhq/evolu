@@ -338,13 +338,14 @@ export const createEvoluBinding = <
     );
     const evolu = useEvolu();
     // What identifies a registration: the keys and the options, not other
-    // Owner or transport fields, which Evolu doesn't send.
+    // Owner or transport fields, which Evolu doesn't send. A writeKey holding
+    // no key makes a ReadonlyOwner, as in Evolu's useOwner.
     const key =
       owner &&
       structuralLookup({
         id: owner.id,
         encryptionKey: owner.encryptionKey,
-        writeKey: "writeKey" in owner ? owner.writeKey : null,
+        writeKey: ("writeKey" in owner ? owner.writeKey : null) ?? null,
         transports:
           options?.transports?.map(({ type, url }) => ({ type, url })) ?? null,
         deleteWhenUnused: options?.deleteWhenUnused ?? false,

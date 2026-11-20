@@ -46,6 +46,7 @@ import {
   testAppOwner,
   type Owner,
   type OwnerId,
+  type OwnerWriteKey,
   type ReadonlyOwner,
 } from "../../../../packages/common/src/local-first/Owner.ts";
 import {
@@ -113,7 +114,9 @@ const createEvoluStub = (calls: Array<string>): Evolu =>
       const transports = options?.transports
         ? ` ${options.transports.map(({ url }) => url.split("?")[0]).join(",")}`
         : "";
-      const label = `${"writeKey" in owner ? "writable" : "readonly"}${transports}${options?.deleteWhenUnused ? " deleting" : ""}`;
+      // As Evolu's useOwner tells a ReadonlyOwner: by a writeKey without a key.
+      const isWritable = "writeKey" in owner && owner.writeKey != null;
+      const label = `${isWritable ? "writable" : "readonly"}${transports}${options?.deleteWhenUnused ? " deleting" : ""}`;
       calls.push(`use ${label}`);
       return () => {
         calls.push(`unuse ${label}`);
@@ -603,6 +606,35 @@ test("registers an equal owner once and releases it on change and unmount", () =
   assertEqual(calls, ["unuse readonly wss://b.example/ deleting"]);
 });
 
+test("registers an owner whose writeKey holds no key as a readonly owner", () => {
+  using setup = setupUseOwner();
+  const { calls, render } = setup;
+  const { id, encryptionKey } = testAppOwner;
+  // A ReadonlyOwner to TypeScript, because an Owner's writeKey is required,
+  // as an unset field of a class or reactive state is.
+  const unsetOwner: ReadonlyOwner & {
+    readonly writeKey: OwnerWriteKey | undefined;
+  } = { id, encryptionKey, writeKey: undefined };
+  const nullOwner: ReadonlyOwner & {
+    readonly writeKey: OwnerWriteKey | null;
+  } = { id, encryptionKey, writeKey: null };
+
+  render(createElement(Registration, { owner: unsetOwner, url: relayA }));
+  assertEqual(calls.splice(0), ["use readonly wss://a.example/"]);
+
+  render(createElement(Registration, { owner: nullOwner, url: relayA }));
+  render(
+    createElement(Registration, { owner: { id, encryptionKey }, url: relayA }),
+  );
+  assertEqual(calls, []);
+
+  render(createElement(Registration, { owner: testAppOwner, url: relayA }));
+  assertEqual(calls, [
+    "unuse readonly wss://a.example/",
+    "use writable wss://a.example/",
+  ]);
+});
+
 test("keeps one registration across omitted options, empty options, and deleteWhenUnused false", () => {
   using setup = setupUseOwner();
   const { calls, render } = setup;
@@ -882,6 +914,44 @@ test("posts a registration a worker can receive when transports carry a field Ev
   assert(action?.action === "add", "Expected an add action.");
   assertEqual(action.owner.transports, [transportA, transportB]);
   assertTrue(action.deleteWhenUnused);
+});
+
+test("posts an owner whose writeKey holds no key as a ReadonlyOwner", async () => {
+  await using disposer = new AsyncDisposableStack();
+  const { evolu, posted } = await setupEvolu(disposer);
+  const { caught, render } = setupDeletionRoot(disposer, evolu);
+  const { id, encryptionKey } = shardOwner;
+  // A ReadonlyOwner to TypeScript, because an Owner's writeKey is required,
+  // as an unset field of a class or reactive state is.
+  const unsetOwner: ReadonlyOwner & {
+    readonly writeKey: OwnerWriteKey | undefined;
+  } = { id, encryptionKey, writeKey: undefined };
+  const nullOwner: ReadonlyOwner & {
+    readonly writeKey: OwnerWriteKey | null;
+  } = { id, encryptionKey, writeKey: null };
+  const KeylessRegistrations: FC = () => {
+    deletionBinding.useOwner(unsetOwner, {
+      transports: [createOwnerWebSocketTransport({ url: relayA, ownerId: id })],
+    });
+    deletionBinding.useOwner(nullOwner, {
+      transports: [createOwnerWebSocketTransport({ url: relayB, ownerId: id })],
+    });
+    return null;
+  };
+
+  // oxlint-disable-next-line typescript/require-await -- An async act flushes the batch the effects' registrations post.
+  await act(async () => {
+    render(createElement(KeylessRegistrations));
+  });
+
+  assertEqual(caught, []);
+  const message = posted.find(({ type }) => type === "UseOwner");
+  assert(message?.type === "UseOwner", "Expected a UseOwner message.");
+  const [unsetAction, nullAction] = message.actions;
+  assert(unsetAction?.action === "add", "Expected an add action.");
+  assert(nullAction?.action === "add", "Expected an add action.");
+  assertEqual(unsetAction.owner.owner, { id, encryptionKey });
+  assertEqual(nullAction.owner.owner, { id, encryptionKey });
 });
 
 /** An Evolu stub of the database a component shows the sync status of. */

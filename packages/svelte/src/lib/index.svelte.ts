@@ -384,7 +384,8 @@ export const ownerSync = <S extends EvoluSchema>(
 ): void => {
   // What identifies a registration: the keys and the options, not other Owner
   // fields. A string, so a recreated owner with the same content derives the
-  // same key.
+  // same key. A writeKey holding no key, such as an unset field of a class,
+  // makes a ReadonlyOwner, as in Evolu's useOwner.
   const key = $derived.by(() => {
     const owner = observedOwner();
     // Options may be built from the owner, so only once there is one.
@@ -405,7 +406,7 @@ export const ownerSync = <S extends EvoluSchema>(
     return structuralLookup({
       id: owner.id,
       encryptionKey: owner.encryptionKey,
-      writeKey: "writeKey" in owner ? owner.writeKey : null,
+      writeKey: ("writeKey" in owner ? owner.writeKey : null) ?? null,
       transports: transports
         ? transports.map(({ type, url }) => ({ type, url }))
         : null,

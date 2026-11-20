@@ -83,6 +83,8 @@ import {
   RelayUrl,
   testAppOwner,
   type OwnerId,
+  type OwnerWriteKey,
+  type ReadonlyOwner,
 } from "../../../../packages/common/src/local-first/Owner.ts";
 import {
   createProtocolBroadcastMessagesFromCrdtMessages,
@@ -10255,6 +10257,100 @@ describe("Evolu integration", () => {
       }
       assertEqual(await caller.loadQuery(todosQuery), restoredTodos);
       assertEqual(await caller.loadQuery(notesQuery), keptNotes);
+      assertEqual(setup.tabErrors, []);
+      assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+    });
+
+    it("keeps the rows of an owner whose writeKey holds no key, which uploads none, once it is unused", async () => {
+      await using relayRun = testCreateRun({
+        ...createRelayDeps(),
+        createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
+      });
+      await using relay = await relayRun.ok(
+        createRelay({
+          port: Port.orThrow(0),
+          name: Name.orThrow("evolu-delete-when-unused-readonly"),
+          isOwnerWithinQuota: () => true,
+        }),
+      );
+      const time = testCreateTime();
+      await using setup = await setupRunWithEvoluDeps({
+        time,
+        createWebSocket,
+      });
+      const { run } = setup;
+      using states = setupSyncStates(setup.syncStateChannelName);
+      await using evolu = await run.ok(setup.createIntegrationEvolu);
+      const shardOwner = deriveShardOwner(testAppOwner, ["shard", 1]);
+      const { id, encryptionKey } = shardOwner;
+      // A ReadonlyOwner to TypeScript, because an Owner's writeKey is required,
+      // as an unset field of a class or reactive state is.
+      const unsetOwner: ReadonlyOwner & {
+        readonly writeKey: OwnerWriteKey | undefined;
+      } = { id, encryptionKey, writeKey: undefined };
+      // Written with the owner's write key while nothing syncs the owner, so
+      // no relay has them.
+      evolu.insert(
+        "todo",
+        { title: NonEmptyTrimmedString100.orThrow("Shard") },
+        { owner: shardOwner },
+      );
+      const shardTodos = [{ title: "Shard" }];
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), shardTodos);
+
+      const unuseOwner = evolu.useOwner(unsetOwner, {
+        transports: [
+          createOwnerWebSocketTransport({
+            url: RelayUrl.orThrow(`ws://127.0.0.1:${relay.port}/`),
+            ownerId: id,
+          }),
+        ],
+        deleteWhenUnused: true,
+      });
+      // The owner syncs through an open connection and has no incomplete
+      // route. A readonly owner has none, and a writable one would complete
+      // its routes, so its delay could end with the deletion.
+      await states.waitForState(() => {
+        const state = states.getState();
+        return (
+          state?.transports.some(
+            ({ connection }) => connection.type === "Open",
+          ) === true &&
+          state.tenants.some(
+            (tenant) =>
+              tenant.type === "Active" &&
+              tenant.name === evolu.name &&
+              tenant.owners.some(({ ownerId }) => ownerId === id),
+          ) &&
+          syncStateToRelaySyncStates(state, evolu.name, id).every(
+            ({ route }) => route.type === "Complete",
+          )
+        );
+      });
+      // The wait accepts both, so a writable owner that failed to delete
+      // would pass the rest.
+      const tenant = states
+        .getState()
+        ?.tenants.find(({ name }) => name === evolu.name);
+      assert(tenant?.type === "Active", "Expected an active tenant.");
+      assertSame(
+        tenant.owners.find(({ ownerId }) => ownerId === id)?.type,
+        "Readonly",
+      );
+      const deleted = Promise.withResolvers<void>();
+      using subscriptions = new DisposableStack();
+      subscriptions.defer(
+        evolu.subscribeQuery(todoTitlesQuery)(() => {
+          if (evolu.getQueryRows(todoTitlesQuery).length === 0)
+            deleted.resolve();
+        }),
+      );
+      unuseOwner();
+      await testWaitForWorkerMessage();
+      time.advance("10s");
+
+      assertSame(await settleWithinWorkerMessages(deleted.promise), "pending");
+      assertEqual(await evolu.loadQuery(todoTitlesQuery), shardTodos);
       assertEqual(setup.tabErrors, []);
       assertEqual(setup.run.deps.reportDefect.getDefects(), []);
     });

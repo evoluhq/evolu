@@ -25,6 +25,7 @@ import {
   type EvoluInput,
   type EvoluOutput,
   type Owner,
+  type OwnerWriteKey,
   type ReadonlyOwner,
   type SharedWorkerInput,
   type SharedWorkerOutput,
@@ -411,6 +412,40 @@ test("posts an owner and transports of refs as plain data a worker can receive",
   assert(action?.action === "add", "Expected an add action.");
   assertEqual(action.owner.transports, [transport]);
   assertTrue(action.deleteWhenUnused);
+  scope.stop();
+});
+
+test("posts an owner whose writeKey ref holds no key as a readonly owner", async () => {
+  await using setup = await setupDeletableEvolu();
+  const { evolu, posted } = setup;
+  const { id, encryptionKey } = deriveShardOwner(testAppOwner, ["shard", 1]);
+  const transport = createOwnerWebSocketTransport({
+    url: RelayUrl.orThrow("wss://relay.example/"),
+    ownerId: id,
+  });
+  const app = createApp({});
+  app.provide(EvoluContext, evolu);
+  const scope = effectScope();
+  app.runWithContext(() =>
+    scope.run(() => {
+      // The reactive object unwraps the ref, so its writeKey reads undefined.
+      useOwner(
+        reactive({
+          id,
+          encryptionKey,
+          writeKey: ref<OwnerWriteKey | undefined>(undefined),
+        }),
+        { transports: [transport], deleteWhenUnused: true },
+      );
+    }),
+  );
+  await Promise.resolve();
+
+  const message = posted.find(({ type }) => type === "UseOwner");
+  assert(message?.type === "UseOwner", "Expected a UseOwner message.");
+  const [action] = message.actions;
+  assert(action?.action === "add", "Expected an add action.");
+  assertEqual(action.owner.owner, { id, encryptionKey });
   scope.stop();
 });
 

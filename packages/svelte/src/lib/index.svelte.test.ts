@@ -47,6 +47,7 @@ import {
   type Owner,
   type OwnerId,
   type OwnerSyncStatus,
+  type OwnerWriteKey,
   type PendingSyncRoute,
   type QueryRows,
   type ReadonlyOwner,
@@ -675,7 +676,9 @@ const setupOwnerSync = () => {
   const evolu = {
     useOwner: (owner: { readonly id: OwnerId }, options?: UseOwnerOptions) => {
       const transports = options?.transports;
-      const name = `${owner.id === testAppOwner.id ? "app" : "other"}${"writeKey" in owner ? "" : " readonly"}${transports ? ` ${transports.length}` : ""}${options?.deleteWhenUnused ? " deleting" : ""}`;
+      // As Evolu's useOwner tells a ReadonlyOwner: by a writeKey without a key.
+      const isWritable = "writeKey" in owner && owner.writeKey != null;
+      const name = `${owner.id === testAppOwner.id ? "app" : "other"}${isWritable ? "" : " readonly"}${transports ? ` ${transports.length}` : ""}${options?.deleteWhenUnused ? " deleting" : ""}`;
       calls.push(`use ${name}`);
       return () => {
         calls.push(`unuse ${name}`);
@@ -1072,6 +1075,74 @@ test("ownerSync uses another registration when options of a class with `$state` 
   dispose();
 });
 
+test("ownerSync uses an owner of a class whose `$state` writeKey holds no key as a readonly owner", async () => {
+  const { calls, evolu } = setupOwnerSync();
+  const { id, encryptionKey } = testAppOwner;
+  // What Svelte compiles a class with `$state` fields to. Its writeKey
+  // accessor exists also while the field holds no key, and TypeScript takes
+  // such an owner for a ReadonlyOwner, because an Owner's writeKey is required.
+  class ClassOwner {
+    readonly id = id;
+    readonly encryptionKey = encryptionKey;
+    readonly #writeKey = state<OwnerWriteKey | undefined>(undefined);
+    get writeKey() {
+      return get(this.#writeKey);
+    }
+    set writeKey(value) {
+      set(this.#writeKey, value);
+    }
+  }
+  const classOwner = new ClassOwner();
+  const observed = state<ReadonlyOwner | Owner>({ id, encryptionKey });
+  const dispose = effectRoot(() => {
+    ownerSync(evolu, () => get(observed));
+  });
+  await setImmediate();
+
+  set(observed, classOwner);
+  await setImmediate();
+  assertEqual(calls.splice(0), ["use app readonly"]);
+
+  classOwner.writeKey = testAppOwner.writeKey;
+  await setImmediate();
+  classOwner.writeKey = undefined;
+  await setImmediate();
+  assertEqual(calls, [
+    "unuse app readonly",
+    "use app",
+    "unuse app",
+    "use app readonly",
+  ]);
+  dispose();
+});
+
+test("ownerSync keeps the registration of a readonly owner for the same owner whose writeKey is null or undefined", async () => {
+  const { calls, evolu } = setupOwnerSync();
+  const { id, encryptionKey } = testAppOwner;
+  // Both are ReadonlyOwners to TypeScript, because an Owner's writeKey is
+  // required, as a cleared or unset field of reactive state is.
+  const nullOwner: ReadonlyOwner & {
+    readonly writeKey: OwnerWriteKey | null;
+  } = { id, encryptionKey, writeKey: null };
+  const unsetOwner: ReadonlyOwner & {
+    readonly writeKey: OwnerWriteKey | undefined;
+  } = { id, encryptionKey, writeKey: undefined };
+  const observed = state<ReadonlyOwner | Owner>({ id, encryptionKey });
+  const dispose = effectRoot(() => {
+    ownerSync(evolu, () => get(observed));
+  });
+  await setImmediate();
+
+  set(observed, nullOwner);
+  await setImmediate();
+  set(observed, unsetOwner);
+  await setImmediate();
+  set(observed, nullOwner);
+  await setImmediate();
+  assertEqual(calls, ["use app readonly"]);
+  dispose();
+});
+
 test("ownerSync keeps the registration when a transport field Evolu doesn't send changes", async () => {
   const { calls, evolu } = setupOwnerSync();
   const transport = relayTransport("wss://relay.example/");
@@ -1269,6 +1340,74 @@ test("ownerSync posts options in deep `$state` as plain data a worker can receiv
   assert(action?.action === "add", "Expected an add action.");
   assertEqual(action.owner.transports, [transport]);
   assertTrue(action.deleteWhenUnused);
+  dispose();
+});
+
+test("ownerSync posts an owner of a class or in deep `$state` whose writeKey holds no key as a readonly owner a worker can receive", async () => {
+  await using setup = await setupDeletableEvolu();
+  const { evolu, posted } = setup;
+  const classShard = deriveShardOwner(testAppOwner, ["shard", 1]);
+  const stateShard = deriveShardOwner(testAppOwner, ["shard", 2]);
+  // What Svelte compiles a class with `$state` fields to, whose writeKey
+  // field holds no key yet.
+  class ClassOwner {
+    readonly id = classShard.id;
+    readonly encryptionKey = classShard.encryptionKey;
+    readonly #writeKey = state<OwnerWriteKey | undefined>(undefined);
+    get writeKey() {
+      return get(this.#writeKey);
+    }
+    set writeKey(value) {
+      set(this.#writeKey, value);
+    }
+  }
+  const classOwner = new ClassOwner();
+  // An owner in deep `$state` whose writeKey holds no key.
+  const stateOwner = proxy<{
+    id: OwnerId;
+    encryptionKey: Owner["encryptionKey"];
+    writeKey: OwnerWriteKey | null;
+  }>({
+    id: stateShard.id,
+    encryptionKey: stateShard.encryptionKey,
+    writeKey: null,
+  });
+  const transportsOf = (ownerId: OwnerId) => ({
+    transports: [
+      createOwnerWebSocketTransport({
+        url: RelayUrl.orThrow("wss://relay.example/"),
+        ownerId,
+      }),
+    ] as const,
+  });
+  const dispose = effectRoot(() => {
+    ownerSync(
+      evolu,
+      () => classOwner,
+      () => transportsOf(classOwner.id),
+    );
+    ownerSync(
+      evolu,
+      () => stateOwner,
+      () => transportsOf(stateOwner.id),
+    );
+  });
+  await setImmediate();
+
+  const messages = posted.filter(({ type }) => type === "UseOwner");
+  // A web port posts a structured clone, which can't be made of a proxy.
+  assertEqual(structuredClone(messages), messages);
+  const owners = messages.flatMap((message) => {
+    assert(message.type === "UseOwner", "Expected a UseOwner message.");
+    return message.actions.map((action) => {
+      assert(action.action === "add", "Expected an add action.");
+      return action.owner.owner;
+    });
+  });
+  assertEqual(owners, [
+    { id: classShard.id, encryptionKey: classShard.encryptionKey },
+    { id: stateShard.id, encryptionKey: stateShard.encryptionKey },
+  ]);
   dispose();
 });
 

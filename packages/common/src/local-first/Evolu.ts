@@ -4549,13 +4549,16 @@ const createEvoluInstance =
       assertDistinctTransports(effectiveTransports);
 
       // Post only what workers use. Forwarding the caller's object would copy
-      // an AppOwner's mnemonic into every worker.
+      // an AppOwner's mnemonic into every worker. An owner whose writeKey holds
+      // no key, such as an unset field of a class or reactive state, is a
+      // ReadonlyOwner, because an Owner's writeKey is required.
       const { id, encryptionKey } = owner;
+      const writeKey = "writeKey" in owner ? owner.writeKey : null;
       const syncOwner: SyncOwner = {
         owner:
-          "writeKey" in owner
-            ? { id, encryptionKey, writeKey: owner.writeKey }
-            : { id, encryptionKey },
+          writeKey == null
+            ? { id, encryptionKey }
+            : { id, encryptionKey, writeKey },
         transports: effectiveTransports,
       };
 

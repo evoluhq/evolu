@@ -59,6 +59,7 @@ import {
   type Owner,
   OwnerId,
   type OwnerTransport,
+  type OwnerWriteKey,
   type ReadonlyOwner,
   RelayUrl,
   RelayUrlFromString,
@@ -3250,6 +3251,93 @@ describe("Evolu", () => {
                 action: "add",
                 deleteWhenUnused: false,
                 id,
+              },
+            ],
+          },
+        ]);
+      });
+
+      it("posts an owner whose writeKey holds no key as a ReadonlyOwner", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const { id, encryptionKey } = testAppOwner;
+        // Both are ReadonlyOwners to TypeScript, because an Owner's writeKey
+        // is required, as an unset field of a class or reactive state is.
+        const unsetOwner: ReadonlyOwner & {
+          readonly writeKey: OwnerWriteKey | undefined;
+        } = { id, encryptionKey, writeKey: undefined };
+        const nullOwner: ReadonlyOwner & {
+          readonly writeKey: OwnerWriteKey | null;
+        } = { id, encryptionKey, writeKey: null };
+
+        evolu.useOwner(unsetOwner, { transports: [testOwnerTransport] });
+        evolu.useOwner(nullOwner, { transports: [testOwnerTransport] });
+        await testWaitForWorkerMessage();
+
+        const [unsetId, nullId] = getRegistrationIds(evoluInputs);
+        const add = (registrationId: typeof unsetId) => ({
+          owner: {
+            owner: { id, encryptionKey },
+            transports: [testOwnerTransport],
+          },
+          action: "add" as const,
+          deleteWhenUnused: false,
+          id: registrationId,
+        });
+        assertEqual(evoluInputs, [
+          { type: "UseOwner", actions: [add(unsetId), add(nullId)] },
+        ]);
+      });
+
+      it("posts an owner whose writeKey is a getter of its class by what the getter returns", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        const { id, encryptionKey, writeKey } = testAppOwner;
+        // As Svelte compiles a class with $state fields: a field is an accessor
+        // on the class's prototype, not an own property of the instance.
+        class OwnerState {
+          readonly id = id;
+          readonly encryptionKey = encryptionKey;
+          #writeKey: OwnerWriteKey | undefined = undefined;
+          get writeKey(): OwnerWriteKey | undefined {
+            return this.#writeKey;
+          }
+          set writeKey(value: OwnerWriteKey | undefined) {
+            this.#writeKey = value;
+          }
+        }
+        const ownerState = new OwnerState();
+        assertFalse(Object.hasOwn(ownerState, "writeKey"));
+
+        evolu.useOwner(ownerState, { transports: [testOwnerTransport] });
+        ownerState.writeKey = writeKey;
+        evolu.useOwner(ownerState, { transports: [testOwnerTransport] });
+        await testWaitForWorkerMessage();
+
+        const [unsetId, setId] = getRegistrationIds(evoluInputs);
+        assertEqual(evoluInputs, [
+          {
+            type: "UseOwner",
+            actions: [
+              {
+                owner: {
+                  owner: { id, encryptionKey },
+                  transports: [testOwnerTransport],
+                },
+                action: "add",
+                deleteWhenUnused: false,
+                id: unsetId,
+              },
+              {
+                owner: {
+                  owner: { id, encryptionKey, writeKey },
+                  transports: [testOwnerTransport],
+                },
+                action: "add",
+                deleteWhenUnused: false,
+                id: setId,
               },
             ],
           },
