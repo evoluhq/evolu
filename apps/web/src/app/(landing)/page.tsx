@@ -137,9 +137,17 @@ const Page: FC = async () => {
         <div className="mt-8">
           <LocalFirstFeatures />
         </div>
-        <div className="mt-8">
+        <div className="mt-8 flex flex-wrap gap-4">
           <Button href="/docs/local-first" arrow="right">
             Get started with local&#8209;first
+          </Button>
+          <Button
+            href="/docs/comparison"
+            prefetch={false}
+            variant="outline"
+            arrow="right"
+          >
+            What local&#8209;first means
           </Button>
         </div>
       </Section>

@@ -5,16 +5,17 @@ import { usePathname } from "next/navigation";
 import type { FC, ReactNode } from "react";
 
 import { Button } from "@/components/Button";
-import { navigation } from "@/lib/navigation";
+import { type NavGroup, navigation } from "@/lib/navigation";
 
 const PageLink: FC<{
   label: string;
-  page: { href: string; title: string };
+  page: NavGroup["links"][number];
   previous?: boolean;
 }> = ({ label, page, previous = false }) => (
   <>
     <Button
       href={page.href}
+      prefetch={page.prefetch ?? null}
       aria-label={`${label}: ${page.title}`}
       variant="secondary"
       arrow={previous ? "left" : "right"}
@@ -23,6 +24,7 @@ const PageLink: FC<{
     </Button>
     <Link
       href={page.href}
+      prefetch={page.prefetch ?? null}
       tabIndex={-1}
       aria-hidden="true"
       className="text-base font-semibold text-zinc-900 transition hover:text-zinc-600 dark:text-white dark:hover:text-zinc-300"

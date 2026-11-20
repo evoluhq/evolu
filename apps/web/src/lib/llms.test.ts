@@ -1,4 +1,9 @@
-import { assertEqual, assertThrowsInstanceOf, assertTrue } from "@evolu/common";
+import {
+  assertEqual,
+  assertFalse,
+  assertThrowsInstanceOf,
+  assertTrue,
+} from "@evolu/common";
 import { registerHooks } from "node:module";
 import { resolve } from "node:path";
 import { after, beforeEach, describe, it, mock } from "node:test";
@@ -26,6 +31,7 @@ mock.module("./navigation.ts", {
         links: [
           { title: "Overview", href: "/docs" },
           { title: "Testing", href: "/docs/testing" },
+          { title: "Comparison", href: "/docs/comparison" },
           { title: "Examples", href: "/docs/examples" },
           { title: "External", href: "https://example.com" },
         ],
@@ -71,6 +77,7 @@ after(() => {
   process.chdir(previousWorkingDirectory);
 });
 
+const { comparison, comparisonCheckedOn } = await import("./comparison.ts");
 const {
   cleanMdxContent,
   createLlmsIndex,
@@ -194,6 +201,42 @@ const first = handlers[0](event);
     );
   });
 
+  it("renders a comparison table as a Markdown table", () => {
+    const lines = cleanMdxContent(
+      `<ComparisonTable category="Local-first" />`,
+    ).split("\n");
+    assertEqual(lines.slice(0, 2), [
+      "| Name | Works offline | The device's copy is primary | Full history | No single server | End-to-end encryption, always on | Post-quantum cryptography | Keys, not accounts | Open source | Maturity |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]);
+    assertTrue(
+      lines.includes(
+        "| [Evolu](https://www.evolu.dev) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | stable |",
+      ),
+    );
+  });
+
+  it("renders the discontinued table with a row for each tool", () => {
+    const lines = cleanMdxContent("<DiscontinuedTable />").split("\n");
+    assertEqual(lines.length, comparison.discontinued.length + 2);
+    assertTrue(lines[0].endsWith("| While active |"));
+  });
+
+  it("renders the comparison check date from the data", () => {
+    assertEqual(
+      cleanMdxContent("Checked on <ComparisonCheckedOn />."),
+      `Checked on ${comparisonCheckedOn}.`,
+    );
+    assertTrue(/^[A-Z][a-z]+ \d{1,2}, \d{4}$/u.test(comparisonCheckedOn));
+  });
+
+  it("throws on an unknown comparison category", () => {
+    assertThrowsInstanceOf(
+      () => cleanMdxContent(`<ComparisonTable category="Fake" />`),
+      Error,
+    );
+  });
+
   it("drops the blank line after hidden lines that open a code example", () => {
     assertEqual(
       cleanMdxContent(
@@ -273,6 +316,7 @@ describe("fetchProcessedMdxPages", () => {
       "**/*.mdx",
       { cwd: "src/app/(docs)/docs", ignore: excludePaths },
     ]);
+    assertFalse(excludePaths.includes("comparison"));
 
     await fetchProcessedMdxPages(true);
     assertEqual(fastGlob.mock.calls[1].arguments, [
@@ -298,6 +342,7 @@ Use these links for LLM-friendly documentation.
 ## Docs
 - [Overview](https://example.test/docs/index.md)
 - [Testing](https://example.test/docs/testing.md)
+- [Comparison](https://example.test/docs/comparison.md)
 
 ## Optional
 - [Full docs with API reference](https://example.test/llms-full.txt)`,

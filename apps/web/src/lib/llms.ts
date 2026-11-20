@@ -1,5 +1,19 @@
 import fs from "fs";
 import { stripHiddenLines } from "../mdx/remark.mjs";
+// The dev Markdown watcher imports this module once, so it misses edits to the
+// comparison data until `next dev` restarts. The data rarely changes during
+// development, and builds always read it fresh.
+import {
+  comparison,
+  ComparisonCategory,
+  comparisonCheckedOn,
+  comparisonCriteria,
+  type ComparisonCriteria,
+  comparisonMarkSymbols,
+  comparisonToolToCategory,
+  comparisonToolToMaturity,
+  discontinuedToolToCategory,
+} from "./comparison.ts";
 import { navigation } from "./navigation.ts";
 
 // As in CommonMark, a fence closes at a run of its character at least as long
@@ -13,9 +27,12 @@ const codeFencePlaceholderPattern = /^(.*?)\uE000(\d+)\uE000/gmu;
 
 /**
  * Cleans MDX content by removing imports, exports, JSX components, and the
- * hidden lines of code examples, and converting relative links. Code examples
- * are otherwise kept as written. It throws when a component that wraps a code
- * example would remove it, because only code groups are unwrapped.
+ * hidden lines of code examples, and converting relative links. The comparison
+ * page's components are rendered from their data instead: its tables as
+ * Markdown tables and its check date as text. Code examples are otherwise kept
+ * as written. It throws when a component that wraps a code example would remove
+ * it, because only code groups are unwrapped, and on an unknown comparison
+ * category.
  */
 export const cleanMdxContent = (content: string): string => {
   // Code examples are set aside, so no replacement below changes them, and
@@ -76,6 +93,45 @@ export const cleanMdxContent = (content: string): string => {
     "",
   );
 
+  // Render the comparison page's tables and check date, which the website
+  // renders from data
+  cleanedContent = cleanedContent.replaceAll(
+    /<ComparisonTable\s+category="([^"]*)"\s*\/>/gu,
+    (_match: string, category: string) => {
+      const validCategory = ComparisonCategory.orThrow(category);
+      return markdownTable(
+        ["Name", ...comparisonCriteria.map(([, title]) => title), "Maturity"],
+        comparison.tools
+          .filter((tool) => comparisonToolToCategory(tool) === validCategory)
+          .map((tool) => [
+            markdownLink(tool.name, tool.url),
+            ...criteriaToMarks(tool.criteria),
+            comparisonToolToMaturity(tool),
+          ]),
+      );
+    },
+  );
+  cleanedContent = cleanedContent.replaceAll(/<DiscontinuedTable\s*\/>/gu, () =>
+    markdownTable(
+      [
+        "Name",
+        "Ended",
+        ...comparisonCriteria.map(([, title]) => title),
+        "While active",
+      ],
+      comparison.discontinued.map((tool) => [
+        markdownLink(tool.name, tool.url),
+        tool.ended.date,
+        ...criteriaToMarks(tool.criteria),
+        discontinuedToolToCategory(tool),
+      ]),
+    ),
+  );
+  cleanedContent = cleanedContent.replaceAll(
+    /<ComparisonCheckedOn\s*\/>/gu,
+    comparisonCheckedOn,
+  );
+
   // Remove self-closing JSX component tags
   cleanedContent = cleanedContent.replaceAll(/<[A-Z][a-zA-Z]*[^>]*\/>/gu, "");
 
@@ -122,6 +178,20 @@ export const cleanMdxContent = (content: string): string => {
   return cleanedContent.trim();
 };
 
+const criteriaToMarks = (criteria: ComparisonCriteria): Array<string> =>
+  comparisonCriteria.map(([key]) => comparisonMarkSymbols[criteria[key].value]);
+
+const markdownLink = (text: string, url: string): string =>
+  `[${text.replaceAll("|", "\\|")}](${url})`;
+
+const markdownTable = (
+  header: ReadonlyArray<string>,
+  rows: ReadonlyArray<ReadonlyArray<string>>,
+): string =>
+  [header, header.map(() => "---"), ...rows]
+    .map((cells) => `| ${cells.join(" | ")} |`)
+    .join("\n");
+
 export interface MDXModule {
   metadata?: {
     title?: string;
@@ -152,13 +222,12 @@ export const customOrder: Record<string, number> = {
   "api-reference": 100,
 };
 
-export const excludePaths = ["showcase", "examples", "comparison"];
+export const excludePaths = ["showcase", "examples"];
 
 /** Pages to exclude from llms.txt (still available via direct .md URL) */
 const llmsExcludePaths = [
   "/docs/showcase",
   "/docs/examples",
-  "/docs/comparison",
   // External links
   "https://",
 ];

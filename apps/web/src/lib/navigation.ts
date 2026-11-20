@@ -3,6 +3,8 @@ export interface NavGroup {
   links: Array<{
     title: string;
     href: string;
+    /** Turns off prefetching for a page too large to fetch on every visit. */
+    prefetch?: false;
   }>;
 }
 
@@ -67,7 +69,7 @@ export const navigation: Array<NavGroup> = [
   {
     title: "Other",
     links: [
-      { title: "Comparison", href: "/docs/comparison" },
+      { title: "Comparison", href: "/docs/comparison", prefetch: false },
       { title: "Supply chain", href: "/docs/supply-chain" },
       { title: "Showcase", href: "/docs/showcase" },
       { title: "Upgrading", href: "/docs/upgrading" },

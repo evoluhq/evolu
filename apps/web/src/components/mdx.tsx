@@ -10,6 +10,11 @@ export const a = Link;
 export { Announcement, InlineNote, Note, Warn } from "@/components/Alerts";
 export { Button } from "@/components/Button";
 export {
+  ComparisonCheckedOn,
+  ComparisonTable,
+  DiscontinuedTable,
+} from "@/components/ComparisonTable";
+export {
   Code as code,
   CodeGroup,
   Pre as pre,

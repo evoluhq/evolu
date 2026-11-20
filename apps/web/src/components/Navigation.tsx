@@ -42,13 +42,22 @@ const TopLevelNavItem: FC<{
 
 const NavLink: FC<{
   href: string;
+  prefetch?: false | undefined;
   tag?: string | undefined;
   active?: boolean;
   isAnchorLink?: boolean;
   children: ReactNode;
-}> = ({ href, children, tag, active = false, isAnchorLink = false }) => (
+}> = ({
+  href,
+  prefetch,
+  children,
+  tag,
+  active = false,
+  isAnchorLink = false,
+}) => (
   <Link
     href={href}
+    prefetch={prefetch ?? null}
     aria-current={active ? "page" : undefined}
     className={clsx(
       "flex justify-between gap-2 py-1 pr-3 text-sm transition",
@@ -177,6 +186,7 @@ const NavigationGroup: FC<{ group: NavGroup; className?: string }> = ({
             <motion.li key={link.href} layout="position" className="relative">
               <NavLink
                 href={link.href}
+                prefetch={link.prefetch}
                 active={isPathActive(link.href, pathname)}
               >
                 {link.title}{" "}

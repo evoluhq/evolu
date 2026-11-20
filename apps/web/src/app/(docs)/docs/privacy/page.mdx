@@ -31,9 +31,11 @@ In a "harvest now, decrypt later" attack, an adversary collects encrypted data t
 
 ### Why symmetric encryption
 
-A large quantum computer could break public-key cryptography, such as RSA and elliptic curves. Evolu doesn't use it to encrypt changes: they're encrypted with a 256-bit symmetric key, which keeps about 128 bits of security against a quantum computer.
+A large quantum computer could break public-key cryptography, such as RSA and elliptic curves. Evolu doesn't use it to encrypt changes: they're encrypted with a 256-bit symmetric key, which keeps about 128 bits of security against a quantum computer. The same key also authenticates each change, so Evolu needs no signatures, which a quantum computer could otherwise forge to backdate a change or a grant of access.
 
 Relay connections use TLS, which relies on public-key cryptography. Whoever records that traffic today and breaks TLS later can learn the metadata [relays see](#what-relays-see), but not the data.
+
+An owner secret is only as safe as the way it travels. Email exposes it to mail servers today, and an end-to-end encrypted messenger with classical key exchange exposes it to the same attack later. Hand it over in person, such as by scanning a QR code on the other device, or over a channel with post-quantum key exchange, such as Signal.
 
 ### How much entropy is enough
 
