@@ -15,7 +15,7 @@ import {
   comparisonToolToMaturity,
   discontinuedToolToCategory,
   type LocalFirstClaim,
-} from "@/lib/comparison";
+} from "@/comparison/comparison";
 
 /** Lists the tools of one category with the evidence for each mark. */
 export const ComparisonTable: FC<{ category: ComparisonCategory }> = ({

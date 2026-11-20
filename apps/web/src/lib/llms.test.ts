@@ -77,7 +77,8 @@ after(() => {
   process.chdir(previousWorkingDirectory);
 });
 
-const { comparison, comparisonCheckedOn } = await import("./comparison.ts");
+const { comparison, comparisonCheckedOn } =
+  await import("../comparison/comparison.ts");
 const {
   cleanMdxContent,
   createLlmsIndex,

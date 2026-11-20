@@ -13,7 +13,7 @@ import {
   comparisonToolToCategory,
   comparisonToolToMaturity,
   discontinuedToolToCategory,
-} from "./comparison.ts";
+} from "../comparison/comparison.ts";
 import { navigation } from "./navigation.ts";
 
 // As in CommonMark, a fence closes at a run of its character at least as long

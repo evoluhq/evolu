@@ -15,7 +15,7 @@ import {
   union,
 } from "@evolu/common";
 
-import comparisonJson from "../data/comparison.json" with { type: "json" };
+import comparisonJson from "./comparison.json" with { type: "json" };
 
 const ComparisonCriterionValue = union(
   "meets",
