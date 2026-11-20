@@ -1981,7 +1981,7 @@ describe("Evolu", () => {
         (message) => message.type === "CreateEvolu",
       );
       assertNotUndefined(message);
-      assertSame(message.encryptionKey, testAppOwner.encryptionKey);
+      assertEqual(message.encryptionKey, testAppOwner.encryptionKey);
       assertFalse(message.memoryOnly);
 
       evolu.insert("_todo", {
@@ -2658,6 +2658,30 @@ describe("Evolu", () => {
     });
 
     describe("useOwner", () => {
+      // A key in a SharedArrayBuffer, a view of which can't be posted to a
+      // SharedWorker.
+      const sharedKeyOf = <K extends Uint8Array>(key: K): K => {
+        const shared = new Uint8Array(new SharedArrayBuffer(key.length));
+        shared.set(key);
+        return shared as K;
+      };
+
+      // A key in Node's Buffer, a slice of its pool.
+      const nodeBufferKeyOf = <K extends Uint8Array>(key: K): K => {
+        const nodeBuffer = Buffer.from(key);
+        assertTrue(nodeBuffer.buffer.byteLength > key.length);
+        return nodeBuffer as Uint8Array as K;
+      };
+
+      // A posted key is a plain Uint8Array of its own, as a mutation's bytes
+      // are, with the bytes the caller's key had.
+      const assertPostedKey = (key: Uint8Array, expected: Uint8Array) => {
+        assertSame(Object.getPrototypeOf(key), Uint8Array.prototype);
+        assertFalse(key.buffer instanceof SharedArrayBuffer);
+        assertSame(key.buffer.byteLength, expected.length);
+        assertEqual(key, expected);
+      };
+
       it("posts plain copies of transports in a proxy, such as a framework's reactive state, which can't be posted", async () => {
         await using setup = await setupRunWithEvoluDeps();
         const { run, evoluInputs } = setup;
@@ -3257,6 +3281,46 @@ describe("Evolu", () => {
         ]);
       });
 
+      it("posts plain copies of an owner's keys, also in a SharedArrayBuffer or Node's Buffer, without a later change of their bytes or the rest of their buffer", async () => {
+        await using setup = await setupRunWithEvoluDeps();
+        const { run, evoluInputs } = setup;
+        const evolu = await run.ok(testCreateEvolu);
+        // A view into a larger buffer, as a slice of Node's Buffer pool is.
+        const viewOf = <K extends Uint8Array>(key: K): K => {
+          const buffer = new Uint8Array(key.length * 3);
+          buffer.set(key, key.length);
+          return buffer.subarray(key.length, key.length * 2) as K;
+        };
+        const owners = [viewOf, sharedKeyOf, nodeBufferKeyOf].map(
+          (keyOf): Owner => ({
+            id: testAppOwner.id,
+            encryptionKey: keyOf(testAppOwner.encryptionKey),
+            writeKey: keyOf(testAppOwner.writeKey),
+          }),
+        );
+
+        for (const owner of owners) {
+          evolu.useOwner(owner, { transports: [testOwnerTransport] });
+        }
+        // The caller changes the bytes before the batch is sent.
+        for (const owner of owners) {
+          owner.encryptionKey.fill(0);
+          owner.writeKey.fill(0);
+        }
+        await testWaitForWorkerMessage();
+
+        const [input] = evoluInputs;
+        assert(input?.type === "UseOwner", "Expected a UseOwner message.");
+        assertLength(input.actions, owners.length);
+        for (const action of input.actions) {
+          assert(action.action === "add", "Expected an add action.");
+          const posted = action.owner.owner;
+          assert("writeKey" in posted, "Expected a writable owner.");
+          assertPostedKey(posted.encryptionKey, testAppOwner.encryptionKey);
+          assertPostedKey(posted.writeKey, testAppOwner.writeKey);
+        }
+      });
+
       it("posts an owner whose writeKey holds no key as a ReadonlyOwner", async () => {
         await using setup = await setupRunWithEvoluDeps();
         const { run, evoluInputs } = setup;
@@ -3452,26 +3516,48 @@ describe("Evolu", () => {
         });
       });
 
-      it("uses the config transports as they were when createEvolu was called", async () => {
-        await using setup = await setupRunWithEvoluDeps();
+      it("uses the config transports and the AppOwner's keys as they were when createEvolu was called", async () => {
+        const posted: Array<SharedWorkerInput> = [];
+        await using setup = await setupRunWithEvoluDeps({
+          onSharedWorkerPostMessage: (message) => {
+            posted.push(message);
+          },
+        });
         const { run, evoluInputs } = setup;
         const transport = { ...testOwnerTransport };
         const transports = [transport];
+        const appOwner: AppOwner = {
+          ...testAppOwner,
+          encryptionKey: new Uint8Array(
+            testAppOwner.encryptionKey,
+          ) as typeof testAppOwner.encryptionKey,
+          writeKey: new Uint8Array(
+            testAppOwner.writeKey,
+          ) as typeof testAppOwner.writeKey,
+        };
         const creating = createEvolu(Schema, {
           appName: testAppName,
-          appOwner: testAppOwner,
+          appOwner,
           transports,
         });
-        // The caller changes its transport and array before the instance
-        // starts.
+        // The caller changes its transport, array and keys before the
+        // instance starts.
         transport.url = createOwnerWebSocketTransport({
           url: RelayUrl.orThrow("wss://changed.example/"),
           ownerId: testAppOwner.id,
         }).url;
         transports.length = 0;
+        appOwner.encryptionKey.fill(0);
+        appOwner.writeKey.fill(0);
 
         await run.ok(creating);
         await testWaitForWorkerMessage();
+
+        const created = posted.find(
+          (message) => message.type === "CreateEvolu",
+        );
+        assert(created?.type === "CreateEvolu", "Expected CreateEvolu.");
+        assertEqual(created.encryptionKey, testAppOwner.encryptionKey);
 
         const [id] = getRegistrationIds(evoluInputs);
         assertEqual(evoluInputs, [
@@ -3490,6 +3576,48 @@ describe("Evolu", () => {
             ],
           },
         ]);
+      });
+
+      it("posts plain copies of the AppOwner's keys in a SharedArrayBuffer or Node's Buffer as they were when createEvolu was called", async () => {
+        for (const keyOf of [sharedKeyOf, nodeBufferKeyOf]) {
+          const posted: Array<SharedWorkerInput> = [];
+          await using setup = await setupRunWithEvoluDeps({
+            onSharedWorkerPostMessage: (message) => {
+              posted.push(message);
+            },
+          });
+          const { run, evoluInputs } = setup;
+          const appOwner: AppOwner = {
+            ...testAppOwner,
+            encryptionKey: keyOf(testAppOwner.encryptionKey),
+            writeKey: keyOf(testAppOwner.writeKey),
+          };
+          const creating = createEvolu(Schema, {
+            appName: testAppName,
+            appOwner,
+            transports: [testOwnerTransport],
+          });
+          // The caller changes its keys before the instance starts.
+          appOwner.encryptionKey.fill(0);
+          appOwner.writeKey.fill(0);
+
+          await run.ok(creating);
+          await testWaitForWorkerMessage();
+
+          const created = posted.find(
+            (message) => message.type === "CreateEvolu",
+          );
+          assert(created?.type === "CreateEvolu", "Expected CreateEvolu.");
+          assertPostedKey(created.encryptionKey, testAppOwner.encryptionKey);
+          const [input] = evoluInputs;
+          assert(input?.type === "UseOwner", "Expected a UseOwner message.");
+          const [action] = input.actions;
+          assert(action?.action === "add", "Expected an add action.");
+          const owner = action.owner.owner;
+          assert("writeKey" in owner, "Expected a writable owner.");
+          assertPostedKey(owner.encryptionKey, testAppOwner.encryptionKey);
+          assertPostedKey(owner.writeKey, testAppOwner.writeKey);
+        }
       });
 
       it("fails createEvolu for equal config transports before it starts the database", async () => {

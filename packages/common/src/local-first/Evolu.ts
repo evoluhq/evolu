@@ -116,6 +116,7 @@ import type {
   OwnerIdBytes,
   OwnerSecret,
   OwnerTransport,
+  OwnerWriteKey,
   ReadonlyOwner,
   RelayUrlFromString,
   ShardOwner,
@@ -2013,8 +2014,9 @@ export const createEvolu = <S extends EvoluSchema>(
   schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
   config: EvoluConfig,
 ): Task<Evolu<S>, never, EvoluPlatformDeps & StoredWorkerDep> => {
-  // Read at the call, with the transports copied, as useOwner copies them, so
-  // a later change of the caller's config changes nothing.
+  // Read at the call, with the transports and the AppOwner's keys copied, as
+  // useOwner copies them, so a later change of the caller's config changes
+  // nothing.
   const {
     appOwner,
     onDatabaseDeleted,
@@ -2023,6 +2025,7 @@ export const createEvolu = <S extends EvoluSchema>(
   } = config;
   const transports =
     configTransports && mapArray(configTransports, copyTransport);
+  const instanceOwner = copyOwner(appOwner);
   return async (run) => {
     // Before the instance starts its database, as useOwner of its AppOwner
     // would only later. Its other checks of the owner can wait: the AppOwner's
@@ -2042,7 +2045,7 @@ export const createEvolu = <S extends EvoluSchema>(
             },
           }),
         },
-        appOwner,
+        instanceOwner,
         { type: "Standalone" },
       ),
     );
@@ -4548,19 +4551,11 @@ const createEvoluInstance =
       );
       assertDistinctTransports(effectiveTransports);
 
-      // Post only what workers use. Forwarding the caller's object would copy
-      // an AppOwner's mnemonic into every worker. An owner whose writeKey holds
-      // no key, such as an unset field of a class or reactive state, is a
-      // ReadonlyOwner, because an Owner's writeKey is required.
-      const { id, encryptionKey } = owner;
-      const writeKey = "writeKey" in owner ? owner.writeKey : null;
       const syncOwner: SyncOwner = {
-        owner:
-          writeKey == null
-            ? { id, encryptionKey }
-            : { id, encryptionKey, writeKey },
+        owner: copyOwner(owner),
         transports: effectiveTransports,
       };
+      const { id } = syncOwner.owner;
 
       const registrationId = createId<"OwnerRegistration">(run.deps);
       orderedBatch.push({
@@ -4809,6 +4804,28 @@ const copyTransport = ({ type, url }: OwnerTransport): OwnerTransport => ({
   type,
   url,
 });
+
+// A plain copy with only what workers use, because the caller's object may
+// carry an AppOwner's mnemonic, which must not reach every worker. Its keys are
+// copied as a mutation's bytes are: the caller can change them before they're
+// sent, a view of a shared buffer can't be sent to a SharedWorker, and a slice
+// of Node's Buffer would send its whole pool. An owner whose writeKey holds no
+// key, such as an unset field of a class or reactive state, is a
+// ReadonlyOwner, because an Owner's writeKey is required.
+const copyOwner = (owner: ReadonlyOwner | Owner): ReadonlyOwner | Owner => {
+  const id = owner.id;
+  const encryptionKey = new Uint8Array(
+    owner.encryptionKey,
+  ) as OwnerEncryptionKey;
+  const writeKey = "writeKey" in owner ? owner.writeKey : null;
+  return writeKey == null
+    ? { id, encryptionKey }
+    : {
+        id,
+        encryptionKey,
+        writeKey: new Uint8Array(writeKey) as OwnerWriteKey,
+      };
+};
 
 // A stored database's name, which hashes the owner's ID, with the name input
 // of a database of Evolu's own; see EvoluInstanceKind.
