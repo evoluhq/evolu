@@ -66,7 +66,7 @@ gh attestation verify oci://docker.io/evoluhq/relay:4.2.15 \
 
 ## Recommended settings
 
-These settings protect any app, not only one built on Evolu. To have a coding agent check an app for them, along with its Evolu releases and relay image, copy the [evolu-supply-chain](https://github.com/evoluhq/evolu/blob/main/.github/skills/evolu-supply-chain/SKILL.md) skill into the app's skills directory.
+These settings protect any app, not only one built on Evolu. To have a coding agent check an app for them, along with its Evolu releases and relay image, copy the [evolu-supply-chain](https://github.com/evoluhq/evolu/blob/main/.agents/skills/evolu-supply-chain/SKILL.md) skill into the app's skills directory.
 
 - **Install from a lockfile**, with `pnpm install --frozen-lockfile` or `npm ci`.
 - **Wait a day for new versions**, as most malicious versions are removed within hours. Set pnpm's `minimumReleaseAge` (10.16+, in minutes) explicitly, as pnpm 11's default installs a newer version when no older one matches. npm 11.10+ reads `min-release-age`, in days. For an urgent fix, use `minimumReleaseAgeExclude` or npm 11.17's `min-release-age-exclude`.
