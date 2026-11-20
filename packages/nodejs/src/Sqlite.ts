@@ -24,6 +24,13 @@ import { loadNativeSqlite } from "./NativeSqlite.ts";
  * rollback would. The mode without options stores it in plaintext, as the Evolu
  * Relay does. The `memory` mode stores no file.
  *
+ * On macOS, where `fsync()` may persist writes late and out of order, a file
+ * connection syncs with `F_BARRIERFSYNC`, so with SQLite's default `synchronous
+ * = FULL`, a crash leaves each transaction whole, though the last ones before
+ * it may be lost, except on some network shares and FAT and exFAT drives. An
+ * app that turns on `PRAGMA fullfsync` or `checkpoint_fullfsync` gets barriers
+ * too.
+ *
  * A file connection waits up to 5 seconds for a lock another process holds, and
  * one connection of the process holds a file at a time, so an open of a file
  * another connection holds tries again for up to 10 seconds. Bundle

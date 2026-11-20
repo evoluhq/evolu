@@ -426,7 +426,9 @@ const formatPragma = (pragma: string, value: string | undefined): string => {
           ? ["NONE", "FULL", "INCREMENTAL"]
           : pragma === "secure_delete"
             ? ["OFF", "ON", "FAST"]
-            : null;
+            : pragma === "fullfsync"
+              ? ["OFF", "ON"]
+              : null;
   const name = names?.[Number(value)];
   return name == null ? value : `${value} (${name})`;
 };

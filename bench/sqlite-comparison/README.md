@@ -103,7 +103,13 @@ stack spills its cache. Temporary files stay in memory, as Evolu's builds always
 them. An encrypted connection keeps the `secure_delete` its encryption turns
 on, which is part of what encryption costs. The results record each stack's
 SQLite version, `PRAGMA compile_options` and its pragmas after these, and the
-summary names any pragma in which the stacks differ.
+summary names any pragma in which the stacks differ. On Node.js on macOS and
+on iOS, that includes `fullfsync`: Evolu's stacks turn it on and sync with
+`F_BARRIERFSYNC`, so a crash leaves each transaction whole, while the other
+stacks sync with `fsync()`, which costs a commit about 1 ms less on an M-series
+Mac and 2 ms less on an iPhone 16e, so a verdict there can find Evolu slower in
+workloads of many commits. There, an encrypted Evolu connection syncs with
+barriers even with `fullfsync` off.
 
 ## Method
 
@@ -259,3 +265,5 @@ buckets, iterates every timestamp 5 times and reads 10,000 random changes, all
 from a seeded generator. Rounds alternate which checkout runs first. Both
 checkouts must return the same fingerprints, iterations and reads in every
 run, or the gate fails. It writes `results/relay.json` and `results/relay.md`.
+On macOS, the new code's commits sync with `F_BARRIERFSYNC` and the old code's
+with `fsync()`, so the gate there also measures what the barriers cost.

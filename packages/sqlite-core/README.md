@@ -36,6 +36,10 @@ A plain database, such as the relay's, whose data is already encrypted, needs no
 
 A connection keeps the statements the storage functions run, reset between calls, so a binding calls `evolu_skiplist_finalize` before `sqlite3_close`, which otherwise fails with `SQLITE_BUSY`. `sqlite3_close_v2` finalizes them itself, through the connection's client data. Code that finalizes every statement through `sqlite3_next_stmt` calls `evolu_skiplist_finalize` first. Defensive mode (`SQLITE_DBCONFIG_DEFENSIVE`) keeps a connection's SQL from corrupting the database: it ignores `PRAGMA writable_schema = ON`, `journal_mode = OFF` and `schema_version = N`.
 
+## Syncs
+
+On iOS and macOS, `fsync()` only moves data to the drive, which may persist it late and out of order when it loses power, so a crash could leave a transaction half applied. There, the core's connections sync with `F_BARRIERFSYNC`, an `fsync()` that no later write overtakes, without patching SQLite: `evolu_core_register` turns `PRAGMA fullfsync` on, and registering the codec VFS replaces the unix VFS's `fcntl` with one that issues `F_BARRIERFSYNC` where SQLite asks for `F_FULLFSYNC`. With SQLite's default `synchronous = FULL`, a crash then leaves every transaction whole, though the last ones may be lost, except on storage that supports neither barriers nor full flushes, such as some network shares, where SQLite falls back to `fsync()`, and, for a transaction that shrinks a database in DELETE journal mode, on a file system without a journal, such as FAT or exFAT, which may persist the journal's deletion after the database's truncation. `src/evolu_codec.h` describes it.
+
 ## Layout
 
 - `src/`: the codec, the page format, the storage functions, the crypto layer and its hardware paths, and the SQLite compile options every native build shares, `sqlite_config.h`.

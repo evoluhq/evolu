@@ -79,8 +79,14 @@ extern "C" {
  * otherwise, as with sqlite3_open_v2 on a plain file or ":memory:". It makes
  * the connection defensive (SQLITE_DBCONFIG_DEFENSIVE), so its SQL can't
  * corrupt the database: it ignores PRAGMA writable_schema = ON, journal_mode =
- * OFF and schema_version = N. And it registers the skiplist functions and
- * evolu_core_version. Calling it again keeps the connection's statements.
+ * OFF and schema_version = N. On Apple platforms, it turns PRAGMA fullfsync
+ * on, so the connection syncs with barriers once evolu_codec_register has run,
+ * as a binding runs it before it opens anything, and with full flushes before
+ * (Syncs and Threads in evolu_codec.h). SQLite applies the pragma only
+ * outside a transaction, so a binding calls it as it opens a connection, and
+ * on Apple platforms, an authorizer that denies the pragma fails the call. And
+ * it registers the skiplist functions and evolu_core_version. Calling it again
+ * keeps the connection's statements.
  */
 int evolu_core_register(sqlite3 *db);
 

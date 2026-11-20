@@ -74,6 +74,7 @@ describeBindingConformance({
   illFormedNames,
   // Node-API's napi_is_array sees no array in a Proxy.
   acceptsProxyArrays: false,
+  turnsFullfsyncOn: process.platform === "darwin",
   test,
   assertEqual,
 });

@@ -378,6 +378,7 @@ export const registerDeviceSuites = (deps: DeviceSuitesDeps): void => {
     illFormedNames: `${databaseDirectory}/evolu1-${deviceIllFormedNames}.db`,
     // JSI's isArray sees the array a Proxy wraps.
     acceptsProxyArrays: true,
+    turnsFullfsyncOn: platform === "ios",
     test,
     assertEqual,
   });

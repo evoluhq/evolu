@@ -19,8 +19,10 @@ export const cacheSize = -16000;
 
 /**
  * The pragmas every connection runs right after it opens, untimed, in order, so
- * the stacks of a platform differ only in their SQLite build, binding and VFS.
- * `page_size` comes first, before anything creates a page.
+ * the stacks of a platform differ only in their SQLite build, binding and VFS,
+ * and on Node.js on macOS and on iOS in `fullfsync`, which this list leaves to
+ * each stack (see {@link recordedPragmas}). `page_size` comes first, before
+ * anything creates a page.
  *
  * `temp_store` keeps temporary files in memory, where Evolu's builds always
  * keep them, and `secure_delete` is off, SQLite's default. An encrypted
@@ -38,7 +40,11 @@ export const connectionPragmas = (
   ...(encrypted ? [] : ["PRAGMA secure_delete = OFF"]),
 ];
 
-/** The pragmas each run records after {@link connectionPragmas}. */
+/**
+ * The pragmas each run records after {@link connectionPragmas}. On Node.js on
+ * macOS and on iOS, Evolu's stacks turn `fullfsync` on and sync with barriers,
+ * which the others don't, so the summary names it there.
+ */
 export const recordedPragmas = [
   "page_size",
   "journal_mode",
@@ -49,6 +55,7 @@ export const recordedPragmas = [
   "locking_mode",
   "auto_vacuum",
   "mmap_size",
+  "fullfsync",
 ] as const;
 
 /** The pragmas whose values may differ between a plain and an encrypted run. */

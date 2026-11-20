@@ -7,6 +7,18 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(__APPLE__)
+#include <fcntl.h>
+#include <stdarg.h>
+
+#ifdef EVOLU_TEST_HOOKS
+int (*evolu_test_fcntl)(int fd, int op, ...) = fcntl;
+#define SYSTEM_FCNTL evolu_test_fcntl
+#else
+#define SYSTEM_FCNTL fcntl
+#endif
+#endif
+
 // The failure's layout, which bindings read from memory, as the web's reads
 // it from wasm, where the wasm types of its pointer can't pin it.
 _Static_assert(sizeof(evolu_codec_failure_type) == 4,
@@ -498,6 +510,12 @@ static int codec_truncate(sqlite3_file *base, sqlite3_int64 size) {
 
 static int codec_sync(sqlite3_file *base, int flags) {
   sqlite3_file *inner = ((CodecFile *)base)->inner;
+#if defined(__APPLE__)
+  // Every sync a full one, which the unix VFS issues as a barrier (see Syncs
+  // in evolu_codec.h), also SQLite's sync of a journal before it plays it
+  // back, for which it asks for a normal sync whatever PRAGMA fullfsync says.
+  flags = (flags & ~0x0F) | SQLITE_SYNC_FULL;
+#endif
   return inner->pMethods->xSync(inner, flags);
 }
 
@@ -1004,6 +1022,33 @@ static int codec_current_time_int64(sqlite3_vfs *vfs, sqlite3_int64 *now) {
   return rc;
 }
 
+#if defined(__APPLE__)
+/*
+ * The unix VFS's fcntl on Apple platforms (see Syncs in evolu_codec.h). There,
+ * SQLite passes every operation but F_FULLFSYNC the struct flock of a lock,
+ * which goes on as it came. A SQLite release that passes another argument
+ * needs a branch here, though an int would still reach fcntl intact, as
+ * Apple's arm64 and x86-64 ABIs pass each variadic argument in its own 8-byte
+ * slot or register.
+ */
+static int barrier_fcntl(int fd, int op, ...) {
+  // Each sync tries the barrier again rather than remembering a file whose
+  // barrier failed, since a descriptor is reused once closed, and an
+  // unsupported barrier fails without writing. Kernels since macOS 14 and
+  // iOS 17 remember a volume without barriers themselves. Any failure, an
+  // interrupted call included, escalates to the stronger F_FULLFSYNC.
+  if (op == F_FULLFSYNC)
+    return SYSTEM_FCNTL(fd, F_BARRIERFSYNC, 0) == 0
+               ? 0
+               : SYSTEM_FCNTL(fd, F_FULLFSYNC, 0);
+  va_list arguments;
+  va_start(arguments, op);
+  struct flock *lock = va_arg(arguments, struct flock *);
+  va_end(arguments);
+  return SYSTEM_FCNTL(fd, op, lock);
+}
+#endif
+
 int evolu_codec_register(const char *name, const char *inner_name) {
   if (name == NULL) return SQLITE_MISUSE;
   // A build with SQLITE_THREADSAFE=0, as the wasm, has no mutex functions,
@@ -1053,6 +1098,21 @@ int evolu_codec_register(const char *name, const char *inner_name) {
     vfs->base.xCurrentTime = codec_current_time;
     vfs->base.xGetLastError = codec_get_last_error;
     vfs->base.xCurrentTimeInt64 = codec_current_time_int64;
+#if defined(__APPLE__)
+    // Replaces the fcntl that SQLite's unix VFSes share, before this VFS opens
+    // a file, unless it's replaced already, so registering another codec VFS
+    // doesn't write SQLite's table while connections on other threads read
+    // it. SQLite provides system-call overrides for testing and may change
+    // them in any release, which test/sync_test.c would catch. Without the
+    // replacement, the syncs PRAGMA fullfsync governs are full flushes. SQLite
+    // registers the unix VFS as it initializes, which finding the inner VFS
+    // did, and nothing in Evolu unregisters it.
+    sqlite3_vfs *unix_vfs = sqlite3_vfs_find("unix");
+    if (unix_vfs->xGetSystemCall(unix_vfs, "fcntl") !=
+        (sqlite3_syscall_ptr)barrier_fcntl)
+      unix_vfs->xSetSystemCall(unix_vfs, "fcntl",
+                               (sqlite3_syscall_ptr)barrier_fcntl);
+#endif
     // Registered for the life of the process, so never freed. It fails only
     // when SQLite can't initialize, which sqlite3_vfs_find did.
     rc = sqlite3_vfs_register(&vfs->base, 0);

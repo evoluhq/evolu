@@ -180,6 +180,65 @@
  *   Running out of memory while checking a journal fails its open with
  *   SQLITE_NOMEM instead, and the journal stays too.
  *
+ * ## Syncs
+ *
+ * On Apple platforms, fsync() only moves data to the drive, which may persist
+ * it late and out of order when it loses power or the OS crashes, so a
+ * transaction could persist half applied: database pages without the journal
+ * that rolls them back, or the journal's deletion before all the pages. So
+ * there, every connection evolu_core_register sets up turns PRAGMA fullfsync
+ * on, under which SQLite's unix VFS syncs with fcntl(F_FULLFSYNC), and
+ * evolu_codec_register replaces that VFS's fcntl, once per process, before the
+ * codec VFS opens a file:
+ *
+ * - For F_FULLFSYNC, it issues F_BARRIERFSYNC, an fsync() and a barrier, after
+ *   which nothing written later persists before what it and every earlier
+ *   fsync() on the drive flushed. That keeps each transaction whole across a
+ *   crash without draining the drive's cache, as F_FULLFSYNC does, so the last
+ *   transactions may be lost, but none is left half applied. Apple's own
+ *   SQLite syncs so with PRAGMA fullfsync on. So an app that turns it, or
+ *   checkpoint_fullfsync, on itself gets barriers too, which don't keep its
+ *   last commit after a power loss. With fullfsync off, a plain file syncs
+ *   with fsync(), but for checkpoints and a log's header, its first or a
+ *   restarted one, under checkpoint_fullfsync, while a codec file keeps
+ *   barriers.
+ * - Where the barrier fails, it issues F_FULLFSYNC, and where that fails too,
+ *   SQLite syncs with fsync(), which orders nothing, as on a network share
+ *   that supports neither. On a file system without barriers, kernels since
+ *   macOS 14 and iOS 17 fall back to F_FULLFSYNC themselves, and older ones
+ *   fail the barrier. fcntl(2) lists barriers on HFS and APFS only, needing
+ *   the drive's support, which Apple's SSDs have, and full flushes on FAT but
+ *   not exFAT, yet macOS 27 completes both on FAT and exFAT.
+ * - Every other operation, a lock, goes to fcntl with the struct flock SQLite
+ *   passes it.
+ * - SQLite syncs the directory of a journal it creates with fsync(), which
+ *   the replacement doesn't see, and ignores a directory sync that fails.
+ *   With synchronous = FULL, SQLite's default, it then syncs the journal
+ *   again before it writes the database, so that barrier orders the journal's
+ *   directory entry before the database's pages. With NORMAL, nothing does.
+ * - SQLite asks for a normal sync of a journal before it plays it back,
+ *   whatever fullfsync says, so a codec file makes every sync a full one.
+ *   SQLite writes a page into the database only once the journal record that
+ *   restores it is synced, so the records that sync could leave unordered
+ *   restore pages as the file still holds them. Rewriting them changes no byte
+ *   of a plain file, but a codec file encrypts each anew, and a power loss
+ *   could tear one with no record left to restore it.
+ * - A transaction that shrinks the database, as one that frees pages under
+ *   auto_vacuum = FULL, truncates it after it invalidates the journal. In
+ *   DELETE mode, SQLite deletes the journal and then truncates the database
+ *   with no barrier between, so it relies on the file system to persist those
+ *   metadata changes in order, which one without a journal, such as FAT or
+ *   exFAT, may not. In the PERSIST journal mode, in exclusive locking mode
+ *   with the DELETE one, and in the TRUNCATE one with synchronous = FULL, a
+ *   barrier on the journal comes between.
+ *
+ * The unix VFS serves the codec's files and plain files alike, so plain
+ * connections the binding opens sync so too. In a WAL database, which only a
+ * plain connection keeps, a commit syncs the log with a barrier under
+ * synchronous = FULL, and a checkpoint, under FULL or NORMAL, syncs the log
+ * before it writes the database and the database before the log starts over.
+ * Elsewhere, connections sync as SQLite does.
+ *
  * ## Threat model
  *
  * The codec protects the confidentiality of every page and the integrity of
@@ -200,7 +259,10 @@
  *
  * Threads: each file, like each SQLite connection, is used from one thread at
  * a time. Registration is serialized, except in a build with
- * SQLITE_THREADSAFE=0, such as the wasm, which has one thread.
+ * SQLITE_THREADSAFE=0, such as the wasm, which has one thread. On Apple
+ * platforms, the first registration must finish before another thread uses
+ * SQLite's unix VFS, whose fcntl it replaces where SQLite reads it without a
+ * lock, as a binding registers before it opens anything.
  */
 #ifndef EVOLU_CODEC_H
 #define EVOLU_CODEC_H
@@ -259,7 +321,8 @@ typedef struct {
  * SQLITE_OK, also when a codec VFS of that name over the same inner VFS is
  * registered already, SQLITE_ERROR when there's no such inner VFS or SQLite
  * fails to initialize, SQLITE_MISUSE when name is NULL, another VFS has the
- * name, or the inner VFS is a codec VFS, or SQLITE_NOMEM.
+ * name, or the inner VFS is a codec VFS, or SQLITE_NOMEM. On Apple platforms,
+ * registering a codec VFS first replaces the unix VFS's fcntl (see Syncs).
  */
 int evolu_codec_register(const char *name, const char *inner_name);
 
@@ -300,6 +363,13 @@ int evolu_codec_take_failure(sqlite3 *db, evolu_codec_failure *failure);
 const uint8_t *evolu_test_codec_scratch(sqlite3 *db, size_t *size);
 extern void (*evolu_test_codec_journal_read)(const uint8_t *scratch,
                                              size_t size);
+#if defined(__APPLE__)
+/*
+ * The fcntl that the unix VFS's replaced fcntl calls (see Syncs), fcntl by
+ * default, which a test replaces to see or fail its calls.
+ */
+extern int (*evolu_test_fcntl)(int fd, int op, ...);
+#endif
 #endif
 
 #ifdef __cplusplus

@@ -8,14 +8,15 @@
  * - {@link checkLoadedNativeSqlite} loads the running platform's addon as
  *   `@evolu/nodejs` loads it and opens an encrypted, a plaintext and a memory
  *   database with it, reading a large result and stepping a statement from the
- *   memory one. It also reads {@link knownAnswer}, which another implementation
- *   encrypted, so a codec a compiler broke fails even when it reads what it
- *   writes, though only in the crypto paths the CPU running it takes: every CI
- *   runner has AES instructions and every arm64 one SHA-512 instructions, so CI
- *   never checks software AES, or arm64's software SHA-512. And it runs the
- *   inserts of {@link skiplistAnswer} through Evolu's timestamp storage
- *   functions, which sync and the Evolu Relay run on, and checks their rows and
- *   answers.
+ *   memory one, and checks that each turns `fullfsync` on on macOS only, where
+ *   the addon syncs with barriers. It also reads {@link knownAnswer}, which
+ *   another implementation encrypted, so a codec a compiler broke fails even
+ *   when it reads what it writes, though only in the crypto paths the CPU
+ *   running it takes: every CI runner has AES instructions and every arm64 one
+ *   SHA-512 instructions, so CI never checks software AES, or arm64's software
+ *   SHA-512. And it runs the inserts of {@link skiplistAnswer} through Evolu's
+ *   timestamp storage functions, which sync and the Evolu Relay run on, and
+ *   checks their rows and answers.
  *
  * It imports only Node.js's own modules at run time, as `build-native.mts`
  * does, so CI checks each addon in its target's environment before installing
@@ -152,7 +153,8 @@ export const skiplistAnswer = /*#__PURE__*/ fileURLToPath(
  * it reads, a plaintext one, and a memory one, which reads a result of more
  * values than a call passes as arguments, steps a statement to its end, and
  * leaves the rows and returns the answers of `skiplist`, the path of
- * {@link skiplistAnswer} unless given.
+ * {@link skiplistAnswer} unless given. Each of the three turns `fullfsync` on on
+ * macOS and leaves it off elsewhere.
  */
 export const checkLoadedNativeSqlite = (
   target: NativeSqliteTarget,
@@ -262,6 +264,26 @@ export const checkLoadedNativeSqlite = (
         throw new Error(
           `An encrypted open of ${path} failed with ${String(code)}, not SQLITE_NOTADB.`,
         );
+    }
+
+    // Every connection turns fullfsync on on macOS, where Evolu's SQLite syncs
+    // with barriers, and leaves it off elsewhere. Which syncs a commit makes,
+    // @evolu/sqlite-core's test/sync_test.c checks on the same sources.
+    const fullfsync = target.startsWith("darwin-") ? 1 : 0;
+    for (const [kind, open] of [
+      ["An encrypted", () => nativeSqlite.openEncryptedFile(encrypted, key)],
+      ["A plaintext", () => nativeSqlite.openFile(plain)],
+      ["A memory", () => nativeSqlite.openMemory()],
+    ] as const) {
+      const database = open();
+      let value: string;
+      try {
+        value = JSON.stringify(query(database, "pragma fullfsync"));
+      } finally {
+        database.close();
+      }
+      if (value !== `[{"fullfsync":${fullfsync}}]`)
+        throw new Error(`${kind} database read fullfsync ${value}.`);
     }
 
     const memory = nativeSqlite.openMemory();

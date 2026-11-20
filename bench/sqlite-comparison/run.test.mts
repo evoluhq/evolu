@@ -110,6 +110,7 @@ describe("runBench", () => {
       assertEqual(output.contentChecksum, null);
       assertEqual(output.pragmas.cache_size, "-16000");
       assertEqual(output.pragmas.secure_delete, "0");
+      assertEqual(output.pragmas.fullfsync, "0");
       assertEqual(output.file?.sqliteHeaderOffsets[0], 0);
       assertTrue(output.file?.containsPlaintextMarker === true);
       assertTrue(output.sqliteSourceId.length > 0);

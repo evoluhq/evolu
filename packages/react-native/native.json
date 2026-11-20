@@ -149,11 +149,11 @@
     },
     "c/evolu_codec.c": {
       "origin": "@evolu/sqlite-core/src/evolu_codec.c",
-      "sha256": "7d98e57cdcb6246c946368725e049a7328cb71d5f0efe643b3ea0b74f24cd7d9"
+      "sha256": "2beeddf0999abd15b071df343c05f2284a90f9a413732404cd3d415fd896560a"
     },
     "c/evolu_codec.h": {
       "origin": "@evolu/sqlite-core/src/evolu_codec.h",
-      "sha256": "848f81117de2e9016ce30b6fd264f6cbf628b71b397194ff5e4e20cedd665476"
+      "sha256": "7a4237f094a4d46c0486aaa2af0cdb38198b7e5ef24350e547c2955111315ac8"
     },
     "c/evolu_crypto.c": {
       "origin": "@evolu/sqlite-core/src/evolu_crypto.c",
@@ -185,11 +185,11 @@
     },
     "c/evolu_skiplist.c": {
       "origin": "@evolu/sqlite-core/src/evolu_skiplist.c",
-      "sha256": "b7de8df67e9483dc1f1d93fb80b42aa5280a54aa79639e17506edcab226d5d3e"
+      "sha256": "ce09ca8003a4eccee0bfd5877240b0690aa2e7ec7cfc5293255e4041ac224e64"
     },
     "c/evolu_skiplist.h": {
       "origin": "@evolu/sqlite-core/src/evolu_skiplist.h",
-      "sha256": "384c3af20ebe1c58590e296e1d583806476533c12cc1f18a91dd93beed894d5f"
+      "sha256": "634dd08945e218b1b7e0fa5dd2fd750d9f292b9b084abb72dc4a8f3f352ac75e"
     },
     "c/evolu_xchacha.c": {
       "origin": "@evolu/sqlite-core/src/evolu_xchacha.c",
@@ -229,7 +229,7 @@
     },
     "include/evolu_database.h": {
       "origin": "@evolu/sqlite-core/binding/evolu_database.h",
-      "sha256": "f1ed59b225cb08db3475df64a51b7f6f91c82e84d0e0f2c2265dd0b0ef125b9b"
+      "sha256": "b1cfee5b7d89f026e03949f1f49af1e95a880051777d399ca0b95c0a762b322f"
     },
     "include/evolu_names.h": {
       "origin": "vendor-native.mts",

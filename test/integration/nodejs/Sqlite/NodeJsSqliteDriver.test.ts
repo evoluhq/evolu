@@ -480,6 +480,18 @@ test("a file connection waits 5 seconds for another process's lock and caches ab
   );
 });
 
+test("every connection turns fullfsync on on macOS, where the addon syncs with barriers, and leaves it off elsewhere", async (t) => {
+  setupFile(t);
+  const fullfsync = process.platform === "darwin" ? 1 : 0;
+  for (const options of [undefined, encrypted] as const) {
+    using driver = await open(options);
+    assertEqual(driver.exec(sql`pragma fullfsync;`).rows, [{ fullfsync }]);
+    driver.deleteDatabase();
+  }
+  using memory = await open({ mode: "memory" });
+  assertEqual(memory.exec(sql`pragma fullfsync;`).rows, [{ fullfsync }]);
+});
+
 test("exec returns a read's rows with no changes, and a write's changes, also with RETURNING", async () => {
   using driver = await open({ mode: "memory" });
   driver.exec(sql`create table t (id integer primary key, name text);`);

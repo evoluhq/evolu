@@ -37,8 +37,9 @@
  *   such as the relay's. An encrypted file opened without its key fails with
  *   SQLITE_NOTADB, and plain SQLite would roll back its hot journal as
  *   plaintext, which Evolu doesn't support.
- * - No pragma is set, so files keep DELETE journals and SQLite's 4096-byte
- *   pages, as expo-sqlite kept them.
+ * - No pragma changes the files, so they keep DELETE journals and SQLite's
+ *   4096-byte pages, as expo-sqlite kept them. On Apple platforms, every
+ *   connection syncs with barriers (Syncs in evolu_codec.h).
  * - A wrong key, or a plaintext file opened with a key, fails with a page's
  *   authentication failure: page 1's, with SQLITE_NOTADB, or with a hot
  *   journal, that of its first record's page, with SQLITE_NOTADB for page 1

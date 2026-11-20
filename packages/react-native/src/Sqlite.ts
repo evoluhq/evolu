@@ -16,6 +16,11 @@
  * rollback journal stays between transactions, truncated to 0 bytes after each
  * commit, until a connection that wrote closes.
  *
+ * On iOS, where `fsync()` may persist writes late and out of order, a file
+ * connection syncs with `F_BARRIERFSYNC`, so with SQLite's default `synchronous
+ * = FULL`, a crash leaves each transaction whole, though the last ones before
+ * it may be lost.
+ *
  * @module
  */
 import {
@@ -69,9 +74,8 @@ export const createReactNativeSqliteDriver = (
     // (M-series Mac, November 2026). Queries share a transaction per batch,
     // but sync reconciliation runs most of its storage reads on their own,
     // about 12,000 in the protocol benchmark's random-halves-20k scenario.
-    // Exclusive mode also cuts a small write transaction's commit from 0.2 to
-    // 0.08 ms. The binding allows one connection per file in the process, so
-    // the lock costs no concurrency.
+    // The binding allows one connection per file in the process, so the lock
+    // costs no concurrency.
     // The directory is in the app's own container, not an app group's, so iOS
     // doesn't terminate a suspended app for holding the lock (0xdead10cc). A
     // journal size limit of 0 truncates the journal the mode keeps after each

@@ -1,4 +1,4 @@
-import { assertEqual, assertTrue } from "@evolu/common";
+import { assertEqual, assertFalse, assertTrue } from "@evolu/common";
 import { describe, it } from "node:test";
 import {
   connectionPragmas,
@@ -65,6 +65,15 @@ describe("connectionPragmas", () => {
         (pragma) => !pragma.includes("secure_delete"),
       ),
     );
+  });
+
+  it("leaves fullfsync as each stack sets it", () => {
+    for (const encrypted of [false, true])
+      assertFalse(
+        connectionPragmas(encrypted).some((pragma) =>
+          pragma.includes("fullfsync"),
+        ),
+      );
   });
 
   it("sets the page size first", () => {

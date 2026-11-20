@@ -54,6 +54,7 @@ const pragmas = {
   locking_mode: "normal",
   auto_vacuum: "0",
   mmap_size: "0",
+  fullfsync: "0",
 };
 
 // Validated, so a test can pass plain numbers for branded ones.
@@ -357,6 +358,21 @@ describe("findRegressions", () => {
 });
 
 describe("findPragmaDifferences", () => {
+  it("names fullfsync, which Evolu's stacks turn on on macOS and iOS", () => {
+    const runs = [createRun(0, 1)];
+    assertEqual(
+      findPragmaDifferences(
+        createTarget([
+          createMeasured("evolu", runs, {
+            pragmas: { ...pragmas, fullfsync: "1" },
+          }),
+          createMeasured("reference", runs),
+        ]),
+      ),
+      ["fullfsync"],
+    );
+  });
+
   it("allows only secure_delete to differ for an encrypted stack", () => {
     const runs = [createRun(0, 1)];
     assertEqual(
@@ -493,5 +509,45 @@ describe("formatResults", () => {
       ),
     );
     assertTrue(markdown.includes("| 2 (FULL) |"));
+  });
+
+  it("names fullfsync where the stacks differ in it, with its value's name", () => {
+    const runs = [createRun(0, 1), createRun(1, 1)];
+    const fullfsyncLines = formatResults(
+      getOrThrow(
+        BenchResults.fromUnknown({
+          formatVersion: resultsFormatVersion,
+          createdAt: "2026-10-25T12:00:00.000Z",
+          configuration: {
+            warmupRounds: 1,
+            measuredRounds: 2,
+            waSqliteCommit: "7a4b4241ba7c61ee19121aacd6c93892234ce1a1",
+            workloadSha256: "0".repeat(64),
+            pragmas: ["PRAGMA page_size = 4096"],
+          },
+          targets: [
+            createTarget([
+              createMeasured("evolu", runs, {
+                label: "Evolu",
+                pragmas: { ...pragmas, fullfsync: "1" },
+              }),
+              createMeasured("reference", runs, { label: "better-sqlite3" }),
+            ]),
+          ],
+        }),
+      ),
+    ).split("\n");
+    assertTrue(fullfsyncLines.includes("**The stacks differ in fullfsync.**"));
+    assertTrue(
+      fullfsyncLines.some(
+        (line) => line.startsWith("| Evolu |") && line.endsWith("| 1 (ON) |"),
+      ),
+    );
+    assertTrue(
+      fullfsyncLines.some(
+        (line) =>
+          line.startsWith("| better-sqlite3 |") && line.endsWith("| 0 (OFF) |"),
+      ),
+    );
   });
 });

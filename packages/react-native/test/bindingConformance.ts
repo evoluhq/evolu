@@ -50,6 +50,11 @@ export interface BindingConformanceDeps {
    * `napi_is_array` does.
    */
   readonly acceptsProxyArrays: boolean;
+  /**
+   * Whether the binding's connections turn `PRAGMA fullfsync` on, as on Apple
+   * platforms, where they sync with barriers.
+   */
+  readonly turnsFullfsyncOn: boolean;
   /** Registers a test, which fails when its function throws. */
   readonly test: (name: string, fn: () => void) => unknown;
   /** Throws unless the values are equal as data. */
@@ -168,6 +173,7 @@ export const describeBindingConformance = ({
   directory,
   illFormedNames,
   acceptsProxyArrays,
+  turnsFullfsyncOn,
   test,
   assertEqual,
 }: BindingConformanceDeps): void => {
@@ -1042,6 +1048,23 @@ export const describeBindingConformance = ({
       } finally {
         database.close();
       }
+  });
+
+  test("memory, plain and encrypted databases turn fullfsync on on Apple platforms, where they sync with barriers, and leave it off elsewhere", () => {
+    for (const open of [
+      () => binding.openMemory(),
+      () => binding.openFile(pathOf("fullfsync-plain.db")),
+      () => binding.openEncryptedFile(pathOf("fullfsync-encrypted.db"), key),
+    ]) {
+      const database = open();
+      try {
+        assertEqual(rowsOf(database, "pragma fullfsync"), [
+          { fullfsync: turnsFullfsyncOn ? 1 : 0 },
+        ]);
+      } finally {
+        database.close();
+      }
+    }
   });
 
   test("bind and run throw a TypeError for any other value", () => {

@@ -41,6 +41,14 @@ export interface HermesHost {
   readonly failSqliteAllocations: (count: number) => boolean;
   /** Makes the platform's random source fail, until it's called with false. */
   readonly failRandom: (isFailing: boolean) => void;
+  /**
+   * The barriers and full flushes the unix VFS's fcntl issued since the last
+   * call, which the host counts through the codec's test hook.
+   */
+  readonly takeSyncs: () => {
+    readonly barriers: number;
+    readonly fullFlushes: number;
+  };
 }
 
 /**
@@ -70,6 +78,8 @@ export const registerSuites = ({
     illFormedNames: `${directory}/ill-formed-names.db`,
     // JSI's isArray sees the array a Proxy wraps.
     acceptsProxyArrays: true,
+    // The host is macOS.
+    turnsFullfsyncOn: true,
     test,
     assertEqual,
   });
@@ -395,6 +405,29 @@ export const registerSuites = ({
         failures++;
       }
       assert(failures > 0, name);
+    }
+  });
+
+  // Every F_FULLFSYNC SQLite asks for goes through the replacement, so a
+  // barrier and no full flush show that the vendored build installs it. Which
+  // syncs a commit makes, @evolu/sqlite-core's test/sync_test.c checks.
+  test("commits to plain and encrypted files sync with barriers, never full flushes", () => {
+    const key = Uint8Array.from({ length: 32 }, (_, i) => i);
+    for (const open of [
+      () => binding.openFile(pathOf("barriers-plain.db")),
+      () => binding.openEncryptedFile(pathOf("barriers-encrypted.db"), key),
+    ]) {
+      const database = open();
+      try {
+        database.prepare("create table t (a)").run([]);
+        host.takeSyncs();
+        database.prepare("insert into t values (1)").run([]);
+        const syncs = host.takeSyncs();
+        assertTrue(syncs.barriers > 0);
+        assertEqual(syncs.fullFlushes, 0);
+      } finally {
+        database.close();
+      }
     }
   });
 };

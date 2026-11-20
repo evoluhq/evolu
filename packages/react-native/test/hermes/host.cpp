@@ -30,10 +30,12 @@
 #include <jsi/jsi.h>
 
 #include <dirent.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 
 #include <algorithm>
 #include <atomic>
+#include <cstdarg>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
@@ -55,6 +57,27 @@
 // The crypto layer's test hook (src/evolu_crypto.h), which the host's build
 // compiles: while it's set, the platform's random source fails.
 extern "C" int evolu_test_random_fails;
+
+// The codec's test hook (src/evolu_codec.h), the fcntl that the unix VFS's
+// replacement calls, through which the host counts the barriers and full
+// flushes the vendored core issues.
+extern "C" int (*evolu_test_fcntl)(int fd, int op, ...);
+
+std::atomic<int> barriers{0};
+std::atomic<int> fullFlushes{0};
+
+// C linkage, as the hook's type has.
+extern "C" int countingFcntl(int fd, int op, ...) {
+  if (op == F_BARRIERFSYNC || op == F_FULLFSYNC) {
+    ++(op == F_BARRIERFSYNC ? barriers : fullFlushes);
+    return fcntl(fd, op, 0);
+  }
+  va_list arguments;
+  va_start(arguments, op);
+  auto *lock = va_arg(arguments, struct flock *);
+  va_end(arguments);
+  return fcntl(fd, op, lock);
+}
 
 // While set, the next allocation through operator new fails, once, so a test
 // can fail one of the adapter's C++ allocations, which the SQLite allocator
@@ -1024,7 +1047,19 @@ void runSuites(const std::string &script, const std::string &directory,
   rt.evaluateJavaScript(std::make_shared<jsi::StringBuffer>(script),
                         "suite.js");
 
+  evolu_test_fcntl = countingFcntl;
   jsi::Object host(rt);
+  host.setProperty(
+      rt, "takeSyncs",
+      hostFunction(rt, "takeSyncs",
+                   [](jsi::Runtime &rt, const jsi::Value &, const jsi::Value *,
+                      size_t) {
+                     jsi::Object syncs(rt);
+                     syncs.setProperty(rt, "barriers", barriers.exchange(0));
+                     syncs.setProperty(rt, "fullFlushes",
+                                       fullFlushes.exchange(0));
+                     return jsi::Value(std::move(syncs));
+                   }));
   host.setProperty(
       rt, "autoRegisterWriteLog",
       hostFunction(rt, "autoRegisterWriteLog",

@@ -755,6 +755,15 @@ int evolu_core_register(sqlite3 *db) {
   // It fails only for an option the SQLite doesn't know, and the core compiles
   // against the sqlite3.h that defines it.
   sqlite3_db_config(db, SQLITE_DBCONFIG_DEFENSIVE, 1, (int *)NULL);
+#if defined(__APPLE__)
+  // SQLite then asks for F_FULLFSYNC, which the unix VFS's fcntl turns into
+  // F_BARRIERFSYNC (Syncs in evolu_codec.h). Before an open reads the schema,
+  // so a hot journal's rollback syncs the database with a barrier too.
+  {
+    int rc = sqlite3_exec(db, "PRAGMA fullfsync = ON", NULL, NULL, NULL);
+    if (rc != SQLITE_OK) return rc;
+  }
+#endif
   // The functions point to the cache, so a connection registered again keeps
   // its own.
   Cache *cache = sqlite3_get_clientdata(db, cache_name);
