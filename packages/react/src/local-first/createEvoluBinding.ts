@@ -41,6 +41,10 @@ import {
 } from "react";
 import { useIsSsr } from "./useIsSsr.ts";
 
+/**
+ * The context components and hooks {@link createEvoluBinding} returns, typed
+ * with the app's schema `S` and its device schema `D`.
+ */
 export interface ReactBinding<
   S extends EvoluSchema = EvoluSchema,
   D extends EvoluSchema = EmptyEvoluSchema,
@@ -61,8 +65,8 @@ export interface ReactBinding<
   readonly useEvolu: () => AppOwnerEvolu<S>;
 
   /**
-   * Load and subscribe to the Query, and return an object with `rows` and `row`
-   * properties that are automatically updated when data changes.
+   * Load and subscribe to the Query, and return its rows, which update when the
+   * data changes.
    *
    * Note that `useQuery` uses React Suspense. It means every usage of
    * `useQuery` blocks rendering until loading is completed. To avoid loading
@@ -146,13 +150,19 @@ export interface ReactBinding<
    * database's deletion. While the tab has no AppOwner open, such as on a
    * device without one or after a removal of the open one, it renders
    * `withoutAppOwner`, such as a choice to open one of `useAppOwners`, create
-   * one, or restore one. It suspends while the app or the AppOwner's instance
-   * opens, so put it under a Suspense boundary, and pass the same promise on
-   * every render, such as one created at module scope. The queries of a refused
-   * database stay suspended, so put the children that read queries under a
-   * Suspense boundary of their own, and render `evoluError` and the account UI,
-   * which `useEvoluApp` and `useAppOwners` give to open or remove an AppOwner,
-   * outside it, where they stay usable.
+   * one, or restore one. `withoutAppOwner` can call `useEvoluApp`,
+   * `useAppOwners`, and the device hooks, but not `useEvolu`.
+   *
+   * It suspends while the app or the AppOwner's instance opens, also while
+   * another build keeps the app waiting, and throws when the app fails to
+   * start, so put it under a Suspense boundary and an error boundary, and
+   * render `evoluError` outside both. Pass the same promise on every render,
+   * such as one created at module scope or once a passkey unlocks. A query
+   * SQLite fails throws, and the queries of a refused database stay suspended,
+   * so put the children that read queries under an error boundary and a
+   * Suspense boundary of their own, and the account UI, which `useEvoluApp` and
+   * `useAppOwners` give to open or remove an AppOwner, outside them, where it
+   * stays usable.
    */
   readonly EvoluAppProvider: FC<{
     value: Promise<EvoluApp<S, D>>;
@@ -226,33 +236,57 @@ export interface UseQueriesOptions<OQ extends Queries> {
  * import {
  *   assertType,
  *   createQueryBuilder,
+ *   id,
+ *   NonEmptyTrimmedString100,
  *   testEvoluSchema,
  *   type AppOwnerEvolu,
+ *   type EvoluApp,
  *   type QueryRows,
  *   type TestEvoluSchema,
  * } from "@evolu/common";
  * import { createEvoluBinding } from "@evolu/react";
  *
- * // Create the binding once and share it with components.
- * const { EvoluContext, useEvolu, useQuery } =
- *   createEvoluBinding<typeof testEvoluSchema>();
+ * const DeviceSchema = {
+ *   setting: { id: id("Setting"), name: NonEmptyTrimmedString100 },
+ * };
  *
- * const createQuery = createQueryBuilder(testEvoluSchema);
- * const allTodos = createQuery((db) => db.selectFrom("todo").selectAll());
+ * // Create the binding once and share it with components.
+ * const {
+ *   EvoluContext,
+ *   EvoluAppProvider,
+ *   useEvolu,
+ *   useQuery,
+ *   useDeviceQuery,
+ * } = createEvoluBinding<typeof testEvoluSchema, typeof DeviceSchema>();
+ *
+ * const allTodos = createQueryBuilder(testEvoluSchema)((db) =>
+ *   db.selectFrom("todo").selectAll(),
+ * );
+ * const allSettings = createQueryBuilder(DeviceSchema)((db) =>
+ *   db.selectFrom("setting").selectAll(),
+ * );
  * const useTodos = () => useQuery(allTodos);
+ * const useSettings = () => useDeviceQuery(allSettings);
+ * // @ts-expect-error A query of the app's tables isn't one of its device tables.
+ * const useTodosOfDevice = () => useDeviceQuery(allTodos);
  *
  * assertType<
  *   [
  *     Parameters<typeof EvoluContext>[0]["value"],
+ *     Parameters<typeof EvoluAppProvider>[0]["value"],
  *     ReturnType<typeof useEvolu>,
  *     ReturnType<typeof useTodos>,
+ *     ReturnType<typeof useSettings>,
  *   ],
  *   [
  *     AppOwnerEvolu<TestEvoluSchema>,
+ *     Promise<EvoluApp<TestEvoluSchema, typeof DeviceSchema>>,
  *     AppOwnerEvolu<TestEvoluSchema>,
  *     QueryRows<typeof allTodos.Row>,
+ *     QueryRows<typeof allSettings.Row>,
  *   ]
  * >();
+ * void useTodosOfDevice;
  * ```
  */
 export const createEvoluBinding = <

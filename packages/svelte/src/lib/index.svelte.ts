@@ -1,7 +1,5 @@
-/**
- * This file needs to be named .svelte.ts to be recognized by the Svelte
- * compiler in the app itself.
- */
+// This file needs to be named .svelte.ts to be recognized by the Svelte
+// compiler in the app itself.
 
 import {
   constVoid,
@@ -37,6 +35,11 @@ import {
 import { createEvoluDeps } from "@evolu/web";
 import { untrack } from "svelte";
 
+/**
+ * {@link createEvoluDeps} of `@evolu/web` with its default options, created when
+ * this module loads. Pass it to `createRun` of `@evolu/web`, or call
+ * `createEvoluDeps` with options instead.
+ */
 export const evoluSvelteDeps = /*#__PURE__*/ createEvoluDeps();
 
 /**
@@ -235,7 +238,9 @@ export interface EvoluAppState<S extends EvoluSchema> {
  *
  * It creates an `$effect`, so call it where Svelte allows one, such as during
  * component initialization or inside `$effect.root`. It stops following the app
- * when that component or root is destroyed.
+ * when that component or root is destroyed. Server rendering runs no effect, so
+ * there `state` is `Opening` while the app has an AppOwner open, and `None`
+ * otherwise.
  *
  * ### Example
  *

@@ -116,7 +116,7 @@ export const loadDeviceSecret = (
 };
 
 /**
- * Deletes the app's stored {@link DeviceSecret}, so the next
+ * Deletes the app's stored {@link DeviceSecret}, if any, so the next
  * {@link loadDeviceSecret} creates a new one, which opens a new, empty device
  * database. It's the start over after a {@link DeviceSecretUnreadableError}, or
  * the lasting `UnknownError` that {@link loadDeviceSecret} describes: offer it
@@ -128,10 +128,9 @@ export const loadDeviceSecret = (
  *
  * Each app name has its own secret and, on Android, its own Keystore key, which
  * a forget deletes too, so the next load starts clean whatever made the secret
- * unreadable, and a forget touches no other name. It never replaces an
+ * unreadable, and a forget touches no other name. Evolu never replaces an
  * unreadable secret on its own, as iOS's Keychain does, because nothing tells
- * whether the secret is lost for good, and then Evolu itself would be the one
- * deleting.
+ * whether the secret is lost for good.
  */
 export const forgetDeviceSecret = (
   appName: AppName,

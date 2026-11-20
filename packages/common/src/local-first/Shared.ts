@@ -87,8 +87,7 @@
  * are created; failure means every instance keeps its database in memory, as in
  * Safari's Private Browsing and Firefox's private windows. A database kept in
  * memory has a random per-instance name, so it never shares a tenant, lock, or
- * DbWorker with another instance or a stored database; see
- * docs/adr/evolu-creates-and-stores-app-owners.md.
+ * DbWorker with another instance or a stored database.
  *
  * On the web, each memory instance runs this worker in its own dedicated
  * Worker, and its own tab hosts its DbWorker. It broadcasts console entries and
@@ -457,6 +456,9 @@
  *
  * @module
  */
+
+// Memory databases are per instance; see
+// docs/adr/evolu-creates-and-stores-app-owners.md.
 
 import {
   emptyArray,

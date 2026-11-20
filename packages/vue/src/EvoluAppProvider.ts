@@ -39,7 +39,9 @@ export const EvoluAppContext: InjectionKey<EvoluApp<any, any> | null> =
  * spinner, and nothing without it. Each slot can call {@link useEvoluApp}.
  *
  * The `app` prop is read once, so pass the resolved app, such as one awaited in
- * `<script setup>` under `<Suspense>`.
+ * `<script setup>` under `<Suspense>`. During server rendering, it waits for no
+ * instance and follows no change, so it renders the `opening` slot while the
+ * app has an AppOwner open, and the `withoutAppOwner` slot otherwise.
  */
 export const EvoluAppProvider = /*#__PURE__*/ defineComponent({
   name: "EvoluAppProvider",

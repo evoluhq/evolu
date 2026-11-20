@@ -1985,13 +1985,26 @@ export const createEvolu =
 
 /**
  * Configuration for {@link createEvoluApp}. The other options apply to every
- * AppOwner's instance.
+ * AppOwner's instance, and `appName`, `evolu7Name`, and `onOwnerDeleted` also
+ * to the device database. Every AppOwner syncs through the same `transports`,
+ * so a transport made for one AppOwner, such as with
+ * {@link createOwnerWebSocketTransport}, goes to {@link Evolu.useOwner} of that
+ * AppOwner's instance instead.
  *
  * @group Construction
  */
 export interface EvoluAppConfig<
   D extends EvoluSchema = EmptyEvoluSchema,
 > extends Omit<EvoluConfig, "appOwner" | "memoryOnly" | "onDatabaseDeleted"> {
+  /**
+   * How the app unlocks its device database, which is fixed per app; see
+   * {@link EvoluAppAuth}. On the web,
+   * {@link @evolu/web!createPasskeyAuth | createPasskeyAuth} unlocks a
+   * {@link DeviceSecret} with a passkey, and on React Native,
+   * {@link @evolu/react-native!loadDeviceSecret | loadDeviceSecret} loads one.
+   * [Local auth](https://www.evolu.dev/docs/local-auth#choose-a-mode) shows
+   * which mode to choose.
+   */
   readonly auth: EvoluAppAuth;
   /**
    * Whether the startup that creates the device database also creates the first
@@ -2050,7 +2063,7 @@ export type EmptyEvoluSchema = { readonly [emptyEvoluSchemaSymbol]?: never };
 
 /**
  * The app's own tables in the device database and their indexes. The schema
- * can't define Evolu's table, `_evolu_appOwner`.
+ * can't define Evolu's table, `_evolu_appOwner`, in any letter case.
  *
  * @group Construction
  */
@@ -2143,13 +2156,21 @@ export type DeviceMutation<D extends EvoluSchema, Kind extends MutationKind> = <
 export interface AppOwnerEntry {
   readonly id: OwnerId;
   readonly name: NonEmptyTrimmedString100 | null;
+  /**
+   * When it was last opened with {@link EvoluApp.open} or added with
+   * {@link EvoluApp.add} on this device, or `null` before either, such as for
+   * the AppOwner the device database created.
+   */
   readonly lastOpenedAt: DateIso | null;
 }
 
 /**
  * The AppOwner this tab has open and its instance. `evolu` is the same promise
  * until this tab opens another AppOwner, or the AppOwner again after a removal
- * or a deletion of its database, so React's `use` can read it.
+ * or a deletion of its database, so React's `use` can read it. It never
+ * rejects. It never settles when the app is disposed while the instance opens,
+ * and when the AppOwner is removed meanwhile, it resolves with the instance
+ * disposed, for which {@link isDatabaseDeleted} is true.
  *
  * @group Construction
  */
@@ -2301,9 +2322,11 @@ export type RemoveAppOwnerError =
   DeleteDatabaseError | UnsupportedDbVersionError;
 
 /**
- * An app whose AppOwners Evolu creates and keeps on this device. Each tab opens
- * one AppOwner, starting with the one opened most recently. An AppOwner's
- * instance stays open until the app is disposed.
+ * An app whose {@link AppOwner}s Evolu creates and keeps on this device. Each
+ * tab opens one AppOwner, starting with the one opened most recently. An
+ * AppOwner's instance stays open and keeps syncing after the tab opens another
+ * AppOwner, until the app is disposed or a removal of the AppOwner or a
+ * deletion of its database, in any tab, ends it.
  *
  * @group Construction
  */
@@ -2339,19 +2362,22 @@ export interface EvoluApp<
   /**
    * Adds an AppOwner, a new one or one restored from its secret, and opens it
    * once the device database stores it, unless this tab opened or added another
-   * meanwhile. Adding a secret that is already there updates its entry. An add
-   * made while a removal runs waits for it, so an AppOwner added after its
-   * removal opens an empty database on this device. It fails when the write, or
-   * the read of the AppOwners after it, fails, when the device database is
-   * refused, or when the app is disposed; a failed add can still have taken
-   * effect, and adding again is safe.
+   * meanwhile. Adding a secret that is already there updates its entry and,
+   * without `name`, keeps its name. An add made while a removal runs waits for
+   * it, so an AppOwner added after its removal opens an empty database on this
+   * device. It fails when the write, or the read of the AppOwners after it,
+   * fails, when the device database is refused, or when the app is disposed; a
+   * failed add can still have taken effect, and adding again is safe.
    */
   readonly add: (
     secret: OwnerSecret,
     name?: NonEmptyTrimmedString100,
   ) => Promise<Result<OwnerId, UnknownError | EvoluDisposedError>>;
 
-  /** Names an AppOwner on this device, or removes its name with `null`. */
+  /**
+   * Names an AppOwner on this device, or removes its name with `null`. An
+   * AppOwner this device doesn't store renames nothing.
+   */
   readonly rename: (id: OwnerId, name: NonEmptyTrimmedString100 | null) => void;
 
   /**
@@ -2361,18 +2387,17 @@ export interface EvoluApp<
    * AppOwner that isn't listed removes nothing. It works also when the
    * AppOwner's database doesn't open, such as a corrupt one. The tabs that had
    * the AppOwner open have none open afterwards. When deleting fails, such as
-   * when another context holds the database's files, the AppOwner stays with
-   * the data its database stored, and the tabs that had it open can be left
-   * with none open. It deletes the Evolu 7 database that holds the AppOwner
-   * too, see {@link EvoluConfig.evolu7Name}, and last, so when only that
-   * deletion fails, the AppOwner stays with that database instead and imports
-   * it again once opened. After a `DatabaseHeldError`, its data may already be
-   * gone, and removing it again finishes the removal. When the app's last tab
-   * closes during the removal, the AppOwner can stay listed without its local
-   * data, which syncs again when it's opened, and removing it again finishes
-   * the removal. It fails with the refusal when the device database is refused.
-   * The app's disposal ends the call with `EvoluDisposedError`, and the removal
-   * still finishes.
+   * when another context holds the database's files, the AppOwner stays listed,
+   * its database may be partly or wholly deleted, and the tabs that had it open
+   * can be left with none open; removing it again deletes again. It deletes the
+   * Evolu 7 database that holds the AppOwner too, see
+   * {@link EvoluConfig.evolu7Name}, and last, so when only that deletion fails,
+   * the AppOwner stays with that database instead and imports it again once
+   * opened. When the app's last tab closes during the removal, the AppOwner can
+   * stay listed without its local data, which syncs again when it's opened, and
+   * removing it again finishes the removal. It fails with the refusal when the
+   * device database is refused. The app's disposal ends the call with
+   * {@link EvoluDisposedError}, and the removal still finishes.
    *
    * To start over with a new AppOwner, add it first, then remove the old one,
    * so a crash between the two leaves two AppOwners rather than none.
@@ -2431,7 +2456,9 @@ export interface EvoluApp<
  * such as one deriving them from a hardware wallet, calls {@link createEvolu}
  * instead. It fails with {@link UnknownError} when SQLite fails to read the
  * AppOwners or the device database is refused, as
- * {@link EvoluErrorDep.evoluError} reports too.
+ * {@link EvoluErrorDep.evoluError} reports too. It throws, before returning its
+ * Task, for a schema, indexes, transports, or {@link DeviceSecret} that Evolu
+ * rejects.
  *
  * It stays pending while another build of the app keeps it waiting, and when
  * the shared worker fails to load on the web, which
@@ -2440,10 +2467,50 @@ export interface EvoluApp<
  * The Run that creates the app must outlive it, as a module-scope Run does:
  * after that Run ends, such as after a panic, the app's methods throw.
  *
- * See docs/adr/evolu-creates-and-stores-app-owners.md.
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   AppName,
+ *   assertEqual,
+ *   assertNotNull,
+ *   createEvoluApp,
+ *   createQueryBuilder,
+ *   id,
+ *   NonEmptyTrimmedString100,
+ * } from "@evolu/common";
+ * import { createEvoluDeps, createRun } from "@evolu/web";
+ *
+ * const Schema = {
+ *   todo: { id: id("Todo"), title: NonEmptyTrimmedString100 },
+ * };
+ * const run = createRun(createEvoluDeps());
+ *
+ * await using app = await run.orThrow(
+ *   createEvoluApp(Schema, {
+ *     appName: AppName.orThrow("CreateEvoluApp"),
+ *     auth: { type: "InstantStart" },
+ *     createFirstAppOwner: true,
+ *   }),
+ * );
+ *
+ * // The open AppOwner, with its Evolu instance.
+ * const current = app.current.get();
+ * assertNotNull(current);
+ * const evolu = await current.evolu;
+ * evolu.insert("todo", {
+ *   title: NonEmptyTrimmedString100.orThrow("Buy milk"),
+ * });
+ *
+ * const titles = createQueryBuilder(Schema)((db) =>
+ *   db.selectFrom("todo").select("title"),
+ * );
+ * assertEqual(await evolu.loadQuery(titles), [{ title: "Buy milk" }]);
+ * ```
  *
  * @group Construction
  */
+// See docs/adr/evolu-creates-and-stores-app-owners.md.
 export const createEvoluApp = <
   S extends EvoluSchema,
   D extends EvoluSchema = EmptyEvoluSchema,
@@ -2980,8 +3047,12 @@ export const hasWrappedDeviceSecret =
  * Unlocks the app's {@link DeviceSecret} with a key from the
  * {@link DeviceSecretKeyProvider}, and on the first use creates them: a key, a
  * DeviceSecret, and its {@link WrappedDeviceSecret}, which Evolu stores in a
- * database of its own whose key is public. Pass the DeviceSecret to
- * {@link createEvoluApp} as {@link DeviceSecretAuth}.
+ * database of its own whose key is public. Before it stores a new wrapped
+ * secret, it gets the key, also one it just created, so the first use can
+ * prompt twice. Pass the DeviceSecret to {@link createEvoluApp} as
+ * {@link DeviceSecretAuth}. On the web,
+ * {@link @evolu/web!createPasskeyAuth | createPasskeyAuth} calls it with a
+ * passkey.
  *
  * On the first use, it runs under a lock per app, so a second tab waits and
  * then unlocks what the first one created. Once a wrapped secret is stored, it

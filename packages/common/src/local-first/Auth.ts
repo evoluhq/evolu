@@ -1,18 +1,18 @@
 /**
  * Local-first auth: how {@link createEvoluApp} unlocks an app's device database,
- * which keeps the AppOwners the app can open on this device, and Evolu's
+ * which keeps the {@link AppOwner}s the app can open on this device, and Evolu's
  * AppOwner table there.
  *
  * Only Evolu writes the AppOwner table; apps read and change it through
- * `EvoluApp`. The table is local-only: its rows never sync, keep no history,
- * and a delete removes the row. A row's `id` is the OwnerId its `secret`
- * derives, so storing the same secret again updates the same row. Its `ownerId`
- * system column is the device owner.
- *
- * See docs/adr/evolu-creates-and-stores-app-owners.md.
+ * {@link EvoluApp}. The table is local-only: its rows never sync, keep no
+ * history, and a delete removes the row. A row's `id` is the {@link OwnerId} its
+ * `secret` derives, so storing the same secret again updates the same row. Its
+ * `ownerId` system column is the device owner.
  *
  * @module
  */
+
+// See docs/adr/evolu-creates-and-stores-app-owners.md.
 
 import { concatBytes } from "../Bytes.ts";
 import {
@@ -45,11 +45,12 @@ import {
 import type {
   createEvoluApp,
   DevicePersistence,
+  EvoluApp,
   EvoluConfig,
   forgetWrappedDeviceSecret,
   unlockWrappedDeviceSecret,
 } from "./Evolu.ts";
-import { OwnerId, OwnerSecret } from "./Owner.ts";
+import { OwnerId, OwnerSecret, type AppOwner } from "./Owner.ts";
 import type { EvoluSchema } from "./Schema.ts";
 
 /**
@@ -64,7 +65,7 @@ export type EvoluAppAuth = InstantStartAuth | DeviceSecretAuth;
 /**
  * {@link EvoluAppAuth} without a prompt: the device database's key is public, so
  * anything that can read the app's storage can read the AppOwner secrets kept
- * there. The app database stays encrypted with its AppOwner.
+ * there, and with them the AppOwners' databases and their data on relays.
  *
  * @group Auth
  */
@@ -72,7 +73,13 @@ export interface InstantStartAuth extends Typed<"InstantStart"> {}
 
 /**
  * {@link EvoluAppAuth} with a {@link DeviceSecret} the app keeps where only the
- * user or the platform can unlock it, such as Electron's `safeStorage`.
+ * user or the platform can unlock it.
+ * {@link @evolu/web!createPasskeyAuth | createPasskeyAuth} unlocks one with a
+ * passkey on the web, and
+ * {@link @evolu/react-native!loadDeviceSecret | loadDeviceSecret} loads one on
+ * React Native. Elsewhere, the app keeps it itself, such as in Electron's
+ * `safeStorage`. See [Local
+ * auth](https://www.evolu.dev/docs/local-auth#choose-a-mode).
  *
  * @group Auth
  */
@@ -91,15 +98,15 @@ export interface DeviceSecretError extends TypeError<"DeviceSecret"> {}
 /**
  * The secret of an app's device database, which keeps the AppOwners the app can
  * open on this device. Keep it where only the user or the platform can unlock
- * it, as `loadDeviceSecret` of `@evolu/react-native` does, or in Electron's
- * `safeStorage`. It isn't an {@link OwnerSecret}: {@link createEvoluApp} derives
- * the device database's owner from it on paths no OwnerSecret reaches, so no
- * AppOwner's ID or keys name or open the device database. Create it with
- * {@link createDeviceSecret} and never use its bytes as an OwnerSecret: an
- * AppOwner's mnemonic is its secret, so whoever holds it would derive the
- * device database's key. 32 zero bytes are instant start's public secret, so
- * the Type rejects them, also in {@link createEvoluApp}, which checks the secret
- * it gets with the Type.
+ * it, as {@link @evolu/react-native!loadDeviceSecret | loadDeviceSecret} does,
+ * or in Electron's `safeStorage`. It isn't an {@link OwnerSecret}:
+ * {@link createEvoluApp} derives the device database's owner from it on paths no
+ * OwnerSecret reaches, so no AppOwner's ID or keys name or open the device
+ * database. Create it with {@link createDeviceSecret} and never use its bytes as
+ * an OwnerSecret: an AppOwner's mnemonic is its secret, so whoever holds it
+ * would derive the device database's key. 32 zero bytes are instant start's
+ * public secret, so the Type rejects them, also in {@link createEvoluApp}, which
+ * checks the secret it gets with the Type.
  *
  * @group Device
  */
@@ -163,12 +170,13 @@ export type DeviceSecretKeyError =
 
 /**
  * A source of the key that wraps an app's {@link DeviceSecret}, such as a
- * passkey's PRF output, which `@evolu/web` provides. Creating or getting a key
- * may prompt the user, which some browsers allow only in a user gesture. Its
- * Tasks must end when their Run aborts them, such as by passing its signal to
- * the prompt, because a setup holds the app's lock while it creates or gets a
- * key, so a Task that keeps waiting holds up every tab's unlock. See
- * {@link unlockWrappedDeviceSecret}.
+ * passkey's PRF output, which
+ * {@link @evolu/web!createPasskeyKeyProvider | createPasskeyKeyProvider}
+ * provides. Creating or getting a key may prompt the user, which some browsers
+ * allow only in a user gesture. Its Tasks must end when their Run aborts them,
+ * such as by passing its signal to the prompt, because a setup holds the app's
+ * lock while it creates or gets a key, so a Task that keeps waiting holds up
+ * every tab's unlock. See {@link unlockWrappedDeviceSecret}.
  *
  * @group Auth
  */

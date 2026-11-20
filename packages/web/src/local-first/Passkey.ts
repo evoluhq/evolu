@@ -4,18 +4,12 @@
  * {@link createPasskeyKeyProvider} is the {@link DeviceSecretKeyProvider} it
  * uses.
  *
- * Passkey providers and browsers support the WebAuthn PRF extension
- * differently: some give no PRF output when creating a passkey but do when
- * getting its key, some refuse every request for it, some give none at all, and
- * Safari with some security keys gives another output or none. [Passkeys &
- * WebAuthn PRF](https://www.corbado.com/blog/passkeys-prf-webauthn) lists them,
- * and the tests cover each case it describes.
- *
  * @module
  */
 
 // A passkey's PRF output wraps the DeviceSecret on the web; see
-// docs/adr/evolu-creates-and-stores-app-owners.md.
+// docs/adr/evolu-creates-and-stores-app-owners.md. The tests cover each PRF
+// case that https://www.corbado.com/blog/passkeys-prf-webauthn describes.
 
 import {
   assert,
@@ -42,6 +36,7 @@ import {
   type DeviceSecretKeyRefusedError,
   type DeviceSecretUnwrapError,
   type ReadonlyStore,
+  type Run,
   type Task,
   type Typed,
   type UnknownError,
@@ -49,9 +44,13 @@ import {
 import type {
   EvoluPlatformDeps,
   StoredWorkerDep,
+  WrappedDeviceSecret,
 } from "@evolu/common/local-first";
 
-/** Unlocks the app's DeviceSecret with a passkey; see {@link createPasskeyAuth}. */
+/**
+ * Unlocks the app's {@link DeviceSecret} with a passkey; see
+ * {@link createPasskeyAuth}.
+ */
 export interface PasskeyAuth extends AsyncDisposable {
   /**
    * What the app shows: not persisted, locked, unlocking, failed, starting
@@ -64,8 +63,10 @@ export interface PasskeyAuth extends AsyncDisposable {
   /**
    * Unlocks the stored DeviceSecret with its passkey, or on the first use
    * creates a passkey and a DeviceSecret, and resolves once the state says how
-   * it went. Call it in a user gesture, while the state is `Locked` or
-   * `Failed`.
+   * it went. The first use prompts twice, to create the passkey and to unlock
+   * with it; when Safari refuses the second prompt, trying again uses the new
+   * passkey. Call it in a user gesture, while the state is `Locked` or
+   * `Failed`; otherwise it throws.
    */
   readonly unlock: () => Promise<void>;
 
@@ -73,10 +74,12 @@ export interface PasskeyAuth extends AsyncDisposable {
    * Forgets the stored DeviceSecret or a setup's pending key, so the next
    * {@link PasskeyAuth.unlock} creates another passkey and DeviceSecret, and
    * resolves once the state says how it went. Call it while the state is
-   * `Failed` with `canStartOver`. A pending key wrapped no secret, so it's
-   * forgotten without asking; a stored secret is forgotten only once `confirm`,
-   * such as the app's dialog, returns true, because its device database's
-   * accounts then come back only from their backups. A `confirm` that throws or
+   * `Failed` with `canStartOver`; otherwise it throws. A pending key wrapped no
+   * secret, so it's forgotten without asking; a stored secret is forgotten only
+   * once `confirm`, such as the app's dialog, returns true, because its device
+   * database's accounts then come back only from their backups. A restored
+   * account reopens its data on this device, unsynced changes included, as
+   * {@link forgetWrappedDeviceSecret} describes. A `confirm` that throws or
    * rejects, as a dialog library can when the user dismisses it, declines: the
    * Run's `reportDefect` reports its error, and starting over stays offered.
    */
@@ -102,9 +105,9 @@ export type PasskeyAuthState =
 export interface NotPersistedPasskeyAuthState extends Typed<"NotPersisted"> {}
 
 /**
- * Nothing is unlocked yet. `hasDeviceSecret` tells whether a wrapped
- * DeviceSecret is stored, such as to label a button "Unlock" or "Create
- * account".
+ * Nothing is unlocked yet. `hasDeviceSecret` tells whether a
+ * {@link WrappedDeviceSecret} is stored, such as to label a button "Unlock" or
+ * "Create account".
  */
 export interface LockedPasskeyAuthState extends Typed<"Locked"> {
   readonly hasDeviceSecret: boolean;
@@ -118,8 +121,9 @@ export interface UnlockingPasskeyAuthState extends Typed<"Unlocking"> {
 /**
  * The last unlock failed. The user can try again, and when `canStartOver` is
  * true, the app can offer to start over. `startedOver` tells whether the user
- * started over before: an unlock that still fails then points to the passkey
- * provider, such as one that refuses PRF, so the app can suggest another one.
+ * started over before: if starting over is offered again, the passkey provider
+ * likely can't unlock, such as one that refuses PRF, so the app can suggest
+ * another one.
  */
 export interface FailedPasskeyAuthState extends Typed<"Failed"> {
   readonly hasDeviceSecret: boolean;
@@ -134,8 +138,8 @@ export interface StartingOverPasskeyAuthState extends Typed<"StartingOver"> {
 }
 
 /**
- * The DeviceSecret is unlocked, so pass it to {@link createEvoluApp} as `{ type:
- * "DeviceSecret", secret }`. It's final.
+ * The {@link DeviceSecret} is unlocked, so pass it to {@link createEvoluApp} as
+ * `{ type: "DeviceSecret", secret }`. It's final.
  */
 export interface UnlockedPasskeyAuthState extends Typed<"Unlocked"> {
   readonly secret: DeviceSecret;
@@ -152,7 +156,9 @@ export type PasskeyAuthError = DeviceSecretKeyError | DeviceSecretUnwrapError;
  * label its first screen, such as "Unlock" or "Create account". Where the
  * browser keeps nothing, as in Safari's Private Browsing or a Firefox private
  * window, its state is `NotPersisted`, and the app starts without a passkey,
- * with `InstantStart`, in memory.
+ * with `InstantStart`, in memory. A passkey outlives the storage it unlocks:
+ * where the browser deletes the app's storage when the session ends, as
+ * Chrome's incognito does, the next start creates another passkey.
  *
  * Call {@link PasskeyAuth.unlock} in a user gesture, such as a button click,
  * because some browsers allow a passkey prompt only in one. The app shows its
@@ -164,10 +170,12 @@ export type PasskeyAuthError = DeviceSecretKeyError | DeviceSecretUnwrapError;
  * Its state doesn't follow other tabs. A start over forgets only a pending key
  * without asking, under the lock setups take, so another tab's setup can't
  * store a secret in between. Disposing it aborts the unlock or start over in
- * progress.
+ * progress. The {@link Run} that creates it must outlive it, as a module-scope
+ * Run does: once that Run ends, such as after a panic, its methods throw.
  *
  * It uses {@link unlockWrappedDeviceSecret}, {@link hasWrappedDeviceSecret}, and
- * {@link forgetWrappedDeviceSecret} with {@link createPasskeyKeyProvider}.
+ * {@link forgetWrappedDeviceSecret} with {@link createPasskeyKeyProvider}, which
+ * describes its prompts and errors.
  */
 export const createPasskeyAuth =
   ({
@@ -407,21 +415,25 @@ export interface CreatePasskeyKeyProviderOptions {
  * evaluates none, because a provider can support PRF at registration and not
  * later, so `unlockWrappedDeviceSecret` gets a new key with a second prompt,
  * which proves that unlocking works before it stores a secret. PRF support
- * varies with the browser and the passkey provider, and some report no PRF at
- * registration but provide it when getting the key, as Samsung Pass does, so
- * creating a key ignores what registration reports, and getting the key of a
- * passkey without PRF fails with `DeviceSecretKeyUnavailable`. A refusal,
- * `DeviceSecretKeyRefused`, can mean the user dismissed the prompt, the passkey
- * is gone, the provider refuses PRF, as Microsoft Password Manager does, or a
- * password manager's browser extension took the request over while locked and
- * the user closed its prompt. Let the user try again, and offer to start over
- * with {@link forgetWrappedDeviceSecret}, as `unlockWrappedDeviceSecret`
- * describes.
+ * varies with the browser and the passkey provider, as [Passkeys & WebAuthn
+ * PRF](https://www.corbado.com/blog/passkeys-prf-webauthn) lists, and some
+ * report no PRF at registration but provide it when getting the key, as Samsung
+ * Pass does, so creating a key ignores what registration reports, and getting
+ * the key of a passkey without PRF fails with `DeviceSecretKeyUnavailable`. A
+ * refusal, `DeviceSecretKeyRefused`, can mean the user dismissed the prompt,
+ * the passkey is gone, the provider refuses PRF, as Microsoft Password Manager
+ * does, or a password manager's browser extension took the request over while
+ * locked and the user closed its prompt. Let the user try again, and offer to
+ * start over with {@link forgetWrappedDeviceSecret}, as
+ * `unlockWrappedDeviceSecret` describes.
  *
  * Safari may require each WebAuthn request to start in a user gesture, such as
  * a button click. Safari returns a different PRF output from other browsers for
  * the same USB or NFC security key; see [WebKit bug
- * 311099](https://bugs.webkit.org/show_bug.cgi?id=311099).
+ * 311099](https://bugs.webkit.org/show_bug.cgi?id=311099). For a security key
+ * with built-in user verification, such as the YubiKey Bio, it returns none, so
+ * getting the key fails with `DeviceSecretKeyUnavailable`; see [WebKit bug
+ * 314934](https://bugs.webkit.org/show_bug.cgi?id=314934).
  */
 export const createPasskeyKeyProvider = ({
   rpName,

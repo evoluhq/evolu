@@ -92,7 +92,7 @@ To replace an account with a new one, add the new one first, then remove the old
 
 ## Backups
 
-An account lives on the device, so losing the device's storage loses it, and so does losing the passkey or `DeviceSecret` of its device database. Browsers delete storage for [several reasons](/docs/faq#will-my-data-stay-on-the-device). Synced data then comes back only from a backup of the account's mnemonic, so ask the user to back it up once they've created data. Whoever has the mnemonic can read and change all of the account's data, so show it only to the user, such as in a recovery UI that shows `evolu.appOwner.mnemonic`.
+An account lives on the device, so losing the device's storage loses it, and so does losing the passkey or `DeviceSecret` of its device database. Browsers delete storage for [several reasons](/docs/faq#will-my-data-stay-on-the-device). Synced data then comes back only from a backup of the account's mnemonic, so ask the user to back it up once they've created data. After losing only the passkey or `DeviceSecret`, restoring the mnemonic on the same device also brings back the account's changes not yet synced. Whoever has the mnemonic can read and change all of the account's data, so show it only to the user, such as in a recovery UI that shows `evolu.appOwner.mnemonic`.
 
 ## Bring your own accounts
 
