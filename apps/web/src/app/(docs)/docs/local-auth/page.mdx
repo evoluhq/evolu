@@ -76,7 +76,7 @@ In React and Vue, `useAppOwners` follows the list and `useEvoluApp` returns the 
 
 ### Restore an account
 
-To restore an account, normalize what the user typed to NFKD with single spaces between its words, validate it with [`Mnemonic`](/docs/api-reference/common/Type/variables/Mnemonic), convert it with `mnemonicToOwnerSecret`, and pass the secret to `app.add`.
+To restore an account, validate what the user typed with [`MnemonicFromString`](/docs/api-reference/common/Type/variables/MnemonicFromString), which converts it to the one spelling [`Mnemonic`](/docs/api-reference/common/Type/variables/Mnemonic) accepts, convert it with `mnemonicToOwnerSecret`, and pass the secret to `app.add`.
 
 The restored account syncs its data back from the relays in `transports`, except the rows of local-only tables, whose names start with `_`, because they never sync.
 

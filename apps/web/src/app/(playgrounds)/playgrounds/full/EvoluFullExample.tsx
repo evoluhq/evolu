@@ -18,7 +18,7 @@ import {
   id,
   json,
   maxLength,
-  Mnemonic,
+  MnemonicFromString,
   mnemonicToOwnerSecret,
   NonEmptyTrimmedString,
   NonEmptyTrimmedString100,
@@ -1074,15 +1074,7 @@ export const addAppOwner = async (
 export const restoreAppOwner = async (app: App): Promise<void> => {
   const mnemonic = promptStringWithAlert(
     "Enter your mnemonic to restore your data:",
-    {
-      // Mnemonic accepts one spelling only, NFKD with single spaces, as
-      // its JSDoc says.
-      fromUnknown: (value) =>
-        Mnemonic.fromUnknown(
-          value.normalize("NFKD").trim().split(/\s+/u).join(" "),
-        ),
-      formatError: Mnemonic.formatError,
-    },
+    MnemonicFromString,
   );
   if (mnemonic.ok)
     await addAppOwner(app, mnemonicToOwnerSecret(mnemonic.value));

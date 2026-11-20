@@ -73,6 +73,24 @@ test("restores the account in another browser, and here after deleting it", asyn
   ).toBeVisible();
 });
 
+test("restores the account from a mnemonic a phone's prompt capitalized", async ({
+  browserEvents,
+  page,
+}) => {
+  await page.goto("/playgrounds/minimal");
+  const mnemonic = await readMnemonic(page);
+  browserEvents.acceptNextDialog(deleteConfirm);
+  await page.getByRole("button", { name: "Delete Account" }).click();
+  await expect(page.getByText("No account is open.")).toBeVisible();
+
+  browserEvents.acceptNextDialog(
+    restorePrompt,
+    mnemonic.charAt(0).toUpperCase() + mnemonic.slice(1),
+  );
+  await page.getByRole("button", { name: "Restore Account" }).click();
+  expect(await readMnemonic(page)).toBe(mnemonic);
+});
+
 test("creates a new, empty account after deleting the account", async ({
   browserEvents,
   page,

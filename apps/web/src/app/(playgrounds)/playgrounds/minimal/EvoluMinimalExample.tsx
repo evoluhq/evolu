@@ -9,7 +9,7 @@ import {
   createOwnerSecret,
   createQueryBuilder,
   id,
-  Mnemonic,
+  MnemonicFromString,
   mnemonicToOwnerSecret,
   NonEmptyTrimmedString100,
   nullOr,
@@ -259,12 +259,9 @@ const WithoutAppOwner: FC = () => {
 const promptMnemonic = (): OwnerSecret | null => {
   const value = window.prompt("Enter your mnemonic to restore your data:");
   if (value == null) return null;
-  // Mnemonic accepts one spelling only, as its JSDoc says.
-  const mnemonic = Mnemonic.fromUnknown(
-    value.normalize("NFKD").trim().split(/\s+/u).join(" "),
-  );
+  const mnemonic = MnemonicFromString.fromUnknown(value);
   if (!mnemonic.ok) {
-    alert(Mnemonic.formatError(mnemonic.error));
+    alert(MnemonicFromString.formatError(mnemonic.error));
     return null;
   }
   return mnemonicToOwnerSecret(mnemonic.value);

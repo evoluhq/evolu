@@ -190,9 +190,9 @@ Accounts:
   database then calls config.onDatabaseDeleted, or reloads the app if that isn't
   set. The app then creates the new owner itself.
 - Mnemonic accepts only lowercase ASCII words separated by single spaces, and
-  its error has no value. Normalize the input before Mnemonic.fromUnknown, for
-  example input.normalize("NFKD").trim().toLowerCase().split(/\s+/u).join(" ").
-  OwnerSecret accepts 16, 20, 24, 28 or 32 bytes.
+  its error has no value. Validate what a user typed with MnemonicFromString,
+  which converts it to that spelling. OwnerSecret accepts 16, 20, 24, 28 or 32
+  bytes.
 - The experimental localAuth, LocalAuth, createLocalAuth, SecureStorage,
   AuthResult and AuthList are gone, and Evolu 8 doesn't migrate what they
   stored.

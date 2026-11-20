@@ -10175,9 +10175,10 @@ export interface MnemonicError extends TypeError<"Mnemonic"> {}
  *
  * It accepts only lowercase ASCII words separated by single spaces, so each
  * mnemonic has one spelling and is also a {@link NonEmptyTrimmedString}. Other
- * spellings, such as words separated by no-break spaces or written with
- * fullwidth letters, are rejected; convert such input to NFKD and separate its
- * words with single spaces before validating it.
+ * spellings, such as capitalized words, words separated by no-break spaces, or
+ * words written with fullwidth letters, are rejected. Validate what a user
+ * typed or pasted with {@link MnemonicFromString}, which converts it to the
+ * canonical spelling.
  *
  * A mnemonic is a secret, so every rejected string fails with a
  * {@link MnemonicError} that omits it. A non-string fails with the {@link String}
@@ -10221,6 +10222,62 @@ export const Mnemonic = /*#__PURE__*/ createType<
   formatMnemonicError,
 );
 export type Mnemonic = typeof Mnemonic.Output;
+
+/**
+ * A {@link Mnemonic} from text a user typed or pasted.
+ *
+ * It converts the text to lowercase NFKD and separates its words with single
+ * spaces before validating it, so a mnemonic still restores when a phone's
+ * keyboard capitalized its first word, or when it was pasted with line breaks
+ * or other spaces between its words. Its encoding is the canonical spelling.
+ *
+ * Text that isn't a mnemonic fails with a {@link TransformOutputError} of a
+ * {@link MnemonicError}, which omits the text. As with {@link Mnemonic}, a
+ * non-string fails with the {@link String} error, which keeps the input, and
+ * Types built around it keep the input in their own errors.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   MnemonicFromString,
+ * } from "@evolu/common";
+ *
+ * const mnemonic =
+ *   "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+ *
+ * // As a phone's keyboard capitalized it, with a line break pasted in.
+ * const typed = `Abandon${mnemonic.slice("abandon".length).replace(" ", "\n")}`;
+ * assertOk(MnemonicFromString.fromUnknown(typed), mnemonic);
+ *
+ * const invalid = MnemonicFromString.fromUnknown("Abandon abandon");
+ * assertErr(invalid, {
+ *   type: "MnemonicFromString",
+ *   outputError: { type: "Mnemonic" },
+ * });
+ * assertEqual(
+ *   MnemonicFromString.formatError(invalid.error),
+ *   "The value is not a valid English BIP39 mnemonic.",
+ * );
+ * ```
+ *
+ * @group String
+ */
+export const MnemonicFromString = /*#__PURE__*/ transform(
+  "MnemonicFromString",
+  String,
+  Mnemonic,
+  {
+    // NFKD first, because some letters that aren't uppercase, such as the
+    // modifier letter capital A, decompose to an uppercase ASCII letter.
+    from: (value: string) =>
+      ok(value.normalize("NFKD").toLowerCase().trim().split(/\s+/u).join(" ")),
+    to: (value: Mnemonic) => value,
+  },
+);
 
 /**
  * Error returned by {@link redacted} for a value that is not a string.

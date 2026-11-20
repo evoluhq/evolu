@@ -12,7 +12,7 @@ import {
   err,
   evoluJsonArrayFrom,
   id,
-  Mnemonic,
+  MnemonicFromString,
   mnemonicToOwnerSecret,
   NonEmptyTrimmedString100,
   nullOr,
@@ -792,15 +792,7 @@ const addAppOwner = async (app: App, secret: OwnerSecret): Promise<void> => {
 const restoreAppOwner = async (app: App): Promise<void> => {
   const mnemonic = await promptStringWithAlert(
     "Enter your mnemonic to restore your data:",
-    {
-      // Mnemonic accepts one spelling only, NFKD with single spaces, as
-      // its JSDoc says.
-      fromUnknown: (value) =>
-        Mnemonic.fromUnknown(
-          value.normalize("NFKD").trim().split(/\s+/u).join(" "),
-        ),
-      formatError: Mnemonic.formatError,
-    },
+    MnemonicFromString,
   );
   if (mnemonic.ok)
     await addAppOwner(app, mnemonicToOwnerSecret(mnemonic.value));

@@ -188,6 +188,7 @@ import {
   minLength,
   minSize,
   Mnemonic,
+  MnemonicFromString,
   multipleOf,
   negative,
   negativeDecimalString,
@@ -698,6 +699,7 @@ describe("Type", () => {
       NegativeNumber,
       Never,
       Mnemonic,
+      MnemonicFromString,
       Name,
       NonEmptyTrimmedString,
       NonEmptyTrimmedString100,
@@ -913,6 +915,7 @@ describe("Type", () => {
       "MinLength2",
       "MinSize1",
       "Mnemonic",
+      "MnemonicFromString",
       "MultipleOf5",
       "Name",
       "Negative",
@@ -13282,6 +13285,65 @@ describe("BrandFactory", () => {
             Mnemonic.formatError({ type: "Mnemonic" }),
             "The value is not a valid English BIP39 mnemonic.",
           );
+        });
+      });
+
+      describe("MnemonicFromString", () => {
+        const mnemonic =
+          "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+        it("converts typed or pasted text to the canonical mnemonic", () => {
+          const noBreakSpace = globalThis.String.fromCharCode(0xa0);
+          const ideographicSpace = globalThis.String.fromCharCode(0x3000);
+          const fullwidthA = globalThis.String.fromCharCode(0xff41);
+          // Not uppercase, so only lowercasing after NFKD makes it "a".
+          const modifierCapitalA = globalThis.String.fromCharCode(0x1d2c);
+
+          for (const value of [
+            mnemonic,
+            `Abandon${mnemonic.slice("abandon".length)}`,
+            mnemonic.toUpperCase(),
+            ` ${mnemonic.replaceAll(" ", "\n")}\n`,
+            mnemonic.replaceAll(" ", noBreakSpace),
+            `${ideographicSpace}${mnemonic.replace(" ", "  ")}`,
+            mnemonic.replace("about", `${fullwidthA}bout`),
+            mnemonic.replace("about", `${modifierCapitalA}bout`),
+          ]) {
+            assertOk(MnemonicFromString.fromUnknown(value), mnemonic);
+            assertOk(MnemonicFromString.from.parent(value), mnemonic);
+          }
+          assertEqual(
+            MnemonicFromString.to(Mnemonic.orThrow(mnemonic)),
+            mnemonic,
+          );
+          const value = MnemonicFromString.orThrow(mnemonic);
+          assertType<typeof value, Mnemonic>();
+        });
+
+        it("rejects text that isn't a mnemonic without exposing it", () => {
+          for (const value of ["", "   ", "Abandon abandon"]) {
+            assertEqual(
+              MnemonicFromString.fromUnknown(value),
+              err({
+                type: "MnemonicFromString",
+                outputError: { type: "Mnemonic" },
+              }),
+            );
+          }
+          const result = MnemonicFromString.fromUnknown("Abandon abandon");
+          assertErr(result);
+          assertEqual(
+            MnemonicFromString.formatError(result.error),
+            "The value is not a valid English BIP39 mnemonic.",
+          );
+          assertEqual(
+            MnemonicFromString.fromUnknown(1),
+            err({ type: "TypeOf", expected: "String", value: 1 }),
+          );
+          assertType<
+            typeof MnemonicFromString.Error,
+            TransformOutputError<"MnemonicFromString", MnemonicError>
+          >();
         });
       });
 

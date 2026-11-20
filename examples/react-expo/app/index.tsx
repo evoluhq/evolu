@@ -11,7 +11,7 @@ import {
   createQueryBuilder,
   evoluJsonArrayFrom,
   id,
-  Mnemonic,
+  MnemonicFromString,
   mnemonicToOwnerSecret,
   NonEmptyTrimmedString100,
   nullOr,
@@ -977,13 +977,10 @@ const AddAppOwnerButtons: FC<{ children?: ReactNode }> = ({ children }) => {
             title="Restore"
             variant="primary"
             onPress={() => {
-              // Mnemonic accepts only words separated by single spaces, as its
-              // JSDoc says, but Return in this multiline field inserts a
-              // newline, and a double space is easy on a phone keyboard.
-              const parsed = parseStringWithAlert(
-                Mnemonic,
-                mnemonic.normalize("NFKD").trim().split(/\s+/u).join(" "),
-              );
+              // Return in this multiline field inserts a newline, and a
+              // mnemonic pasted from notes can be capitalized, which
+              // MnemonicFromString converts.
+              const parsed = parseStringWithAlert(MnemonicFromString, mnemonic);
               if (!parsed.ok) return;
               // Opens the AppOwner and syncs its data from the relay. The form
               // keeps the mnemonic until the AppOwner is added, so a failed add

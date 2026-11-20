@@ -390,7 +390,11 @@ test("creates, renames, opens, restores, and removes accounts", async ({
   // restoring it opens empty only because the removal deleted the database on
   // this device. The default name skips the one in use.
   await relay.stop();
-  browserEvents.acceptNextDialog(restorePrompt, firstMnemonic);
+  // Typed as a phone's prompt capitalizes it, which the restore lowercases.
+  browserEvents.acceptNextDialog(
+    restorePrompt,
+    firstMnemonic.charAt(0).toUpperCase() + firstMnemonic.slice(1),
+  );
   browserEvents.acceptNextPrompt(namePrompt, "Account 3");
   await page.getByRole("button", { name: "Restore Account" }).click();
   await expect(
