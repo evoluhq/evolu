@@ -15,15 +15,17 @@ test.skip(
 );
 
 /**
- * The passkey variant's URL on `localhost`: WebAuthn accepts no IP address as a
- * relying party ID, and `localhost`, like the server's 127.0.0.1, is a secure
- * context.
+ * A page's URL on `localhost`: WebAuthn accepts no IP address as a relying
+ * party ID, and `localhost`, like the server's 127.0.0.1, is a secure context.
  */
-const passkeyUrl = (baseURL: string | undefined): string => {
-  const url = new URL("/playgrounds/full/passkey", baseURL);
+const localhostUrl = (path: string, baseURL: string | undefined): string => {
+  const url = new URL(path, baseURL);
   url.hostname = "localhost";
   return url.href;
 };
+
+const passkeyUrl = (baseURL: string | undefined): string =>
+  localhostUrl("/playgrounds/full/passkey", baseURL);
 
 /** A platform authenticator with user verification, as a phone or laptop has. */
 const addVirtualAuthenticator = async (
@@ -75,6 +77,33 @@ test("creates a passkey with the first account and unlocks it on the next start"
     page.getByRole("heading", { name: "Behind the passkey" }),
   ).toBeVisible();
   await expect(accounts.getByRole("listitem")).toHaveCount(1);
+});
+
+test("shows the unlocked app again when the page comes back without a reload", async ({
+  baseURL,
+  browserEvents,
+  page,
+}) => {
+  await addVirtualAuthenticator(page);
+  // Links between the docs and the playgrounds navigate in the client, which
+  // keeps the playground's module, with its unlocked passkey, while its
+  // components unmount and mount again.
+  await page.goto(localhostUrl("/docs/local-auth", baseURL));
+  await page
+    .getByRole("link", { name: "passkey playground", exact: true })
+    .click();
+  browserEvents.acceptNextPrompt(namePrompt, "Account 1");
+  await page.getByRole("button", { name: "Create Account" }).click();
+  await expect(
+    page.getByRole("heading", { name: "No projects yet" }),
+  ).toBeVisible();
+
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Local auth" })).toBeVisible();
+  await page.goForward();
+  await expect(
+    page.getByRole("heading", { name: "No projects yet" }),
+  ).toBeVisible();
 });
 
 test("restores an account from its mnemonic on the first use", async ({
@@ -237,7 +266,7 @@ test("offers both choices again after the user dismisses the passkey prompt of R
   await page.goto(passkeyUrl(baseURL));
   await page.getByRole("button", { name: "Restore Account" }).click();
   await expect(page.getByRole("alert").filter({ hasText: /\S/u })).toHaveText(
-    "The passkey prompt was dismissed, or the passkey is gone. Try again.",
+    "The passkey prompt was dismissed or refused. Try again.",
   );
   // A dismissed prompt leaves no key, so there's nothing to start over.
   await expect(page.getByRole("button", { name: "Start Over" })).toHaveCount(0);

@@ -106,7 +106,6 @@ const {
   useEvolu,
   useEvoluApp,
   useOwnerSyncStatus,
-  useQuery,
   useQueries,
 } = createEvoluBinding<typeof Schema>();
 
@@ -400,6 +399,8 @@ const DeviceSecretRecovery: FC<{
   onRetry: () => void;
   onStartedOver: () => void;
 }> = ({ error, retried, onRetry, onStartedOver }) => {
+  // While the DeviceSecret is being forgotten, no tap may load it again.
+  const [startingOver, setStartingOver] = useState(false);
   const canStartOver =
     retried &&
     (error.type === "DeviceSecretUnreadable" ||
@@ -427,9 +428,14 @@ const DeviceSecretRecovery: FC<{
           text: "Start over",
           style: "destructive",
           onPress: () => {
+            setStartingOver(true);
             void run(forgetDeviceSecret(appName)).then((forgotten) => {
-              if (forgotten.ok) onStartedOver();
-              else Alert.alert("Starting over failed", "Try again.");
+              if (forgotten.ok) {
+                onStartedOver();
+                return;
+              }
+              setStartingOver(false);
+              Alert.alert("Starting over failed", "Try again.");
             });
           },
         },
@@ -440,21 +446,25 @@ const DeviceSecretRecovery: FC<{
   return (
     <View style={styles.card}>
       <Text style={styles.message}>{message}</Text>
-      <View style={styles.row}>
-        <Button
-          title="Try Again"
-          onPress={onRetry}
-          variant="primary"
-          style={styles.flex}
-        />
-        {canStartOver && (
+      {startingOver ? (
+        <Text style={styles.message}>Starting over…</Text>
+      ) : (
+        <View style={styles.row}>
           <Button
-            title="Start Over"
-            onPress={handleStartOverPress}
+            title="Try Again"
+            onPress={onRetry}
+            variant="primary"
             style={styles.flex}
           />
-        )}
-      </View>
+          {canStartOver && (
+            <Button
+              title="Start Over"
+              onPress={handleStartOverPress}
+              style={styles.flex}
+            />
+          )}
+        </View>
+      )}
     </View>
   );
 };
@@ -976,7 +986,8 @@ const AddAppOwnerButtons: FC<{ children?: ReactNode }> = ({ children }) => {
               );
               if (!parsed.ok) return;
               // Opens the AppOwner and syncs its data from the relay. The form
-              // keeps the mnemonic until the user confirms a name.
+              // keeps the mnemonic until the AppOwner is added, so a failed add
+              // can be tried again without typing it again.
               addAppOwner(app, mnemonicToOwnerSecret(parsed.value), () => {
                 setMnemonic(null);
               });
@@ -1018,11 +1029,11 @@ const AddAppOwnerButtons: FC<{ children?: ReactNode }> = ({ children }) => {
 
 /**
  * Adds an AppOwner under the name the user confirms, which opens it once
- * stored, and then calls `onNamed`, or does nothing when the user cancels.
+ * stored, and then calls `onAdded`, or does nothing when the user cancels.
  * Adding it again is safe, and the name prefilled for an AppOwner already on
  * this device is its own, because the name the user confirms replaces it.
  */
-const addAppOwner = (app: App, secret: OwnerSecret, onNamed?: () => void) => {
+const addAppOwner = (app: App, secret: OwnerSecret, onAdded?: () => void) => {
   const appOwners = app.appOwners.get();
   const { id } = createAppOwner(secret);
   // "Account N" with the next number no AppOwner's name has: a default the
@@ -1039,9 +1050,9 @@ const addAppOwner = (app: App, secret: OwnerSecret, onNamed?: () => void) => {
     appOwners.find((appOwner) => appOwner.id === id)?.name ??
       `Account ${number}`,
     (name) => {
-      onNamed?.();
       void app.add(secret, name).then((added) => {
-        if (!added.ok && added.error.type === "UnknownError")
+        if (added.ok) onAdded?.();
+        else if (added.error.type === "UnknownError")
           Alert.alert("Adding the account failed", "Try again.");
       });
     },

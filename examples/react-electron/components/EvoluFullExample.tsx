@@ -162,7 +162,7 @@ export const EvoluFullExample: FC = () => {
           fallback={
             <Card>
               <p className="mb-4 text-sm text-gray-600">
-                The app couldn&apos;t start. See the console for details.
+                The app couldn&apos;t start.
               </p>
               <Button
                 title="Reload"
@@ -189,13 +189,13 @@ export const EvoluFullExample: FC = () => {
 const evoluErrorToMessage = (error: EvoluError): string => {
   switch (error.type) {
     case "OtherBuildRunningError":
-      return "Another version of this app is open in another tab. Close it to continue.";
+      return "Another version of this app is running. Quit it to continue.";
     case "UnsupportedDbVersionError":
-      return "Your data needs a newer version of this app. Close all its tabs and open it again.";
+      return "Your data needs a newer version of this app. Update it, then open it again.";
     case "DatabaseHeldError":
-      return "Another tab or window holds your data. Close the app's other tabs, or restart the browser, then reload.";
+      return "Another window of this app holds your data. Quit every copy of the app, then open it again.";
     case "UnknownError":
-      return "Something went wrong. Close all tabs of this app and open it again. See the console for details.";
+      return "Something went wrong. Quit the app and open it again.";
   }
 };
 
@@ -237,9 +237,8 @@ const AppView: FC<{ app: Promise<App> }> = ({ app }) => (
     <ErrorBoundary
       fallback={
         <p role="alert" className="mb-8 text-sm text-red-800">
-          This account&apos;s data couldn&apos;t load. See the console for
-          details. You can still open another account, remove this one, or
-          delete its database.
+          This account&apos;s data couldn&apos;t load. You can still open
+          another account, remove this one, or delete its database.
         </p>
       }
     >
@@ -647,9 +646,9 @@ const Accounts: FC = () => {
       <p className="my-4 text-sm text-gray-600">
         You&apos;ll most likely never need this, but if this account&apos;s
         database on this device breaks, for example through faulty storage or a
-        bug in the browser, Delete Database deletes it but keeps the account, so
-        you don&apos;t need its mnemonic. What synced comes back from the
-        relays, and only changes that haven&apos;t synced yet are lost.
+        bug, Delete Database deletes it but keeps the account, so you don&apos;t
+        need its mnemonic. What synced comes back from the relays, and only
+        changes that haven&apos;t synced yet are lost.
       </p>
       <Button title="Delete Database" onClick={handleDeleteClick} />
     </Section>

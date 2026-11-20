@@ -526,17 +526,15 @@ const OwnerActions: FC = () => {
         />
 
         {showMnemonic && (
-          <div className="bg-gray-50 p-3">
-            <label className="mb-2 block text-xs font-medium text-gray-700">
-              Your Mnemonic (keep this safe!)
-            </label>
+          <label className="block bg-gray-50 p-3 text-xs font-medium text-gray-700">
+            Your Mnemonic (keep this safe!)
             <textarea
               value={evolu.appOwner.mnemonic}
               readOnly
               rows={3}
-              className="w-full border-b border-gray-300 bg-white px-2 py-1 font-mono text-xs focus:outline-none"
+              className="mt-2 w-full border-b border-gray-300 bg-white px-2 py-1 font-mono text-xs font-normal focus:outline-none"
             />
-          </div>
+          </label>
         )}
 
         <div className="flex flex-wrap gap-2">

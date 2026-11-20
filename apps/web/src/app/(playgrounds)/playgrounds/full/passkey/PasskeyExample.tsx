@@ -1,8 +1,13 @@
 "use client";
 
-import { AppName, createOwnerSecret, type EvoluAppAuth } from "@evolu/common";
-import { createPasskeyAuth, type PasskeyAuthError } from "@evolu/web";
-import { use, useState, useSyncExternalStore, type FC } from "react";
+import {
+  AppName,
+  createOwnerSecret,
+  createStore,
+  type EvoluAppAuth,
+} from "@evolu/common";
+import { createPasskeyAuth, type FailedPasskeyAuthState } from "@evolu/web";
+import { use, useSyncExternalStore, type FC } from "react";
 import {
   addAppOwner,
   AppView,
@@ -21,6 +26,11 @@ const appName = AppName.orThrow("full-passkey-example");
 const startApp = (auth: EvoluAppAuth) =>
   createApp({ appName, auth, createFirstAppOwner: false });
 
+// The app that Unlock started. It lives beside the passkey's auth, not in
+// Unlock's state, because the auth stays unlocked when Unlock mounts again,
+// such as after a client-side navigation back to this page.
+const startedApp = createStore<Promise<App> | null>(null);
+
 // Where the browser keeps nothing, as in Safari's Private Browsing or a Firefox
 // private window, the app starts at once, without a passkey, in memory.
 const startPromise = run
@@ -31,13 +41,11 @@ const startPromise = run
       userName: "Evolu Playground",
     }),
   )
-  .then((auth) => ({
-    auth,
-    inMemoryApp:
-      auth.state.get().type === "NotPersisted"
-        ? startApp({ type: "InstantStart" })
-        : null,
-  }));
+  .then((auth) => {
+    if (auth.state.get().type === "NotPersisted")
+      startedApp.set(startApp({ type: "InstantStart" }));
+    return auth;
+  });
 
 export const PasskeyExample: FC = () => (
   <ExampleShell
@@ -65,13 +73,17 @@ export const PasskeyExample: FC = () => (
  * keep this screen usable, so the user can try again.
  */
 const Unlock: FC = () => {
-  const { auth, inMemoryApp } = use(startPromise);
+  const auth = use(startPromise);
   const state = useSyncExternalStore(
     auth.state.subscribe,
     auth.state.get,
     auth.state.get,
   );
-  const [started, setStarted] = useState<Promise<App> | null>(inMemoryApp);
+  const started = useSyncExternalStore(
+    startedApp.subscribe,
+    startedApp.get,
+    startedApp.get,
+  );
 
   if (started)
     return (
@@ -91,12 +103,15 @@ const Unlock: FC = () => {
   const unlock = (nextAction: UnlockAction) => {
     void auth.unlock().then(() => {
       const unlocked = auth.state.get();
+      if (unlocked.type === "Failed" && unlocked.error.type === "UnknownError")
+        // oxlint-disable-next-line eslint/no-console -- The unlock screen points to the console for an unknown error.
+        console.error("Unlocking failed:", unlocked.error.error);
       if (unlocked.type !== "Unlocked") return;
       const app = startApp({ type: "DeviceSecret", secret: unlocked.secret });
       // The app renders once the new AppOwner is open, so the screen without
       // one doesn't flash. A cancelled restore leaves none open, and that
       // screen offers it again.
-      setStarted(
+      startedApp.set(
         nextAction === "Unlock"
           ? app
           : app.then(async (app) => {
@@ -131,11 +146,10 @@ const Unlock: FC = () => {
       </p>
       {state.type === "Failed" && (
         <p role="alert" className="mb-4 text-sm text-red-800">
-          {unlockErrorToMessage(state.error)}
+          {unlockErrorToMessage(state)}
           {state.startedOver &&
-            (state.canStartOver
-              ? " It still fails after starting over, so this passkey provider likely can't unlock. Start over to try another one."
-              : " It still fails after starting over, so this passkey provider likely can't unlock. Try another one.")}
+            state.canStartOver &&
+            " It still fails after starting over, so this passkey provider likely can't unlock. Start over to try another one."}
         </p>
       )}
       {state.type === "StartingOver" ? (
@@ -196,10 +210,17 @@ const Unlock: FC = () => {
  */
 type UnlockAction = "Unlock" | "Create" | "Restore";
 
-const unlockErrorToMessage = (error: PasskeyAuthError): string => {
+const unlockErrorToMessage = ({
+  error,
+  hasDeviceSecret,
+}: FailedPasskeyAuthState): string => {
   switch (error.type) {
     case "DeviceSecretKeyRefused":
-      return "The passkey prompt was dismissed, or the passkey is gone. Try again.";
+      // Without a stored secret, a refusal loses nothing: the passkey may not
+      // exist yet, or Safari refused the prompt that followed its creation.
+      return hasDeviceSecret
+        ? "The passkey prompt was dismissed, or the passkey is gone. Try again."
+        : "The passkey prompt was dismissed or refused. Try again.";
     case "DeviceSecretKeyUnavailable":
       return "This passkey provider doesn't support the WebAuthn PRF extension. Try another one.";
     case "DeviceSecretUnwrapError":

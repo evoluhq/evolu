@@ -1,5 +1,26 @@
-# Vue 3 + TypeScript + Vite
+# Vue Vite PWA
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Evolu in a Vue PWA built with Vite, with `@evolu/vue` and `@evolu/web`. The app
+is the instant start variant of the full playground: it starts without a
+prompt, and the key of the device database, which keeps the accounts, is
+public. An app with sensitive data unlocks it with a passkey instead, as
+[react-vite-pwa](../react-vite-pwa) shows; that logic runs before
+`createEvoluApp` and is the same in Vue. See the
+[examples' checklist](../README.md).
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+## Quick start
+
+```bash
+# From the repository root...
+pnpm install
+pnpm --filter "@example/vue-vite-pwa^..." build
+
+# Start a local relay on ws://localhost:4000, which the example syncs with in
+# development
+pnpm relay
+
+# In another terminal, start Vite
+pnpm --filter @example/vue-vite-pwa dev
+```
+
+A production build syncs with Evolu's free relay, which is for testing.
