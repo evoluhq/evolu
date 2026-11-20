@@ -6,33 +6,45 @@ export const metadata = {
 
 # Comparison
 
-This page gives an overview of local-first, offline-first, and sync tools and how they work.
+This page gives an overview of local-first, offline-first, and sync tools and rates them by what local-first software needs.
 
 In 2019, Ink & Switch published [Local-first software](https://www.inkandswitch.com/essay/local-first/), an essay about software in which the data on the user's devices is the primary copy. Servers still exist, but they hold secondary copies, and the software keeps working when they go away.
 
-Many people take local-first to mean offline-first: an app that keeps working without a network and syncs later. Working offline is one of the essay's seven ideals, not its definition. An app whose server decides what the data is, by ordering writes or making devices undo them, is offline-first, however well it works offline.
+Many people take local-first to mean offline-first: an app that keeps working without a network and syncs later. Working offline is one of the essay's seven ideals, not its definition. An app whose server decides what the data is, by ordering writes or making devices undo them, is at most offline-first, however well it works offline.
 
-Two things follow from the essay, and local-first software can't do without either:
+To deliver the ownership and privacy the essay describes, local-first software can't do without two things:
 
-- **No dependence on one server.** When servers hold only copies, any of them can be replaced. In his [2024 Local-First Conf keynote](https://www.youtube.com/watch?v=NMq0vncHJvU&t=1073), Martin Kleppmann, one of the essay's authors, described the local-first endgame as generic syncing services that speak an open protocol, so users can switch between providers. His [2026 QCon keynote](https://martin.kleppmann.com/2026/03/17/qcon-keynote-geopolitical-risk.html) names "easy provider switching" as what local-first aims for. Evolu Relay works this way for Evolu apps.
-- **The server knows nothing about the data.** A provider that can read the data can watch its users, hand the data over, or use it against them, so the data isn't really theirs and they aren't safe. Local-first software therefore encrypts data end to end, always. Encryption that can be left off leaves data readable: Telegram encrypts end to end only secret chats, which users start one by one, so its default chats and all its groups are readable by Telegram. Signal encrypts every message, with nothing to turn on. Some metadata stays visible, because no usable system works without it: even Signal's servers see IP addresses and network activity. [What relays see](/docs/privacy#what-relays-see) lists what Evolu's relays see.
+- **No dependence on one server.** When servers hold only secondary copies, any of them can be replaced. In his [2024 Local-First Conf keynote](https://www.youtube.com/watch?v=NMq0vncHJvU&t=1073), Martin Kleppmann, one of the essay's authors, described the local-first endgame as generic syncing services that work with any app through an open standard protocol, so users can switch between providers. His [2026 QCon keynote](https://martin.kleppmann.com/2026/03/17/qcon-keynote-geopolitical-risk.html) says local-first software aims to enable "easy provider switching". Evolu Relay is such a generic syncing service for Evolu apps, speaking Evolu's open protocol.
+- **The server can't read the data.** A provider that can read the data can watch its users, hand the data over, or use it against them, so the data isn't really theirs and they aren't safe. Local-first software therefore encrypts data end to end, always. Encryption that can be left off leaves data readable: For messages, Telegram encrypts end to end only secret chats, which users start one by one, so its default chats and all its group chats are readable by Telegram. Signal encrypts every message, with nothing to turn on. Any server that relays data over the internet still sees some metadata: even Signal's servers see connecting IP addresses and network activity. [What relays see](/docs/privacy#what-relays-see) lists what Evolu's relays see.
 
 Unfortunately, marketing also uses "local-first" for products that aren't local-first. Calling them "local-first-ish" doesn't help either; that is on the edge of disinformation.
 
 ## Criteria
 
-1. **Works offline.** Reads and writes work without a network, and the device keeps them across restarts.
+1. **Works offline.** Reads and writes work without a network, and the device keeps the data across restarts.
 2. **The device's copy is primary.** Each device merges changes itself. No server decides which write wins or makes a device undo a write.
 3. **Full history.** Every change is kept, including changes a newer one overwrote, so no write is lost and a device merges safely however long it was offline.
-4. **No single server.** The app can sync through any server, its own included, and switch servers without losing data.
+4. **No single server.** The app can sync peer to peer or through any server, including a self-hosted one. When it uses servers, it can switch between them without losing data.
 5. **End-to-end encryption, always on.** Servers store data they can't read, and no setting turns the encryption off.
-6. **Post-quantum cryptography.** Neither the encryption nor the signatures that grant access or vouch for changes rely on cryptography a quantum computer can break. Encrypted data can be recorded now and decrypted once quantum computers exist, and a broken signature key could backdate a grant or a write that other devices accept as a late change.
+6. **Post-quantum cryptography.** Neither the encryption, key exchange included, nor the signatures that grant access or vouch for changes rely on cryptography a large quantum computer could break. Encrypted data recorded now could be decrypted once such a computer exists, and an attacker who breaks a signing key could forge a backdated grant or write that other devices accept as a late change.
 7. **Keys, not accounts.** The user's identity is a key on the device. A sync provider may bill through an account, but the account doesn't decide who the user is or who can access the data.
-8. **Open source.** The client and the server are open source, so the software can outlive its vendor.
+8. **Open source.** The client and any server it needs are open source, so the software can outlive its vendor.
 
-Local-first software meets all eight, and a feature that is optional or experimental counts as missing. A product that calls itself local-first but doesn't meet all eight is not local-first yet when it's open source, works offline, and no server decides or reads its data by design, though one may partly or by default, for example when end-to-end encryption is optional or unfinished. So is a product that meets all eight before it's finished: in alpha, experimental, or before version 1.0, which [semantic versioning](https://semver.org/#spec-item-4) defines as initial development. A product that calls itself local-first while it doesn't work offline, a server decides or reads its data by design, or it isn't open source is only marketed as local-first. Any other product that works offline is offline-first, and one that doesn't is a sync engine.
+A feature that is optional or experimental doesn't count as meeting a criterion. The tables below put each product in one of five groups:
 
-The tables below were checked on <ComparisonCheckedOn />. Each tool's row on the website opens to show the evidence for each mark and its source. ✓ means the tool meets the criterion, ◐ that it meets it only partly, for example optionally, which counts as missing, ✗ that it misses it, – that it has no notion of users, so no account decides who the user is, which counts as meeting the criterion, and ? that it's unclear. If something has changed since, [open an issue](https://github.com/evoluhq/evolu/issues).
+- **Local-first:** meets all eight criteria and isn't in alpha, experimental, or before version 1.0.
+- **Not local-first yet:** calls itself local-first, is fully open source, works offline by default, and meets the device-primary and end-to-end encryption criteria at least partly, for example with optional or unfinished encryption. Also a product that meets all eight while in alpha, experimental, or before version 1.0. [Semantic versioning](https://semver.org/#spec-item-4) calls version 0.y.z initial development and says its public API shouldn't be considered stable.
+- **Marketed as local-first:** calls itself local-first but doesn't work offline by default, lets a server decide which writes stand, has no end-to-end encryption, or isn't fully open source.
+- **Offline-first:** any other product that works offline by default.
+- **Sync engines:** any other product.
+
+The tables below were checked on <ComparisonCheckedOn />. Each tool's row on the website opens to show the evidence for each mark and its source. If something has changed since, [open an issue](https://github.com/evoluhq/evolu/issues).
+
+- ✓ The tool meets the criterion.
+- ◐ The tool meets the criterion only partly, for example optionally, which doesn't count as meeting it.
+- ✗ The tool misses the criterion.
+- – The tool has no notion of users, so no account decides who the user is. Only criterion 7 uses this mark, and it counts as meeting the criterion.
+- ? Primary sources don't say, which doesn't count as meeting the criterion.
 
 ## Local-first
 
@@ -40,44 +52,42 @@ The tables below were checked on <ComparisonCheckedOn />. Each tool's row on the
 
 ### Evolu
 
-Evolu stores data in SQLite on each device and syncs changes, encrypted end to end, through relays the app chooses, including relays it runs itself. Each device merges the changes it receives: for each column, the latest change wins, so devices with the same changes have the same data, as [Sync](/docs/sync) explains. Every synced change stays in the history, which apps can query, as [Time travel](/docs/time-travel) shows. A relay serves any Evolu app and stores changes it can't read. Data belongs to owners, each identified by a secret on the device, not by an account on a server.
+Evolu stores data in SQLite on each device and syncs changes, encrypted end to end, through relays the app chooses, including self-hosted ones. Each device merges the changes it receives: for each column, the latest change wins, so devices with the same changes have the same data, as [Sync](/docs/sync) explains. Every synced change stays in the history, which apps can query, as [Time travel](/docs/time-travel) shows. A relay serves any Evolu app and stores changes it can't read. Data belongs to owners, each identified by a secret on the device, not by an account on a server.
 
 Beyond local-first, Evolu offers:
 
 - **SQL.** Apps query SQLite with typed queries.
-- **Several relays at once**, self-hosted and cloud ones combined, as [Relay](/docs/relay) describes.
-- **A binary protocol** built for size and speed. It finds the changes each side is missing with range-based set reconciliation, so relays keep no state per client. See [Protocol](/docs/api-reference/common/local-first/Protocol) and [Scaling local-first software](/blog/scaling-local-first-software).
+- **Several relays at once.** Apps can combine self-hosted and cloud relays, as [Relay](/docs/relay) describes.
+- **A binary protocol.** Built for size and speed, it finds the changes each side is missing with range-based set reconciliation, so relays keep no sync state per client. See [Protocol](/docs/api-reference/common/local-first/Protocol) and [Scaling local-first software](/blog/scaling-local-first-software).
 - **Local auth.** A passkey, the iOS Keychain, or the Android Keystore protects the owners' secrets on the device, with no server involved. See [Local auth](/docs/local-auth).
 - **An encrypted database on the device.** See [Encryption on the device](/docs/privacy#encryption-on-the-device).
 
 ## Not local-first yet
 
-These products are open source and work offline, and no server decides or reads their data by design, though one may partly or by default, for example where end-to-end encryption is optional or unfinished. They don't meet all eight criteria yet, or they meet them but aren't finished.
-
 <ComparisonTable category="Not local-first yet" />
 
 ## Marketed as local-first
 
-These products call themselves local-first, but they don't work offline, a server decides or reads their data by design, or they aren't open source. Evolu doesn't consider them local-first: the term promises users data that is theirs and safe, and these products don't deliver it and can't without a rewrite or, for closed-source products, a new license. Calling them local-first is marketing, even when the product itself is a good offline-first tool.
+We don't consider these products local-first: the term promises users data that is theirs and safe, and they don't deliver it. Calling them local-first is marketing, even when the product itself is a good offline-first tool.
 
 <ComparisonTable category="Marketed as local-first" />
 
 ## Offline-first
 
-These products work offline and don't call themselves local-first. Offline-first is a fine choice, and we have nothing against it. A server that orders writes, enforces constraints, and checks permissions, as many of them have, makes many apps simpler, and their users can still work offline. It's a trade-off: offline-first isn't local-first, which strengthens users' sovereignty and gives them real ownership of their data.
+Offline-first is a fine choice, and we have nothing against it. A server that orders writes, enforces constraints, and checks permissions makes many apps simpler, and their users can still work offline. It's a trade-off: those apps don't give users the sovereignty and real ownership of their data that local-first does.
 
 <ComparisonTable category="Offline-first" />
 
 ## Sync engines
 
-Every local-first tool is a sync engine, but not every sync engine is local-first, or even offline-first. Many only mirror data from a server and can't write without a connection.
+Every local-first tool is a sync engine, but not every sync engine is local-first, or even offline-first. Some only mirror data from a server and can't write without a connection; others need persistence turned on or keep offline writes only in memory.
 
-The [localfirst.fm landscape](https://www.localfirst.fm/landscape) takes local-first so broadly that sync engines fit in it, even ones without offline writes. In [its data](https://github.com/localfirstfm/local-first-landscape), which the technology creators maintain themselves, 10 of the 22 entries state that their authority is centralized.
+The [localfirst.fm landscape](https://www.localfirst.fm/landscape) takes local-first so broadly that sync engines fit in it, even ones without offline writes. In November 2026, 10 of the 22 entries in [its data](https://github.com/localfirstfm/local-first-landscape), which the technology creators maintain themselves, stated that their authority is centralized.
 
 <ComparisonTable category="Sync engine" />
 
 ## Discontinued
 
-For interest, these notable tools were ended, archived, or left by their authors. The marks describe their last release. Ended is when the authors announced the end, moved the project to maintenance mode, archived it, or shut down its service, or, for an abandoned project, its last release.
+These notable tools, listed for historical interest, were discontinued, archived, or abandoned by their authors. The marks describe each tool's last release. The Ended date is when the authors announced its end, moved the project to maintenance mode, archived it, or shut down its service. For an abandoned project, it's the date of its last release.
 
 <DiscontinuedTable />
