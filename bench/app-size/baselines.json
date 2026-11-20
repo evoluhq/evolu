@@ -1,9 +1,9 @@
 {
   "cli-android": {
-    "image": "ubuntu24 20261026.354.1",
-    "apk": 33001267,
+    "image": "ubuntu26 20261116.202.1",
+    "apk": 33146127,
     "libs": {
-      "libappmodules.so": 1332288,
+      "libappmodules.so": 1333616,
       "libc++_shared.so": 1292904,
       "libfbjni.so": 177000,
       "libhermestooling.so": 140792,
@@ -14,38 +14,38 @@
       "libnative-imagetranscoder.so": 585376,
       "libreactnative.so": 7048592
     },
-    "dex": 2178604,
-    "jsBundle": 2694004,
-    "assets": 2035,
+    "dex": 2183232,
+    "jsBundle": 2822480,
+    "assets": 2042,
     "resources": 683179
   },
   "cli-ios": {
-    "image": "macos26 20261026.0455.2",
-    "app": 24358311,
-    "executable": 1231232,
+    "image": "macos26 20261102.0473.1",
+    "app": 24529988,
+    "executable": 1248752,
     "executableByLibrary": {
       "app": 14715,
-      "libEvoluReactNative.a": 1119405,
+      "libEvoluReactNative.a": 1122158,
       "libPods-EvoluRN.a": 255,
       "libReactAppDependencyProvider.a": 963,
-      "libReactCodegen.a": 5564,
+      "libReactCodegen.a": 6188,
       "libswiftCompatibility56.a": 4131,
-      "linkerSynthesized": 12470,
-      "stubs": 3332
+      "linkerSynthesized": 13082,
+      "stubs": 3520
     },
     "frameworks": {
       "React.framework": 11874048,
       "ReactNativeDependencies.framework": 1277696,
       "hermesvm.framework": 6379536
     },
-    "jsBundle": 3399595,
-    "evolu": 1121834
+    "jsBundle": 3553748,
+    "evolu": 1125211
   },
   "expo-android": {
-    "image": "ubuntu24 20261026.354.1",
-    "apk": 56229395,
+    "image": "ubuntu26 20261116.202.1",
+    "apk": 59704534,
     "libs": {
-      "libappmodules.so": 2156088,
+      "libappmodules.so": 2854368,
       "libc++_shared.so": 1292904,
       "libexpo-modules-core.so": 1589544,
       "libexpo-modules-jsi.so": 91072,
@@ -62,6 +62,7 @@
       "libnative-imagetranscoder.so": 585376,
       "libreact_codegen_rngesturehandler_codegen.so": 362288,
       "libreact_codegen_rnscreens.so": 1230280,
+      "libreact_codegen_rnsvg.so": 771800,
       "libreact_codegen_safeareacontext.so": 154256,
       "libreactnative.so": 7048592,
       "libreanimated.so": 1666760,
@@ -70,20 +71,20 @@
       "libworklets.so": 1293000,
       "libzstd-kmp.so": 731872
     },
-    "dex": 5706356,
-    "jsBundle": 3616980,
-    "assets": 3271,
+    "dex": 5940148,
+    "jsBundle": 3897072,
+    "assets": 3299,
     "resources": 2253433
   },
   "expo-ios": {
-    "image": "macos26 20261021.0445.8",
-    "app": 37088212,
-    "executable": 5445456,
+    "image": "macos26 20261102.0473.1",
+    "app": 38274863,
+    "executable": 6278000,
     "executableByLibrary": {
       "app": 17701,
       "libEXConstants.a": 11973,
-      "libEvoluReactNative.a": 1118908,
-      "libExpo.a": 135103,
+      "libEvoluReactNative.a": 1121645,
+      "libExpo.a": 135084,
       "libExpoAsset.a": 11025,
       "libExpoDomWebView.a": 71799,
       "libExpoGlassEffect.a": 34096,
@@ -95,17 +96,18 @@
       "libExpoSplashScreen.a": 14653,
       "libExpoStatusBar.a": 8420,
       "libPods-expoapp.a": 255,
-      "libRNCMaskedView.a": 1152,
-      "libRNGestureHandler.a": 231775,
-      "libRNReanimated.a": 1038678,
-      "libRNScreens.a": 721156,
-      "libRNWorklets.a": 413681,
+      "libRNCMaskedView.a": 1120,
+      "libRNGestureHandler.a": 231771,
+      "libRNReanimated.a": 1038629,
+      "libRNSVG.a": 584953,
+      "libRNScreens.a": 713066,
+      "libRNWorklets.a": 413569,
       "libReactAppDependencyProvider.a": 924,
-      "libReactCodegen.a": 260848,
+      "libReactCodegen.a": 345819,
       "libclang_rt.iossim.a": 1725,
-      "libreact-native-safe-area-context.a": 44008,
-      "linkerSynthesized": 290405,
-      "stubs": 21540
+      "libreact-native-safe-area-context.a": 43862,
+      "linkerSynthesized": 358729,
+      "stubs": 24032
     },
     "frameworks": {
       "ExpoFileSystem.framework": 1348320,
@@ -117,7 +119,7 @@
       "ReactNativeDependencies.framework": 1277696,
       "hermesvm.framework": 6379536
     },
-    "jsBundle": 4476966,
-    "evolu": 1121322
+    "jsBundle": 4821965,
+    "evolu": 1124683
   }
 }
