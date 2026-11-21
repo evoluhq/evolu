@@ -4,6 +4,12 @@
  * @module
  */
 
+// Designs that require a relay upgrade are normal rollouts, not blockers: Evolu
+// ships `@evolu/nodejs` and `@evolu/relay` and operators update them (still
+// keep old clients and old relays compatible). Do not add Node.js
+// `worker_threads` pools for relay scaling; long-term scaling targets a native
+// Rust or Lean relay.
+
 import {
   dedupeArray,
   filterArray,

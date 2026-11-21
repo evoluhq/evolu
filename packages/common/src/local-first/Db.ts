@@ -2003,6 +2003,10 @@ const releaseDriftQuarantine =
 const validateColumnValue =
   (deps: SqliteSchemaDep) =>
   (table: string, column: string, _value: SqliteValue): boolean => {
+    // Today this checks only that the table and column exist in the schema and
+    // ignores `_value`. Before collaboration ships, synced values must also be
+    // validated against their column Types so a writer with a shared write key
+    // cannot store malformed data (such as invalid JSON that breaks `json()`).
     // Local-only tables never sync, so a received change to one comes from
     // non-standard code. It stays in quarantine, stored for sync but never
     // applied.

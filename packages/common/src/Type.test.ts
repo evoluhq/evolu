@@ -17635,6 +17635,9 @@ describe("unique", () => {
       let ratio: number;
       // Garbage collection can inflate one measurement, so a ratio over the
       // bound is measured again unless it is too high for a pause to explain.
+      // The 4x bound was calibrated on macOS (the per-byte key regression
+      // cleared it by ~1.8x); measure Linux CI ratios before tightening it or
+      // adjusting for a Linux flake.
       do {
         const linearCost = cpuTimeOf(() => assertTrue(eqData(value, copy)));
         ratio =

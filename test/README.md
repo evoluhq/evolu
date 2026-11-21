@@ -242,7 +242,11 @@ storage and workers between tabs within a context; memory databases belong to
 one instance and exchange changes between tabs only through relays. Contexts
 within a test share only the relays.
 Every test fails on uncaught browser errors and unexpected dialogs, including
-the examples' Evolu error alert; tests declare the dialogs they expect.
+the examples' Evolu error alert; tests declare the dialogs they expect. When
+writing or reviewing example and playground flows, check every failure or cancel
+screen as a user who changed their mind: it must let them back out to the
+previous choice rather than only retry, and E2E tests should cover deliberate
+cancellation.
 
 ```sh
 pnpm test:e2e

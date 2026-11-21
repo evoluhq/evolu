@@ -285,6 +285,9 @@ export const createEvoluDeps = (
   disposer.defer(() => {
     for (const dbWorker of dbWorkers) dbWorker[Symbol.dispose]();
   });
+  // Tabs host DbWorkers (rather than the SharedWorker spawning them) in part
+  // because Chromium does not support dedicated workers inside a SharedWorker:
+  // https://issues.chromium.org/issues/40695450
   const createDbWorker: CreateDbWorker = () => {
     const nativeDbWorker = new Worker(
       new URL("Db.worker.js", import.meta.url),

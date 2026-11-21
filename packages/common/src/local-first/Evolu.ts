@@ -522,6 +522,12 @@ export interface AppNameError extends TypeError<"AppName"> {
  */
 export const testAppName = /*#__PURE__*/ AppName.orThrow("AppName");
 
+// Evolu and EvoluApp instance methods stay Promise<Result> or callbacks rather
+// than Task: abort only ends the caller's wait (mutations, deletes, and worker
+// requests cannot be cancelled), React Suspense needs promises, and Run-based
+// callers can wrap them with promiseToTask. Entry points (createEvolu,
+// createEvoluApp, loadDeviceSecret, etc.) remain Tasks.
+
 /**
  * A local-first SQL database.
  *

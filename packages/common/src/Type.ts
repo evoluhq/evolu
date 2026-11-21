@@ -450,6 +450,11 @@
  *
  * @module
  */
+
+// Runtime optimization stays interpreter-only (no `new Function` / `eval` JIT)
+// and preserves exactness: never invoke getters or Proxy `get` traps, reject
+// accessor, non-enumerable, and excess properties, and keep exact error shapes
+// and order.
 import {
   bytesToHex,
   concatBytes,

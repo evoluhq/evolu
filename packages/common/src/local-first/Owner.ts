@@ -244,6 +244,11 @@ export const ownerSecretToMnemonic = (secret: OwnerSecret): Mnemonic =>
 export const mnemonicToOwnerSecret = (mnemonic: Mnemonic): OwnerSecret =>
   bip39.mnemonicToEntropy(mnemonic, wordlist) as OwnerSecret;
 
+// SLIP-21 derivation paths ("Evolu" -> "OwnerIdBytes", "OwnerEncryptionKey",
+// "OwnerWriteKey") and their output slices are a frozen external contract
+// shared by external apps and hardware wallets; never change them for existing
+// owner types.
+
 /**
  * Converts an {@link OwnerSecret} to the {@link OwnerId} of the owners it
  * creates, without deriving their keys or mnemonic, such as to tell whether a

@@ -222,12 +222,13 @@ jobs:
           version=$(jq -r '.[] | select(.name == "@evolu/sqlite-wasm") | .version' <<<"$PUBLISHED")
           [ -z "$version" ] || gh release edit "@evolu/sqlite-wasm@$version" --prerelease=false --latest=false
 
-  # Deploys the export that the Checks workflow's build-web job built to
-  # Cloudflare. The job holding the token runs no code from the repository's
-  # dependencies and restores no shared cache: its cone-mode sparse checkout
-  # adds only apps/web/deploy and the files directly in apps and apps/web to
-  # the root files, and it installs Wrangler from that directory's lockfile,
-  # which pins every package by integrity.
+  # Every push to main intentionally deploys evolu.dev (including docs for
+  # unreleased APIs on main). Deploys the export that the Checks workflow's
+  # build-web job built to Cloudflare. The job holding the token runs no code
+  # from the repository's dependencies and restores no shared cache: its
+  # cone-mode sparse checkout adds only apps/web/deploy and the files directly
+  # in apps and apps/web to the root files, and it installs Wrangler from that
+  # directory's lockfile, which pins every package by integrity.
   deploy-web:
     # Prevents deploying evolu.dev from forks.
     if: github.repository == 'evoluhq/evolu' && github.ref == 'refs/heads/main'

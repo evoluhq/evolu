@@ -237,6 +237,9 @@ Each command writes `results/<target>.json`, with every run's timings, and
 `results/<target>.md`, the summary, and a second run of a target replaces its
 files. `pnpm bench:sqlite-comparison report` merges every target's results,
 and the relay gate's, into `results/report.md`. Git ignores `results/`.
+Comparison benchmarks run on demand rather than on a schedule, and blog posts
+that cite them are dated snapshots linked to their commit rather than living
+documents.
 
 ## The relay regression gate
 

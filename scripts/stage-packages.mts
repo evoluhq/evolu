@@ -20,6 +20,21 @@
  * after the script exits, so a version staged in a run that was cancelled has
  * no tag, and npm refuses to stage it again: reject it on npm, then rerun.
  *
+ * Maintainer ops notes:
+ *
+ * - If staging fails with `ENEEDAUTH` for a package that has not published for a
+ *   while, its stage-only trusted publisher may have expired even while `npm
+ *   trust list <pkg>` still shows it. Recreate it only after a failure with
+ *   `npm trust github <pkg> --repo evoluhq/evolu --file release.yaml --env npm
+ *   --allow-stage-publish` (never `--allow-publish`) and rerun the failed job.
+ * - Npm's Staged Packages UI can show a `"publish failed"` banner even after an
+ *   approval succeeded; verify `npm view <pkg>@<version> dist.shasum _npmUser`
+ *   before retrying or rejecting.
+ * - On the Changesets "Version Packages" PR, both "workflows awaiting approval"
+ *   and "Merging is blocked" are expected under the protected-main ruleset
+ *   (merge via the bypass checkbox in the web UI; any release-time check must
+ *   therefore run in `checks.yaml`).
+ *
  * @module
  */
 

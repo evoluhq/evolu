@@ -72,3 +72,5 @@ Evolu keeps no such logs and merges every change by its timestamp as soon as it 
 ## Owners and writers
 
 Data belongs to an [owner](/docs/api-reference/common/local-first/Owner), a logical unit with its own keys, by which relays find, store, and sync its data. All devices of a user write to the same owner, and several people can write to a shared one. Each database session writes with its own random ID, so an owner has many writers, and sync merges the changes of all of them.
+
+A new device downloads an owner's full message history by design: the history is the data, not a delivery log to compact. Data a device shouldn't download belongs in separate [shard](/docs/api-reference/common/local-first/Owner/interfaces/ShardOwner) or [shared](/docs/api-reference/common/local-first/Owner/interfaces/SharedOwner) owners rather than timestamp windows, which also lets an app delete it as a unit.

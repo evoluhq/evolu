@@ -94,3 +94,20 @@ and the Docker build command.
   bump type only selects its release-notes heading.
 - Semver compares `build10` below `build9` as text, so repo-root
   `scripts/version-sqlite-wasm.mts` allows at most 9 builds per SQLite release.
+
+## Upstream watch
+
+- Last checked 2026-11-18 through `sqlite/sqlite-wasm` `e5b104c` and SQLite
+  trunk `2026-11-17`.
+- **SQLite 3.55+:** `sqlite3_serialize` returns `NULL` on a page read error
+  instead of zero-filling (`sqlite/sqlite` `3e97799009`), so update the
+  `pages === 0` branch in `packages/sqlite-wasm/src/Database.ts` to check
+  `toCause(db)` first (covered by `EncryptedPoolDatabase.test.ts`). Also expect
+  a new `sqlite3__wasm_disposal_notifier` export on regeneration.
+- **Emscripten > 6.0.3:** adds an `env.__syscall_geteuid32` import that
+  `packages/sqlite-wasm/src/Wasm.ts` must implement (and possibly a `setThrew`
+  export), and newer Binaryen's `wasm-opt --all-features` emits compact imports
+  that browsers reject unless passed `--disable-compact-imports`.
+- **Cross-Origin Storage (WICG):** rejected for Evolu — looking up Evolu's
+  distinct wasm hash across origins would leak that the user runs another Evolu
+  app.
