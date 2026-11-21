@@ -1,5 +1,196 @@
 # @evolu/common
 
+## 8.30.0
+
+### Minor Changes
+
+- 3a17b6e: Added MnemonicFromString
+
+  `Mnemonic` accepts only its canonical spelling, lowercase words separated by single spaces, so apps had to convert what a user typed before validating it, and a mnemonic typed on a phone, whose keyboard capitalizes the first word, failed. `MnemonicFromString` converts typed or pasted text to lowercase NFKD with single spaces between its words and validates it as a `Mnemonic`.
+
+  ```ts
+  import { assertOk, MnemonicFromString } from "@evolu/common";
+
+  const typed =
+    "Abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+  assertOk(
+    MnemonicFromString.fromUnknown(typed),
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+  );
+  ```
+
+- c5519b0: Added loadOwnerUsage
+
+  An app that deletes owners' data, with `evolu.deleteOwner` or `deleteWhenUnused`, can now show which owners have data on the device and how big it is. `evolu.loadOwnerUsage(owner)` loads an `OwnerStorageUsage` whose `storedBytes` are the bytes of the owner's encrypted changes, as a relay counts them for its quota. It loads null when the database has no change of the owner. Local-only tables sync nothing, so their rows aren't counted.
+
+  An owner that an earlier release stored is counted from its history at its first load, which takes longer for a big owner, and later loads read the stored count. The database version stays the same, so an earlier release still opens the database.
+
+  ```ts
+  import {
+    assertType,
+    type Evolu,
+    type LoadOwnerUsageError,
+    type OwnerStorageUsage,
+    type Result,
+    type ShardOwner,
+  } from "@evolu/common";
+
+  const loadWalletUsage = (evolu: Evolu, walletOwner: ShardOwner) =>
+    evolu.loadOwnerUsage(walletOwner);
+
+  assertType<
+    Awaited<ReturnType<typeof loadWalletUsage>>,
+    Result<OwnerStorageUsage | null, LoadOwnerUsageError>
+  >();
+  ```
+
+- 7875566: Fixed an owner reporting Synced while another local database was still uploading a large write
+
+  When two local databases in an app, such as those of two AppOwners, sync the same owner, Evolu copies a write from one to the other and normally relies on the writing database to upload it. A write too large for one sync message uploads across multiple rounds. Until the final round finished, the other database could report the owner as `Synced`. If the writing database closed, stopped using the owner, or was deleted before the upload completed, the remaining changes reached the relay only on the other database's next sync round. Now, when a write doesn't fit in one sync message or no relay connection is open, the other database syncs it with the relay itself.
+
+  For low-level sync protocol code, `createProtocolUploadFromCrdtMessages` of `@evolu/common/local-first` replaced `createProtocolMessageFromCrdtMessages`. It returns a `ProtocolUpload` (`{ message, isComplete }`): `message` is what the old function returned, so `createProtocolMessageFromCrdtMessages(deps)(owner, messages)` becomes `createProtocolUploadFromCrdtMessages(deps)(owner, messages).message`, and `isComplete` tells whether every CRDT message fit:
+
+  ```ts
+  import {
+    assertSame,
+    assertType,
+    createId,
+    createXChaCha20Poly1305,
+    testCreateDeps,
+  } from "@evolu/common";
+  import {
+    createProtocolUploadFromCrdtMessages,
+    testAppOwner,
+    testCreateCrdtMessage,
+    type ProtocolUpload,
+  } from "@evolu/common/local-first";
+  // @ts-expect-error createProtocolMessageFromCrdtMessages is no longer exported.
+  import type { createProtocolMessageFromCrdtMessages as _createProtocolMessageFromCrdtMessages } from "@evolu/common/local-first";
+
+  const deps = {
+    ...testCreateDeps(),
+    xChaCha20Poly1305: createXChaCha20Poly1305(),
+  };
+  const upload = createProtocolUploadFromCrdtMessages(deps)(testAppOwner, [
+    testCreateCrdtMessage(createId(deps), 1, "Ada"),
+  ]);
+  assertType<typeof upload, ProtocolUpload>();
+  assertSame(upload.isComplete, true);
+  ```
+
+- b701f9b: Added deleteWhenUnused to useOwner and moved transports into options
+
+  An app that uses an owner temporarily, such as one for a shared document or a shard of a large list, may want to free that local storage afterwards. `evolu.deleteOwner` immediately deletes the owner's local rows across all tabs of that database, so calling it when a component unmounts would also remove rows another tab is still showing, along with local changes relays haven't received yet.
+
+  With `deleteWhenUnused: true`, Evolu keeps syncing the owner for 10 seconds after its last use in that database ends across all tabs, then deletes the owner's rows from the local database if every relay has received all of its changes by then. Like `evolu.deleteOwner`, this also deletes the owner's local-only table rows and refreshes queries, without calling `onOwnerDeleted` because nothing uses the owner then. Calling `useOwner` again within those 10 seconds cancels the deletion and keeps the rows, avoiding a re-download when a component remounts, relays change, or the user quickly returns to a page.
+
+  Rows stay on the device if the app closes before those 10 seconds elapse, if any relay still lacks changes when those 10 seconds end (including a relay dropped while another use continued or after one replaced it within those 10 seconds), or if any use while the owner was active didn't pass `deleteWhenUnused: true` or passed a `ReadonlyOwner` (even with `deleteWhenUnused: true`), which sends nothing, so Evolu can't tell whether relays have the owner's rows. In those cases, the rows stay until the owner is used with `deleteWhenUnused: true` and released again. `deleteWhenUnused: true` can't be used with the instance's own `AppOwner` (or an owner with its ID); use `evolu.deleteDatabase` instead.
+
+  `useOwner` now takes an options object (`UseOwnerOptions`) as its second argument instead of a transports array, so callers passing transports must wrap them in `{ transports }` (passing an array throws at runtime). `options` and `options.transports` remain optional on `Evolu.useOwner`, React's and Vue's `useOwner`, and Svelte's `ownerSync` (whose third argument now returns the options object), defaulting to `config.transports`. On `DeviceEvolu.useOwner`, `options` and `options.transports` remain required:
+
+  ```ts
+  import {
+    assertType,
+    createOwnerWebSocketTransport,
+    deriveShardOwner,
+    RelayUrl,
+    testAppOwner,
+    type DeviceEvolu,
+    type Evolu,
+    type EvoluSchema,
+    type UnuseOwner,
+    type UseOwnerOptions,
+  } from "@evolu/common";
+  import { createEvoluBinding } from "@evolu/react";
+  import { useOwner as useVueOwner } from "@evolu/vue";
+
+  const shardOwner = deriveShardOwner(testAppOwner, ["movies", 1]);
+  const transport = createOwnerWebSocketTransport({
+    url: RelayUrl.orThrow("wss://relay.example.com/"),
+    ownerId: shardOwner.id,
+  });
+  const options: UseOwnerOptions = {
+    transports: [transport],
+    deleteWhenUnused: true,
+  };
+
+  const _before = (evolu: Evolu): UnuseOwner =>
+    // @ts-expect-error Transports go in the options object.
+    evolu.useOwner(shardOwner, [transport]);
+
+  const _after = (evolu: Evolu): UnuseOwner =>
+    evolu.useOwner(shardOwner, options);
+
+  const _afterDefaultTransports = (evolu: Evolu): UnuseOwner =>
+    evolu.useOwner(shardOwner, { deleteWhenUnused: true });
+
+  const _deviceBefore = (device: DeviceEvolu<EvoluSchema>): UnuseOwner =>
+    // @ts-expect-error Transports go in the options object.
+    device.useOwner(shardOwner, [transport]);
+
+  const _deviceWithoutTransports = (
+    device: DeviceEvolu<EvoluSchema>,
+  ): UnuseOwner =>
+    // @ts-expect-error DeviceEvolu.useOwner requires transports in options.
+    device.useOwner(shardOwner, { deleteWhenUnused: true });
+
+  const _deviceAfter = (device: DeviceEvolu<EvoluSchema>): UnuseOwner =>
+    device.useOwner(shardOwner, {
+      transports: [transport],
+      deleteWhenUnused: true,
+    });
+
+  const { useOwner: useReactOwner } = createEvoluBinding();
+  const useShardOwner = () => {
+    // @ts-expect-error Transports go in the options object.
+    useReactOwner(shardOwner, [transport]);
+    useReactOwner(shardOwner, options);
+  };
+  assertType<ReturnType<typeof useShardOwner>, void>();
+
+  const useVueShardOwner = () => {
+    // @ts-expect-error Transports go in the options object.
+    useVueOwner(shardOwner, [transport]);
+    useVueOwner(shardOwner, options);
+  };
+  assertType<ReturnType<typeof useVueShardOwner>, void>();
+  ```
+
+  In Svelte, the third argument of `ownerSync` now returns the options object:
+
+  ```svelte
+  <script lang="ts">
+    // Before: ownerSync(evolu, () => shardOwner, () => [transport]);
+    ownerSync(evolu, () => shardOwner, () => ({
+      transports: [transport],
+      deleteWhenUnused: true,
+    }));
+  </script>
+  ```
+
+### Patch Changes
+
+- 7570f74: Fixed useOwner and ownerSync with transports in a reactive proxy
+
+  Transports held in reactive state, such as Vue's `reactive` or `ref` or Svelte's `$state`, are proxies, which a worker can't receive. `useOwner` sent them as they were, so the owner never synced, and posting its registration threw a `DataCloneError`. `useOwner`, `createEvolu` and `createEvoluApp` now keep plain copies of the transports with only their `type` and `url`, which is all Evolu sends, so another field of a transport, such as an undefined one, no longer throws, and transports that differ only in such a field count as the same.
+
+  Svelte's `ownerSync` also missed a change made in place to transports in `$state`, such as a pushed transport, because the proxy keeps its identity. It now reads each option and transport field it uses, also of a class with `$state` fields, so such a change replaces the registration.
+
+  React's `useOwner` and Svelte's `ownerSync` now compare only the `type` and `url` of transports too, so another field of a transport no longer throws or replaces the registration.
+
+- e0535c2: Measured and synced changes as SQLite stores them
+
+  SQLite stores -0 as 0 and a lone surrogate as U+FFFD, but `evolu.getMutationSize`, the `maxMutationSize` check, and the upload of a write while connected used the change as written. Text with a lone surrogate that is JSON once stored can encode much larger, so a mutation within the limit could be too large for any protocol message as stored and never sync from the history. Changes are now always encoded as SQLite stores them, so such a mutation throws like any other over the limit.
+
+- a07fcce: Fixed useOwner with an owner whose writeKey is undefined
+
+  An owner object whose `writeKey` holds no key, such as an unset field of a class with `$state` fields in Svelte or a `ref` of `undefined` in a Vue `reactive` object, is a `ReadonlyOwner` to TypeScript, because an `Owner`'s `writeKey` is required. `evolu.useOwner` and Vue's `useOwner` synced such an owner as writable, which uploaded nothing while its routes reported complete, and React's `useOwner` and Svelte's `ownerSync` threw. They now sync it as a `ReadonlyOwner`.
+
+- d886879: Fixed useOwner and createEvolu posting the caller's owner keys
+
+  `evolu.useOwner` and `createEvolu` posted an owner's `encryptionKey` and `writeKey` to Evolu's workers as the caller's `Uint8Array`s. A change of their bytes before they were sent, such as zeroing a key right after the call, reached the workers, a key that views a `SharedArrayBuffer` couldn't be posted to a `SharedWorker`, and a key sliced from Node's `Buffer` pool sent the whole pool. They now post copies of the keys, as mutations already copy their bytes.
+
 ## 8.29.1
 
 ### Patch Changes

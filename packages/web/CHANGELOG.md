@@ -1,5 +1,24 @@
 # @evolu/web
 
+## 3.9.1
+
+### Patch Changes
+
+- 9081cce: Fixed Safari 27.2 terminating the page when Evolu keeps a database in memory or runs without SharedWorker
+
+  In Safari 27.2 and web views on iOS 27.2, the page's web process was terminated as soon as Evolu opened a database kept in memory, as in Safari's Private Browsing or with `memoryOnly`, or any database where Evolu falls back to one tab because SharedWorker is unavailable. Since `@evolu/common` 8.28.0, Evolu closed a message port right after transferring it to another context, which this WebKit mishandles ([WebKit bug 315394](https://bugs.webkit.org/show_bug.cgi?id=315394)). Evolu no longer closes a port it has transferred.
+
+- Updated dependencies [7570f74]
+- Updated dependencies [e0535c2]
+- Updated dependencies [3a17b6e]
+- Updated dependencies [a07fcce]
+- Updated dependencies [d886879]
+- Updated dependencies [c5519b0]
+- Updated dependencies [7875566]
+- Updated dependencies [b701f9b]
+  - @evolu/common@8.30.0
+  - @evolu/sqlite-wasm@3.54.1-build4
+
 ## 3.9.0
 
 ### Minor Changes
