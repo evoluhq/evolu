@@ -62,6 +62,7 @@ import {
   encodeDbChange,
   encodeSqliteValue,
   encodeAndEncryptDbChange,
+  getEncryptedDbChangeLength,
   MessageType,
   parseProtocolHeader,
   ProtocolValueType,
@@ -817,6 +818,79 @@ test("encodeDbChange encodes values as SQLite stores them", () => {
       ),
     ),
     stored.change,
+  );
+});
+
+test("getEncryptedDbChangeLength returns the length encodeAndEncryptDbChange encrypts to", () => {
+  const deps = setupCryptoDeps();
+  const createMessage = (
+    values: Record<string, SqliteValue>,
+    isInsert = true,
+    isDelete: boolean | null = null,
+  ): CrdtMessage => ({
+    timestamp: createInitialTimestamp(deps),
+    change: DbChange.orThrow({
+      table: "employee",
+      id: createId(deps),
+      values,
+      isInsert,
+      isDelete,
+    }),
+  });
+
+  for (const message of [
+    // Ciphertexts with a length prefix of one, two and three bytes.
+    createMessage({ note: "" }),
+    createMessage({ note: "a".repeat(100) }),
+    createMessage({ note: "a".repeat(20_000) }),
+    // No values, as of a deletion.
+    createMessage({}),
+    createMessage({}, false, true),
+    // Values with encodings of their own.
+    createMessage({ note: null }),
+    createMessage({ score: SqliteValue.orThrow(-0) }),
+    createMessage({ score: SqliteValue.orThrow(0.5) }),
+    createMessage({ note: "AAAA" }),
+    createMessage({ note: "1969-12-31T23:59:59.999Z" }),
+    createMessage({ note: "2024-01-01T00:00:00.000Z" }),
+    createMessage({ data: new Uint8Array([1, 2, 3]) }),
+    // Lone surrogates, which are encoded as U+FFFD, so this JSON text encodes
+    // as Json.
+    createMessage({ note: "\uD800" }),
+    createMessage({ note: '{"a":"\uD800"}' }),
+  ])
+    assertEqual(
+      getEncryptedDbChangeLength(message),
+      createEncryptedDbChange(deps, message).length,
+    );
+
+  fc.assert(
+    fc.property(
+      fc.dictionary(
+        fc.constantFrom("note", "title", "score", "data", "ref"),
+        fc
+          .oneof(
+            fc.constant(null),
+            fc.string({ maxLength: 5_000 }),
+            fc.integer({ min: Number.MIN_SAFE_INTEGER }),
+            fc.double().filter(Number.isFinite),
+            fc.uint8Array({ maxLength: 5_000 }),
+            fc.constant(createId(deps)),
+            fc.constantFrom('{"a":1}', "[]", "2024-01-01T00:00:00.000Z"),
+          )
+          .map((value) => SqliteValue.orThrow(value)),
+        { noNullPrototype: true },
+      ),
+      fc.boolean(),
+      fc.constantFrom(null, true, false),
+      (values, isInsert, isDelete) => {
+        const message = createMessage(values, isInsert, isDelete);
+        return (
+          getEncryptedDbChangeLength(message) ===
+          createEncryptedDbChange(deps, message).length
+        );
+      },
+    ),
   );
 });
 

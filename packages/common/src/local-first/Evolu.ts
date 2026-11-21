@@ -72,6 +72,7 @@ import {
   Id,
   type Name,
   type NonEmptyTrimmedString100,
+  type NonNegativeInt,
   PositiveInt,
   type Typed,
   type TypeError,
@@ -1100,6 +1101,54 @@ export interface Evolu<
   ) => Promise<Result<void, DeleteOwnerError>>;
 
   /**
+   * Loads how much an owner's synced data takes in this database: the bytes of
+   * its encrypted changes, as a relay counts them for its quota, or null when
+   * the database has no change of the owner. An app can show it in a list of
+   * owners whose data {@link Evolu.deleteOwner} can delete.
+   *
+   * It isn't the space the database file takes, which is bigger, because the
+   * database also keeps the decrypted rows, their indexes, and the history.
+   * Local-only tables, whose names start with `_`, sync nothing and keep no
+   * history, so their rows aren't counted, and an owner with only such rows
+   * loads null.
+   *
+   * The load comes after the changes made before it, so it counts them. An
+   * owner whose changes an earlier release stored is counted from its history
+   * at its first load, which takes longer for a big owner; later loads read the
+   * stored count.
+   *
+   * Each call loads on its own, in call order. It fails with an
+   * {@link UnknownError} when SQLite fails to read or count. When the database
+   * is refused, it fails with the refusal's error, as {@link EvoluError}
+   * describes. It fails with {@link EvoluDisposedError} when this instance is
+   * disposed before the load ends.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import {
+   *   assertType,
+   *   type Evolu,
+   *   type LoadOwnerUsageError,
+   *   type OwnerStorageUsage,
+   *   type Result,
+   *   type ShardOwner,
+   * } from "@evolu/common";
+   *
+   * const loadWalletUsage = (evolu: Evolu, walletOwner: ShardOwner) =>
+   *   evolu.loadOwnerUsage(walletOwner);
+   *
+   * assertType<
+   *   Awaited<ReturnType<typeof loadWalletUsage>>,
+   *   Result<OwnerStorageUsage | null, LoadOwnerUsageError>
+   * >();
+   * ```
+   */
+  readonly loadOwnerUsage: (
+    owner: ReadonlyOwner | Owner,
+  ) => Promise<Result<OwnerStorageUsage | null, LoadOwnerUsageError>>;
+
+  /**
    * Use an Owner for sync. Returns a {@link UnuseOwner}.
    *
    * Using an Owner means syncing it with {@link UseOwnerOptions.transports}, or
@@ -1318,6 +1367,31 @@ export type DeleteDatabaseError =
  * @group Core
  */
 export type DeleteOwnerError =
+  | DatabaseHeldError
+  | EvoluDisposedError
+  | UnknownError
+  | UnsupportedDbVersionError;
+
+/**
+ * How much an owner's synced data takes in a database; see
+ * {@link Evolu.loadOwnerUsage}.
+ *
+ * @group Core
+ */
+export interface OwnerStorageUsage {
+  /**
+   * The bytes of the owner's encrypted changes, as a relay counts them for its
+   * quota.
+   */
+  readonly storedBytes: NonNegativeInt;
+}
+
+/**
+ * An error of {@link Evolu.loadOwnerUsage}.
+ *
+ * @group Core
+ */
+export type LoadOwnerUsageError =
   | DatabaseHeldError
   | EvoluDisposedError
   | UnknownError
@@ -2172,6 +2246,7 @@ export interface DeviceEvolu<D extends EvoluSchema> extends Omit<
   | "exportDatabase"
   | "deleteDatabase"
   | "useOwner"
+  | "loadOwnerUsage"
   | "insert"
   | "update"
   | "upsert"
@@ -2187,6 +2262,13 @@ export interface DeviceEvolu<D extends EvoluSchema> extends Omit<
       readonly transports: NonEmptyReadonlyArray<OwnerTransport>;
     },
   ) => UnuseOwner;
+  /**
+   * {@link Evolu.loadOwnerUsage}, for an owner that isn't an AppOwner, whose
+   * data the device database never holds.
+   */
+  readonly loadOwnerUsage: (
+    owner: ShardOwner | SharedOwner | SharedReadonlyOwner,
+  ) => Promise<Result<OwnerStorageUsage | null, LoadOwnerUsageError>>;
   /** {@link Evolu.insert}, as a {@link DeviceMutation}. */
   readonly insert: DeviceMutation<D, "insert">;
   /** {@link Evolu.update}, as a {@link DeviceMutation}. */
@@ -3919,6 +4001,19 @@ const createEvoluInstance =
       deleteOwnerPending.length = 0;
     });
 
+    // In call order, which is the order the tenant answers them in.
+    const loadOwnerUsagePending: Array<
+      PromiseWithResolvers<
+        Result<OwnerStorageUsage | null, LoadOwnerUsageError>
+      >
+    > = [];
+
+    disposer.defer(() => {
+      for (const pending of loadOwnerUsagePending)
+        pending.resolve(err({ type: "EvoluDisposedError" }));
+      loadOwnerUsagePending.length = 0;
+    });
+
     let isPersistentStorageRequested = false;
 
     let postMessage: (input: EvoluInput) => void;
@@ -4139,6 +4234,26 @@ const createEvoluInstance =
             assert(
               pending,
               "OnDeleteOwnerFailed received without pending owner deletion.",
+            );
+            pending.resolve(err(message.error));
+            break;
+          }
+
+          case "OnOwnerUsage": {
+            const pending = loadOwnerUsagePending.shift();
+            assert(
+              pending,
+              "OnOwnerUsage received without pending usage load.",
+            );
+            pending.resolve(ok(message.usage));
+            break;
+          }
+
+          case "OnLoadOwnerUsageFailed": {
+            const pending = loadOwnerUsagePending.shift();
+            assert(
+              pending,
+              "OnLoadOwnerUsageFailed received without pending usage load.",
             );
             pending.resolve(err(message.error));
             break;
@@ -4764,6 +4879,19 @@ const createEvoluInstance =
           queryBatch.flushNow();
           // Only the ID, so the owner's keys reach no other tab.
           postMessage({ type: "DeleteOwner", ownerId: owner.id });
+          return pending.promise;
+        },
+
+        loadOwnerUsage: (owner) => {
+          const pending =
+            Promise.withResolvers<
+              Result<OwnerStorageUsage | null, LoadOwnerUsageError>
+            >();
+          loadOwnerUsagePending.push(pending);
+          // After the changes made before it, so it counts them.
+          orderedBatch.flushNow();
+          // Only the ID, so the owner's keys reach no other tab.
+          postMessage({ type: "LoadOwnerUsage", ownerId: owner.id });
           return pending.promise;
         },
 

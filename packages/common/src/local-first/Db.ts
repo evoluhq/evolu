@@ -205,8 +205,8 @@ import {
   idToIdBytes,
   Mnemonic,
   NonNaNNumber,
+  type NonNegativeInt,
   object,
-  onePositiveInt,
   PositiveInt,
   String,
   Unknown,
@@ -237,6 +237,7 @@ import {
   createProtocolMessageForSync,
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
+  getEncryptedDbChangeLength,
   SubscriptionFlags,
   type ProtocolChangeTooLargeError,
   type ProtocolInvalidDataError,
@@ -278,7 +279,7 @@ import {
   type CrdtMessage,
   type Storage,
 } from "./Storage.ts";
-import type { Evolu, EvoluApp } from "./Evolu.ts";
+import type { Evolu, EvoluApp, OwnerStorageUsage } from "./Evolu.ts";
 import type { Timestamp } from "./Timestamp.ts";
 import {
   createInitialTimestamp,
@@ -978,6 +979,36 @@ export const startDbWorker =
           });
         }, createUnknownError);
 
+      // An owner no release counted yet is counted here, once; see
+      // uncountedStoredBytes.
+      const loadOwnerUsage = (
+        ownerId: OwnerId,
+      ): Result<OwnerStorageUsage | null, UnknownError> =>
+        trySync(() => {
+          const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
+          const { rows } = sqlite.exec<{ storedBytes: NonNegativeInt }>(sql`
+            select "storedBytes"
+            from evolu_usage
+            where "ownerId" = ${ownerIdBytes};
+          `);
+          if (!isNonEmptyArray(rows)) return null;
+          const row = firstInArray(rows);
+          if (row.storedBytes !== uncountedStoredBytes)
+            return { storedBytes: row.storedBytes };
+          const storedBytes = countStoredBytes({ sqlite })(ownerIdBytes);
+          // Stored for the next load. When a full disk fails the write, the
+          // owner stays uncounted, so the next load counts it again, and this
+          // one still answers, so the app can show what deleting it frees.
+          trySync(() =>
+            sqlite.exec(sql`
+              update evolu_usage
+              set "storedBytes" = ${storedBytes}
+              where "ownerId" = ${ownerIdBytes};
+            `),
+          );
+          return { storedBytes };
+        }, createUnknownError);
+
       port.postMessage({
         type: "LeaderAcquired",
         clock: initialClock,
@@ -990,8 +1021,8 @@ export const startDbWorker =
           port.onMessage = (input) => {
             // A throw, such as a response that cannot be posted, panics this
             // worker's Run like a task defect, so the database is refused.
-            // Mutations, queries, exports, and owner deletions answer their
-            // SQLite failures instead.
+            // Mutations, queries, exports, owner deletions, and usage loads
+            // answer their SQLite failures instead.
             try {
               if (input.type === "Dispose") {
                 resolve(ok());
@@ -1188,6 +1219,18 @@ export const startDbWorker =
                   message: deleted.ok
                     ? { type: "OwnerDeleted" }
                     : { type: "DeleteOwnerFailed", error: deleted.error },
+                });
+                return;
+              }
+
+              if (request.message.type === "LoadOwnerUsage") {
+                const usage = loadOwnerUsage(request.message.ownerId);
+                postQueuedResponse({
+                  type: "ForEvolu",
+                  id: request.id,
+                  message: usage.ok
+                    ? { type: "OwnerUsage", usage: usage.value }
+                    : { type: "LoadOwnerUsageFailed", error: usage.error },
                 });
                 return;
               }
@@ -2530,10 +2573,14 @@ const applyMessages =
 
     // Earlier releases choose how to insert a timestamp from these bounds, so
     // they stay true until the next schema migration drops them.
-    let { firstTimestamp, lastTimestamp } = readOwnerUsageOrDefault(deps)(
+    const usage = readOwnerUsageOrDefault(deps)(
       ownerIdBytes,
       timestampToTimestampBytes(firstInArray(messages).timestamp),
     );
+    let { firstTimestamp, lastTimestamp } = usage;
+    let storedBytes = usage.storedBytes ?? 0;
+    // An owner no release counted yet stays so until its usage is loaded.
+    const isCounted = storedBytes !== uncountedStoredBytes;
 
     for (const { timestamp, change } of messages) {
       const timestampBytes = timestampToTimestampBytes(timestamp);
@@ -2553,6 +2600,8 @@ const applyMessages =
       );
       if (!isNew) continue;
       wroteNewMessages = true;
+      if (isCounted)
+        storedBytes += getEncryptedDbChangeLength({ timestamp, change });
 
       const hasDrift = isTimestampBeyondMaxDrift(deps)(timestamp.millis, now);
       messagesToApply.push({
@@ -2640,19 +2689,86 @@ const applyMessages =
     }
 
     if (wroteNewMessages) {
-      // A client will store shared owners that others write to, partly as a
-      // relay, and needs per-owner storedBytes for quotas that protect its
-      // disk. TODO: Track the bytes of received and sent encrypted messages,
-      // which replace this placeholder.
+      // SQLite's database size limit keeps the stored bytes of an owner far
+      // below Number.MAX_SAFE_INTEGER.
       updateOwnerUsage(deps)(
         ownerIdBytes,
-        onePositiveInt,
+        storedBytes as NonNegativeInt,
         firstTimestamp,
         lastTimestamp,
       );
     }
 
     return wroteNewMessages;
+  };
+
+/**
+ * The `storedBytes` of an owner whose changes no release counted yet. Releases
+ * before the count wrote it on every write, so an owner that one of them wrote
+ * to after a newer release counted it is counted anew. A count is never 1,
+ * because an encrypted change takes at least its nonce and tag, so it marks an
+ * owner without a new database version, which those releases would refuse.
+ */
+const uncountedStoredBytes = 1;
+
+/**
+ * Counts an owner's `storedBytes` from its history and quarantine, which hold
+ * every change the owner stored, rebuilt as `readDbChange` rebuilds one to send
+ * it. A value an earlier release stored but this one can't, such as a number
+ * that isn't finite, is dropped, and a change invalid without it isn't counted,
+ * as the Evolu 7 import does.
+ */
+const countStoredBytes =
+  (deps: SqliteDep) =>
+  (ownerIdBytes: OwnerIdBytes): NonNegativeInt => {
+    let storedBytes = 0;
+    let timestampBytes: TimestampBytes | null = null;
+    let rows: Array<HistoryRow> = [];
+
+    const endChange = (): void => {
+      if (!timestampBytes || !isNonEmptyArray(rows)) return;
+      const change = DbChange.fromUnknown(historyRowsToDbChange(rows));
+      if (change.ok)
+        storedBytes += getEncryptedDbChangeLength({
+          timestamp: timestampBytesToTimestamp(timestampBytes),
+          change: change.value,
+        });
+      rows = [];
+    };
+
+    // A change's columns can be split between the history and the quarantine,
+    // so both are read together. Their indexes order them by the timestamp, so
+    // SQLite merges them without a sort.
+    deps.sqlite.iterate(
+      sql`
+        select "timestamp", "table", "id", "column", "value"
+        from evolu_history
+        where "ownerId" = ${ownerIdBytes}
+        union all
+        select "timestamp", "table", "id", "column", "value"
+        from evolu_message_quarantine
+        where "ownerId" = ${ownerIdBytes}
+        order by "timestamp";
+      `,
+      (row) => {
+        const timestamp = row.timestamp as TimestampBytes;
+        if (!timestampBytes || !eqUint8Array(timestamp, timestampBytes)) {
+          endChange();
+          timestampBytes = timestamp;
+        }
+        if (row.column === "isDeleted" || SqliteValue.is(row.value))
+          rows.push({
+            table: row.table as string,
+            id: row.id as IdBytes,
+            column: row.column as string,
+            value: row.value,
+          });
+        return true;
+      },
+    );
+    endChange();
+    // SQLite's database size limit keeps it far below Number.MAX_SAFE_INTEGER.
+    return storedBytes as NonNegativeInt;
   };
 
 /** The columns a change sets, `isDeleted` included, without its time. */

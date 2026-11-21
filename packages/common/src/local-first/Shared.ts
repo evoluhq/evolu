@@ -661,6 +661,7 @@ import type {
   EvoluConfig,
   EvoluErrorDep,
   LoadQueryOptions,
+  OwnerStorageUsage,
   SyncStateDep,
   UseOwnerOptions,
 } from "./Evolu.ts";
@@ -1716,6 +1717,10 @@ export type EvoluInput =
   | {
       readonly type: "DeleteOwner";
       readonly ownerId: OwnerId;
+    }
+  | {
+      readonly type: "LoadOwnerUsage";
+      readonly ownerId: OwnerId;
     };
 
 export type OwnerRegistrationId = Id & Brand<"OwnerRegistration">;
@@ -1803,6 +1808,20 @@ export type EvoluOutput =
       readonly type: "OnDeleteOwnerFailed";
       readonly error:
         DatabaseHeldError | UnknownError | UnsupportedDbVersionError;
+    }
+  | {
+      /** The instance's oldest pending usage load; see Evolu.loadOwnerUsage. */
+      readonly type: "OnOwnerUsage";
+      readonly usage: OwnerStorageUsage | null;
+    }
+  | {
+      /**
+       * The instance's oldest pending usage load failed, or its database is
+       * refused.
+       */
+      readonly type: "OnLoadOwnerUsageFailed";
+      readonly error:
+        DatabaseHeldError | UnknownError | UnsupportedDbVersionError;
     };
 
 export type DbWorkerInput =
@@ -1846,7 +1865,7 @@ export type DbWorkerReadRequest =
       readonly id: EvoluInstanceId;
       readonly message: ExtractTyped<
         EvoluInput,
-        "Query" | "Export" | "DeleteOwner"
+        "Query" | "Export" | "DeleteOwner" | "LoadOwnerUsage"
       >;
     }
   | {
@@ -1988,6 +2007,15 @@ export type DbWorkerQueuedResponse =
         | {
             /** SQLite failed the deletion, which rolled back. */
             readonly type: "DeleteOwnerFailed";
+            readonly error: UnknownError;
+          }
+        | {
+            readonly type: "OwnerUsage";
+            readonly usage: OwnerStorageUsage | null;
+          }
+        | {
+            /** SQLite failed to read or count the owner's usage. */
+            readonly type: "LoadOwnerUsageFailed";
             readonly error: UnknownError;
           };
     }
@@ -3764,6 +3792,9 @@ const createEvoluTenant =
         case "DeleteOwner":
           port?.postMessage({ type: "OnDeleteOwnerFailed", error });
           break;
+        case "LoadOwnerUsage":
+          port?.postMessage({ type: "OnLoadOwnerUsageFailed", error });
+          break;
         case "RemoveAppOwner":
           port?.postMessage({
             type: "OnRemoveAppOwnerFailed",
@@ -4465,6 +4496,20 @@ const createEvoluTenant =
         case "DeleteOwnerFailed":
           instance?.port.postMessage({
             type: "OnDeleteOwnerFailed",
+            error: response.message.error,
+          });
+          break;
+
+        case "OwnerUsage":
+          instance?.port.postMessage({
+            type: "OnOwnerUsage",
+            usage: response.message.usage,
+          });
+          break;
+
+        case "LoadOwnerUsageFailed":
+          instance?.port.postMessage({
+            type: "OnLoadOwnerUsageFailed",
             error: response.message.error,
           });
           break;
@@ -5617,7 +5662,8 @@ const createEvoluTenant =
               switch (message.type) {
                 case "Query":
                 case "Export":
-                case "DeleteOwner": {
+                case "DeleteOwner":
+                case "LoadOwnerUsage": {
                   enqueueRequest({
                     type: "Read",
                     request: { type: "ForEvolu", id: instance.id, message },

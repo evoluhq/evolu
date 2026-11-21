@@ -110,6 +110,7 @@ import {
   FiniteNumber,
   id,
   NonEmptyTrimmedString100,
+  NonNegativeInt,
   nullOr,
   PositiveInt,
   String as StringType,
@@ -3010,7 +3011,7 @@ describe("Evolu", () => {
         );
       });
 
-      it("types DeviceEvolu's useOwner and mutations without AppOwners", () => {
+      it("types DeviceEvolu's useOwner, loadOwnerUsage, and mutations without AppOwners", () => {
         const withAppOwner = (
           device: DeviceEvolu<typeof Schema>,
           appOwner: AppOwner,
@@ -3019,6 +3020,13 @@ describe("Evolu", () => {
           const title = NonEmptyTrimmedString100.orThrow("Device");
           // @ts-expect-error A device database syncs no AppOwner, whose data lives only in its own database.
           device.useOwner(appOwner, { transports: [testOwnerTransport] });
+          // @ts-expect-error A device database holds no AppOwner's data, which lives only in its own database.
+          void device.loadOwnerUsage(appOwner);
+          void device.loadOwnerUsage(testSharedOwner);
+          void device.loadOwnerUsage(createShardOwner(testOwnerSecret));
+          void device.loadOwnerUsage(
+            createSharedReadonlyOwner(testSharedOwner),
+          );
           // @ts-expect-error A device database writes no AppOwner's rows, whose data lives only in its own database.
           device.insert("todo", { title }, { owner: appOwner });
           // @ts-expect-error A device database writes no AppOwner's rows, whose data lives only in its own database.
@@ -6982,6 +6990,133 @@ describe("Evolu", () => {
           });
         }, Error).message,
         "OnDeleteOwnerFailed received without pending owner deletion.",
+      );
+    });
+  });
+
+  describe("loadOwnerUsage", () => {
+    it("asks for the usage with only the owner's ID, after the changes made before it", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      evolu.insert(
+        "todo",
+        { title: NonEmptyTrimmedString100.orThrow("Counted by the load") },
+        { owner: testSharedOwner },
+      );
+      void evolu.loadOwnerUsage(testSharedOwner);
+      await testWaitForWorkerMessage();
+
+      assertEqual(
+        evoluInputs.map(({ type }) => type),
+        ["Mutate", "LoadOwnerUsage"],
+      );
+      assertEqual(evoluInputs.at(-1), {
+        type: "LoadOwnerUsage",
+        ownerId: testSharedOwner.id,
+      });
+    });
+
+    it("asks once per call and answers its calls in order", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const first = evolu.loadOwnerUsage(testSharedOwner);
+      const second = evolu.loadOwnerUsage(evolu.appOwner);
+      const third = evolu.loadOwnerUsage(testSharedOwner);
+      await testWaitForWorkerMessage();
+      assertEqual(evoluInputs, [
+        { type: "LoadOwnerUsage", ownerId: testSharedOwner.id },
+        { type: "LoadOwnerUsage", ownerId: testAppOwner.id },
+        { type: "LoadOwnerUsage", ownerId: testSharedOwner.id },
+      ]);
+
+      // A failure between two different usages tells the oldest pending call
+      // from the newest for both answers.
+      const usage = { storedBytes: NonNegativeInt.orThrow(105) };
+      const error = createUnknownError(new Error("disk I/O error"));
+      postEvoluOutput({ type: "OnOwnerUsage", usage });
+      postEvoluOutput({ type: "OnLoadOwnerUsageFailed", error });
+      postEvoluOutput({ type: "OnOwnerUsage", usage: null });
+
+      assertEqual(await first, ok(usage));
+      assertEqual(await second, err(error));
+      assertEqual(await third, ok(null));
+    });
+
+    it("resolves with the refusal of the database", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+      const error: UnsupportedDbVersionError = {
+        type: "UnsupportedDbVersionError",
+        storedVersion: PositiveInt.orThrow(3),
+        supportedVersion: PositiveInt.orThrow(2),
+      };
+
+      const load = evolu.loadOwnerUsage(testSharedOwner);
+      postEvoluOutput({ type: "OnLoadOwnerUsageFailed", error });
+
+      assertEqual(await load, err(error));
+    });
+
+    it("resolves with EvoluDisposedError when the instance is disposed first", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const first = evolu.loadOwnerUsage(testSharedOwner);
+      const second = evolu.loadOwnerUsage(testSharedOwner);
+      await evolu[Symbol.asyncDispose]();
+
+      const disposed = err({ type: "EvoluDisposedError" });
+      assertEqual(
+        await Promise.all([
+          Promise.race([first, Promise.resolve("pending")]),
+          Promise.race([second, Promise.resolve("pending")]),
+        ]),
+        [disposed, disposed],
+      );
+    });
+
+    it("resolves with EvoluDisposedError when the database is deleted first", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, postEvoluOutput } = setup;
+      const evolu = await run.ok(testCreateEvolu);
+
+      const load = evolu.loadOwnerUsage(testSharedOwner);
+      await testWaitForWorkerMessage();
+      postEvoluOutput({ type: "OnDatabaseDeleted", removed: false });
+
+      assertEqual(await load, err({ type: "EvoluDisposedError" }));
+    });
+
+    it("throws when OnOwnerUsage arrives without pending usage load", async () => {
+      await using setup = await setupWithEvoluChannel();
+      await setup.run.ok(testCreateEvolu);
+
+      assertEqual(
+        assertThrowsInstanceOf(() => {
+          setup.deliver({ type: "OnOwnerUsage", usage: null });
+        }, Error).message,
+        "OnOwnerUsage received without pending usage load.",
+      );
+    });
+
+    it("throws when OnLoadOwnerUsageFailed arrives without pending usage load", async () => {
+      await using setup = await setupWithEvoluChannel();
+      await setup.run.ok(testCreateEvolu);
+
+      assertEqual(
+        assertThrowsInstanceOf(() => {
+          setup.deliver({
+            type: "OnLoadOwnerUsageFailed",
+            error: createUnknownError(new Error("disk I/O error")),
+          });
+        }, Error).message,
+        "OnLoadOwnerUsageFailed received without pending usage load.",
       );
     });
   });

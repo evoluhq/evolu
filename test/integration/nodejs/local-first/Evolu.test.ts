@@ -76,6 +76,7 @@ import {
   createOwnerSecret,
   createOwnerWebSocketTransport,
   createShardOwner,
+  createSharedOwner,
   mnemonicToOwnerSecret,
   ownerIdToOwnerIdBytes,
   deriveShardOwner,
@@ -7167,7 +7168,7 @@ describe("Evolu integration", () => {
                 5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
                 235, 212,
               ]),
-              storedBytes: 1,
+              storedBytes: 105,
             },
           ],
         },
@@ -10100,6 +10101,217 @@ describe("Evolu integration", () => {
     });
   });
 
+  describe("loadOwnerUsage", () => {
+    it("loads the bytes of an owner's encrypted changes, as its relay counts them, after the changes made before it", async () => {
+      // The relay asks with each write how many bytes the owner would store.
+      let relayStoredBytes = 0;
+      await using relayRun = testCreateRun({
+        ...createRelayDeps(),
+        createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
+      });
+      await using relay = await relayRun.ok(
+        createRelay({
+          port: Port.orThrow(0),
+          name: Name.orThrow("evolu-load-owner-usage"),
+          isOwnerWithinQuota: (_ownerId, requiredBytes) => {
+            relayStoredBytes = requiredBytes;
+            return true;
+          },
+        }),
+      );
+      await using setup = await setupRunWithEvoluDeps({ createWebSocket });
+      using states = setupSyncStates(setup.syncStateChannelName);
+      await using evolu = await setup.run.ok(setup.createIntegrationEvolu);
+      const walletOwner = deriveShardOwner(testAppOwner, ["wallet", 1]);
+      const isComplete = () =>
+        syncStateToRelaySyncStates(
+          states.getState(),
+          evolu.name,
+          walletOwner.id,
+        ).at(0)?.route.type === "Complete";
+
+      evolu.insert(
+        "todo",
+        { title: NonEmptyTrimmedString100.orThrow("First") },
+        { owner: walletOwner },
+      );
+      const first = await evolu.loadOwnerUsage(walletOwner);
+      assertOk(first);
+      assertNotNull(first.value);
+      assertTrue(first.value.storedBytes > 0);
+      evolu.insert(
+        "todo",
+        { title: NonEmptyTrimmedString100.orThrow("Second") },
+        { owner: walletOwner },
+      );
+      const second = await evolu.loadOwnerUsage(walletOwner);
+      assertOk(second);
+      assertNotNull(second.value);
+      assertTrue(second.value.storedBytes > first.value.storedBytes);
+
+      evolu.useOwner(walletOwner, {
+        transports: [
+          createOwnerWebSocketTransport({
+            url: RelayUrl.orThrow(`ws://127.0.0.1:${relay.port}/`),
+            ownerId: walletOwner.id,
+          }),
+        ],
+      });
+      await states.waitForState(isComplete);
+
+      assertEqual(second.value, { storedBytes: relayStoredBytes });
+      // The sync stored nothing new.
+      assertEqual(await evolu.loadOwnerUsage(walletOwner), second);
+      assertEqual(setup.tabErrors, []);
+    });
+
+    it("loads null for an owner the database never stored, also when it stores another one", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      await using evolu = await setup.run.ok(setup.createIntegrationEvolu);
+      evolu.insert("todo", {
+        title: NonEmptyTrimmedString100.orThrow("Of the AppOwner"),
+      });
+      const appOwnerUsage = await evolu.loadOwnerUsage(evolu.appOwner);
+      assertOk(appOwnerUsage);
+      assertNotNull(appOwnerUsage.value);
+      assertTrue(appOwnerUsage.value.storedBytes > 0);
+
+      assertEqual(
+        await evolu.loadOwnerUsage(deriveShardOwner(testAppOwner, ["never"])),
+        ok(null),
+      );
+    });
+
+    it("counts no row of a local-only table, so an owner with only such rows loads null", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const NoteSchema = {
+        ...Schema,
+        _note: { id: id("Note"), title: NonEmptyTrimmedString100 },
+      };
+      const notesQuery = createQueryBuilder(NoteSchema)((db) =>
+        db.selectFrom("_note").select(["title"]).orderBy("title"),
+      );
+      await using evolu = await setup.run.ok(
+        createEvolu(NoteSchema, {
+          appName: testAppName,
+          appOwner: testAppOwner,
+          transports: [],
+        }),
+      );
+      const notesOwner = deriveShardOwner(testAppOwner, ["notes", 1]);
+
+      evolu.insert(
+        "_note",
+        { title: NonEmptyTrimmedString100.orThrow("Shard note") },
+        { owner: notesOwner },
+      );
+      assertEqual(await evolu.loadOwnerUsage(notesOwner), ok(null));
+
+      evolu.insert("todo", {
+        title: NonEmptyTrimmedString100.orThrow("Counted"),
+      });
+      const counted = await evolu.loadOwnerUsage(evolu.appOwner);
+      assertOk(counted);
+      assertNotNull(counted.value);
+      evolu.insert("_note", {
+        title: NonEmptyTrimmedString100.orThrow("App note"),
+      });
+      assertEqual(await evolu.loadOwnerUsage(evolu.appOwner), counted);
+      assertEqual(await evolu.loadQuery(notesQuery), [
+        { title: "App note" },
+        { title: "Shard note" },
+      ]);
+    });
+
+    it("loads null for an owner deleteOwner deleted, also when it doesn't wait for the deletion", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      await using evolu = await setup.run.ok(setup.createIntegrationEvolu);
+      const walletOwner = deriveShardOwner(testAppOwner, ["wallet", 1]);
+      evolu.insert(
+        "todo",
+        { title: NonEmptyTrimmedString100.orThrow("Deleted") },
+        { owner: walletOwner },
+      );
+      const stored = await evolu.loadOwnerUsage(walletOwner);
+      assertOk(stored);
+      assertNotNull(stored.value);
+
+      const deletion = evolu.deleteOwner(walletOwner);
+      // It comes after the deletion, so it loads what the deletion leaves.
+      assertEqual(await evolu.loadOwnerUsage(walletOwner), ok(null));
+      assertEqual(await deletion, ok());
+    });
+
+    it("loads on a device that syncs a shared owner from the relay what the writing device and the relay count", async () => {
+      let relayStoredBytes = 0;
+      await using relayRun = testCreateRun({
+        ...createRelayDeps(),
+        createSqliteDriver: testCreateSqliteDep.createSqliteDriver,
+      });
+      await using relay = await relayRun.ok(
+        createRelay({
+          port: Port.orThrow(0),
+          name: Name.orThrow("evolu-load-shared-owner-usage"),
+          isOwnerWithinQuota: (_ownerId, requiredBytes) => {
+            relayStoredBytes = requiredBytes;
+            return true;
+          },
+        }),
+      );
+      const sharedOwner = createSharedOwner(
+        createOwnerSecret(testCreateDeps({ seed: "shared-owner-usage" })),
+      );
+      const transports = [
+        createOwnerWebSocketTransport({
+          url: RelayUrl.orThrow(`ws://127.0.0.1:${relay.port}/`),
+          ownerId: sharedOwner.id,
+        }),
+      ] as const;
+
+      await using writer = await setupDevice({ seed: "writer" });
+      using writerStates = setupSyncStates(writer.setup.syncStateChannelName);
+      await using writing = await writer.setup.run.ok(
+        writer.setup.createIntegrationEvolu,
+      );
+      for (const title of ["First", "Second"])
+        writing.insert(
+          "todo",
+          { title: NonEmptyTrimmedString100.orThrow(title) },
+          { owner: sharedOwner },
+        );
+      writing.useOwner(sharedOwner, { transports });
+      await writerStates.waitForState(
+        () =>
+          syncStateToRelaySyncStates(
+            writerStates.getState(),
+            writing.name,
+            sharedOwner.id,
+          ).at(0)?.route.type === "Complete",
+      );
+      const written = await writing.loadOwnerUsage(sharedOwner);
+      assertOk(written);
+      assertNotNull(written.value);
+      assertSame(written.value.storedBytes, relayStoredBytes);
+
+      await using reader = await setupDevice({ seed: "reader" });
+      using readerStates = setupSyncStates(reader.setup.syncStateChannelName);
+      await using reading = await reader.setup.run.ok(
+        reader.setup.createIntegrationEvolu,
+      );
+      reading.useOwner(sharedOwner, { transports });
+      await readerStates.waitForState(
+        () =>
+          syncStateToRelaySyncStates(
+            readerStates.getState(),
+            reading.name,
+            sharedOwner.id,
+          ).at(0)?.route.type === "Complete",
+      );
+
+      assertEqual(await reading.loadOwnerUsage(sharedOwner), written);
+    });
+  });
+
   describe("deleteWhenUnused", () => {
     it("deletes an unused owner's synced and local-only rows in every tab once its relay has them, without calling onOwnerDeleted, keeps the AppOwner's rows, and syncs only the synced ones again on its next use", async () => {
       await using relayRun = testCreateRun({
@@ -10192,6 +10404,9 @@ describe("Evolu integration", () => {
       );
       const unuseOwner = caller.useOwner(shardOwner, options);
       await states.waitForState(isComplete);
+      const shardUsage = await caller.loadOwnerUsage(shardOwner);
+      assertOk(shardUsage);
+      assertNotNull(shardUsage.value);
       // The caller's loads stay cached, and the other tab subscribes.
       const allTodos = [{ title: "Kept" }, { title: "Shard" }];
       const allNotes = [{ title: "Kept note" }, { title: "Shard note" }];
@@ -10233,6 +10448,7 @@ describe("Evolu integration", () => {
       assertEqual(otherTab.getQueryRows(notesQuery), keptNotes);
       assertEqual(await caller.loadQuery(todosQuery), keptTodos);
       assertEqual(await caller.loadQuery(notesQuery), keptNotes);
+      assertEqual(await caller.loadOwnerUsage(shardOwner), ok(null));
 
       // The next use downloads the synced rows from the relay, also the last
       // write, and local-only rows never sync.

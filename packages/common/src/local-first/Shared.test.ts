@@ -22943,3 +22943,228 @@ describe("owner deletion", () => {
       });
   });
 });
+
+describe("owner usage", () => {
+  const loadOwnerUsage = (
+    port: Pick<TestEvoluInstance["evoluChannel"]["port2"], "postMessage">,
+  ): void => {
+    port.postMessage({ type: "LoadOwnerUsage", ownerId: testAppOwner2.id });
+  };
+
+  /**
+   * Answers the usage load the instance's DbWorker received last, which it
+   * received as a read request, without a clock.
+   */
+  const answerUsageLoad = async (
+    { dbInputs, dbWorkerPort, id }: TestEvoluInstance,
+    message: ExtractTyped<DbWorkerQueuedResponse, "ForEvolu">["message"],
+  ): Promise<void> => {
+    const input = dbInputs.at(-1);
+    assertNotUndefined(input);
+    assertEqual(input, {
+      type: "Request",
+      attemptId: input.attemptId,
+      request: {
+        type: "ForEvolu",
+        id,
+        message: { type: "LoadOwnerUsage", ownerId: testAppOwner2.id },
+      },
+    });
+    dbWorkerPort.postMessage({
+      type: "OnQueuedResponse",
+      attemptId: input.attemptId,
+      response: { type: "ForEvolu", id, message },
+    });
+    await testWaitForWorkerMessage();
+  };
+
+  const collectOutputs = (instance: TestEvoluInstance) => {
+    const outputs: Array<EvoluOutput> = [];
+    instance.evoluChannel.port2.onMessage = (output) => {
+      outputs.push(output);
+    };
+    return outputs;
+  };
+
+  const refusal: UnsupportedDbVersionError = {
+    type: "UnsupportedDbVersionError",
+    storedVersion: PositiveInt.orThrow(3),
+    supportedVersion: PositiveInt.orThrow(2),
+  };
+
+  it("loads the usage as a read request and answers it, or its failure, to the asking instance only", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const caller = await setup.createEvolu();
+    const callerOutputs = collectOutputs(caller);
+    const sibling = await addInstance(setup, setup.worker.port, disposer);
+    const other = await addInstance(
+      setup,
+      setupTab(setup, disposer).port,
+      disposer,
+    );
+    sibling.outputs.length = 0;
+    other.outputs.length = 0;
+
+    loadOwnerUsage(caller.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    const usage = { storedBytes: NonNegativeInt.orThrow(105) };
+    await answerUsageLoad(caller, { type: "OwnerUsage", usage });
+    assertEqual(callerOutputs.splice(0), [{ type: "OnOwnerUsage", usage }]);
+
+    loadOwnerUsage(caller.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    const error = createUnknownError(new Error("disk I/O error"));
+    await answerUsageLoad(caller, { type: "LoadOwnerUsageFailed", error });
+
+    assertEqual(callerOutputs, [{ type: "OnLoadOwnerUsageFailed", error }]);
+    assertEqual(sibling.outputs, []);
+    assertEqual(other.outputs, []);
+    assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("loads the usage again in a replacement DbWorker and answers only that load's answer", async () => {
+    await using setup = await setupSharedWorker();
+    using disposer = new DisposableStack();
+    const instance = await setup.createEvolu({
+      releaseDbWorkerLeaderOnDispose: false,
+    });
+    const outputs = collectOutputs(instance);
+    loadOwnerUsage(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    const firstInput = instance.dbInputs.at(-1);
+    assertNotUndefined(firstInput);
+
+    await instance.releaseDbWorkerLeader();
+    const initDbWorker = await setupTabLeader(setup, disposer);
+    using dbWorkerPort = testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(
+      initDbWorker.port,
+    );
+    const nextDbInputs: Array<ExtractTyped<DbWorkerInput, "Request">> = [];
+    dbWorkerPort.onMessage = (input) => {
+      if (input.type === "Request") nextDbInputs.push(input);
+    };
+    dbWorkerPort.postMessage({
+      type: "LeaderAcquired",
+      clock: createTimestamp({ nodeId: maxNodeId }),
+    });
+    await testWaitForWorkerMessage();
+    // A replacement leader refreshes every instance's subscribed queries.
+    assertEqual(outputs.splice(0), [{ type: "RefreshQueries" }]);
+    assertLength(nextDbInputs, 1);
+    const [nextInput] = nextDbInputs;
+    assertEqual(nextInput, {
+      type: "Request",
+      attemptId: nextInput.attemptId,
+      request: firstInput.request,
+    });
+    assertNotSame(nextInput.attemptId, firstInput.attemptId);
+
+    const usage = { storedBytes: NonNegativeInt.orThrow(105) };
+    const response = {
+      type: "ForEvolu",
+      id: instance.id,
+      message: { type: "OwnerUsage", usage },
+    } as const;
+    // The replaced DbWorker's answer is stale.
+    instance.dbWorkerPort.postMessage({
+      type: "OnQueuedResponse",
+      attemptId: firstInput.attemptId,
+      response,
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(outputs, []);
+
+    dbWorkerPort.postMessage({
+      type: "OnQueuedResponse",
+      attemptId: nextInput.attemptId,
+      response,
+    });
+    await testWaitForWorkerMessage();
+
+    assertEqual(outputs, [{ type: "OnOwnerUsage", usage }]);
+    assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("drops the answer of a usage load whose instance was disposed while it ran, and answers the next load", async () => {
+    await using setup = await setupSharedWorker();
+    await using disposer = new AsyncDisposableStack();
+    const caller = await setup.createEvolu();
+    const callerOutputs = collectOutputs(caller);
+    const gone = await addInstance(setup, setup.worker.port, disposer);
+    loadOwnerUsage(gone.port);
+    await testWaitForWorkerMessage();
+    const input = caller.dbInputs.at(-1);
+    assertNotUndefined(input);
+    assertEqual(input.request, {
+      type: "ForEvolu",
+      id: gone.id,
+      message: { type: "LoadOwnerUsage", ownerId: testAppOwner2.id },
+    });
+    // Queued behind the load of the instance that goes.
+    loadOwnerUsage(caller.evoluChannel.port2);
+    await gone.dispose();
+
+    caller.dbWorkerPort.postMessage({
+      type: "OnQueuedResponse",
+      attemptId: input.attemptId,
+      response: {
+        type: "ForEvolu",
+        id: gone.id,
+        message: { type: "OwnerUsage", usage: null },
+      },
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(callerOutputs, []);
+
+    const usage = { storedBytes: NonNegativeInt.orThrow(105) };
+    await answerUsageLoad(caller, { type: "OwnerUsage", usage });
+
+    assertEqual(callerOutputs, [{ type: "OnOwnerUsage", usage }]);
+    assertEqual(setup.run.deps.reportDefect.getDefects(), []);
+  });
+
+  it("answers a usage load with the refusal of the database at once", async () => {
+    await using setup = await setupSharedWorker();
+    const instance = await setup.createEvolu();
+    const outputs = collectOutputs(instance);
+    instance.dbWorkerPort.postMessage({
+      type: "LeaderRefused",
+      error: refusal,
+    });
+    await testWaitForWorkerMessage();
+    assertEqual(outputs, []);
+
+    loadOwnerUsage(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+
+    assertEqual(outputs, [{ type: "OnLoadOwnerUsageFailed", error: refusal }]);
+    assertEqual(instance.dbInputs, []);
+  });
+
+  it("answers a usage load queued behind another request with the refusal when the database becomes refused", async () => {
+    await using setup = await setupSharedWorker();
+    const instance = await setup.createEvolu();
+    const outputs = collectOutputs(instance);
+    instance.evoluChannel.port2.postMessage({
+      type: "Query",
+      queries: createSet([testQuery]),
+      callbackIds: [],
+    });
+    loadOwnerUsage(instance.evoluChannel.port2);
+    await testWaitForWorkerMessage();
+    assertEqual(
+      instance.dbInputs.map(({ request }) => request.message.type),
+      ["Query"],
+    );
+
+    instance.dbWorkerPort.postMessage({
+      type: "LeaderRefused",
+      error: refusal,
+    });
+    await testWaitForWorkerMessage();
+
+    assertEqual(outputs, [{ type: "OnLoadOwnerUsageFailed", error: refusal }]);
+    assertLength(instance.dbInputs, 1);
+  });
+});

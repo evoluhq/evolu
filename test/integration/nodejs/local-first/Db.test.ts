@@ -66,6 +66,7 @@ import {
   decryptAndDecodeDbChange,
   defaultProtocolMessageMaxSize,
   encodeAndEncryptDbChange,
+  getEncryptedDbChangeLength,
   MessageType,
   ProtocolErrorCode,
 } from "../../../../packages/common/src/local-first/Protocol.ts";
@@ -131,8 +132,8 @@ import {
   type Sqlite,
   type SqliteDriverOptions,
   type SqliteQuery,
+  SqliteValue,
   type SqliteSchema,
-  type SqliteValue,
 } from "../../../../packages/common/src/Sqlite.ts";
 import {
   testCreateDeps,
@@ -2518,7 +2519,7 @@ describe("query and mutation flow", () => {
                 5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
                 235, 212,
               ]),
-              storedBytes: 1,
+              storedBytes: 105,
             },
           ],
         },
@@ -2830,7 +2831,7 @@ describe("sync message flow", () => {
                 5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
                 235, 212,
               ]),
-              storedBytes: 1,
+              storedBytes: 101,
             },
           ],
         },
@@ -3255,7 +3256,7 @@ describe("sync message flow", () => {
                 5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
                 235, 212,
               ]),
-              storedBytes: 1,
+              storedBytes: 202,
             },
           ],
         },
@@ -3501,7 +3502,7 @@ describe("sync message flow", () => {
                 5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
                 235, 212,
               ]),
-              storedBytes: 1,
+              storedBytes: 101,
             },
           ],
         },
@@ -3806,58 +3807,140 @@ describe("sync message flow", () => {
     assertTrue(retried.didWriteMessages);
   });
 
-  describe("ApplySyncMessage with a change it skips", () => {
-    const createMessage = (
-      setup: DbWorkerSetup,
-      millis: number,
-      name: string,
-    ): CrdtMessage => ({
-      timestamp: createTimestamp({ millis: Millis.orThrow(millis) }),
-      change: DbChange.orThrow({
-        table: "testTable",
-        id: setup.createId(),
-        values: { name },
-        isInsert: true,
-        isDelete: null,
-      }),
+  const createMessage = (
+    setup: DbWorkerSetup,
+    millis: number,
+    name: string,
+  ): CrdtMessage => ({
+    timestamp: createTimestamp({ millis: Millis.orThrow(millis) }),
+    change: DbChange.orThrow({
+      table: "testTable",
+      id: setup.createId(),
+      values: { name },
+      isInsert: true,
+      isDelete: null,
+    }),
+  });
+
+  /**
+   * Applies a Broadcast of messages, each encrypted with its own key and sent
+   * under its own timestamp unless another is given, or already encrypted.
+   */
+  const applyBroadcast = async (
+    setup: DbWorkerSetup,
+    messages: ReadonlyArray<
+      | readonly [CrdtMessage, OwnerEncryptionKey, Timestamp?]
+      | EncryptedCrdtMessage
+    >,
+  ) => {
+    const deps = testCreateDeps();
+    const buffer = createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Broadcast,
     });
-
-    /**
-     * Applies a Broadcast of messages, each encrypted with its own key and sent
-     * under its own timestamp unless another is given, or already encrypted.
-     */
-    const applyBroadcast = async (
-      setup: DbWorkerSetup,
-      messages: ReadonlyArray<
-        | readonly [CrdtMessage, OwnerEncryptionKey, Timestamp?]
-        | EncryptedCrdtMessage
-      >,
-    ) => {
-      const deps = testCreateDeps();
-      const buffer = createProtocolMessageBuffer(testAppOwner.id, {
-        messageType: MessageType.Broadcast,
-      });
-      for (const entry of messages) {
-        if ("change" in entry) {
-          buffer.addMessage(entry);
-          continue;
-        }
-        const [message, key, timestamp = message.timestamp] = entry;
-        buffer.addMessage({
-          timestamp,
-          change: encodeAndEncryptDbChange(setupCryptoDeps(deps))(message, key),
-        });
+    for (const entry of messages) {
+      if ("change" in entry) {
+        buffer.addMessage(entry);
+        continue;
       }
-      const outputs = await postRequest(
-        setup,
-        setupApplySyncRequest(buffer.unwrap()),
-      );
-      await testWaitForWorkerMessage();
-      assertEqual(setup.consoleEntryOrErrors, []);
-      assertLength(outputs, 1);
-      return getQueuedSharedWorkerMessage(outputs, "ApplySyncMessage");
-    };
+      const [message, key, timestamp = message.timestamp] = entry;
+      buffer.addMessage({
+        timestamp,
+        change: encodeAndEncryptDbChange(setupCryptoDeps(deps))(message, key),
+      });
+    }
+    const outputs = await postRequest(
+      setup,
+      setupApplySyncRequest(buffer.unwrap()),
+    );
+    await testWaitForWorkerMessage();
+    assertEqual(setup.consoleEntryOrErrors, []);
+    assertLength(outputs, 1);
+    return getQueuedSharedWorkerMessage(outputs, "ApplySyncMessage");
+  };
 
+  /**
+   * Stores the messages on the relay, each uploaded by a writer with the
+   * owner's write key and the given encryption key.
+   */
+  const storeOnRelay = async (
+    relay: TestSqliteAndRelayStorageSetup,
+    messages: ReadonlyArray<readonly [CrdtMessage, OwnerEncryptionKey]>,
+  ) => {
+    const deps = testCreateDeps();
+    for (const [message, encryptionKey] of messages) {
+      await relay.run.orThrow(
+        applyProtocolMessageAsRelay(
+          createProtocolUploadFromCrdtMessages(setupCryptoDeps(deps))(
+            { ...testAppOwner, encryptionKey },
+            [message],
+          ).message,
+        ),
+      );
+    }
+  };
+
+  /**
+   * Runs a round between the client and the relay until the client converges,
+   * and returns the skipped error types and the relay's reply sizes.
+   */
+  const syncWithRelay = async (
+    setup: DbWorkerSetup,
+    relay: TestSqliteAndRelayStorageSetup,
+  ) => {
+    const sync = getQueuedSharedWorkerMessage(
+      await postRequest(setup, {
+        type: "ForSharedWorker",
+        message: { type: "CreateSyncMessages", owners: [testAppOwner] },
+      }),
+      "CreateSyncMessages",
+    ).protocolMessagesByOwnerId.get(testAppOwner.id);
+    assertNotUndefined(sync);
+    let message = sync;
+    const skippedErrorTypes: Array<string> = [];
+    const replySizes: Array<number> = [];
+    for (let step = 0; step < 20; step++) {
+      const relayResponse = await relay.run.orThrow(
+        applyProtocolMessageAsRelay(message),
+      );
+      replySizes.push(relayResponse.message.byteLength);
+      const response = getQueuedSharedWorkerMessage(
+        await postRequest(setup, setupApplySyncRequest(relayResponse.message)),
+        "ApplySyncMessage",
+      );
+      assertOk(response.result);
+      if (response.skippedError)
+        skippedErrorTypes.push(response.skippedError.type);
+      if (response.result.value.type === "Converged")
+        return { skippedErrorTypes, replySizes };
+      assertSame(response.result.value.type, "Response");
+      message = response.result.value.message;
+    }
+    throw new Error("The round did not converge.");
+  };
+
+  /** Asserts that the relay holds the client's change. */
+  const assertOnRelay = (
+    relay: TestSqliteAndRelayStorageSetup,
+    message: CrdtMessage,
+  ) => {
+    assertOk(
+      decryptAndDecodeDbChange({
+        xChaCha20Poly1305: createXChaCha20Poly1305(),
+      })(
+        {
+          timestamp: message.timestamp,
+          change: relay.storage.readDbChange(
+            testAppOwnerIdBytes,
+            timestampToTimestampBytes(message.timestamp),
+          ),
+        },
+        testAppOwner.encryptionKey,
+      ),
+      message.change,
+    );
+  };
+
+  describe("ApplySyncMessage with a change it skips", () => {
     it("stores the valid changes and skips the ones it cannot decrypt or verify", async () => {
       await using setup = await setupDbWorker();
       const before = createMessage(setup, 1, "before");
@@ -3970,91 +4053,6 @@ describe("sync message flow", () => {
       assertSame(response.skippedError, null);
       assertTrue(response.didWriteMessages);
     });
-
-    /**
-     * Stores the messages on the relay, each uploaded by a writer with the
-     * owner's write key and the given encryption key.
-     */
-    const storeOnRelay = async (
-      relay: TestSqliteAndRelayStorageSetup,
-      messages: ReadonlyArray<readonly [CrdtMessage, OwnerEncryptionKey]>,
-    ) => {
-      const deps = testCreateDeps();
-      for (const [message, encryptionKey] of messages) {
-        await relay.run.orThrow(
-          applyProtocolMessageAsRelay(
-            createProtocolUploadFromCrdtMessages(setupCryptoDeps(deps))(
-              { ...testAppOwner, encryptionKey },
-              [message],
-            ).message,
-          ),
-        );
-      }
-    };
-
-    /**
-     * Runs a round between the client and the relay until the client converges,
-     * and returns the skipped error types and the relay's reply sizes.
-     */
-    const syncWithRelay = async (
-      setup: DbWorkerSetup,
-      relay: TestSqliteAndRelayStorageSetup,
-    ) => {
-      const sync = getQueuedSharedWorkerMessage(
-        await postRequest(setup, {
-          type: "ForSharedWorker",
-          message: { type: "CreateSyncMessages", owners: [testAppOwner] },
-        }),
-        "CreateSyncMessages",
-      ).protocolMessagesByOwnerId.get(testAppOwner.id);
-      assertNotUndefined(sync);
-      let message = sync;
-      const skippedErrorTypes: Array<string> = [];
-      const replySizes: Array<number> = [];
-      for (let step = 0; step < 20; step++) {
-        const relayResponse = await relay.run.orThrow(
-          applyProtocolMessageAsRelay(message),
-        );
-        replySizes.push(relayResponse.message.byteLength);
-        const response = getQueuedSharedWorkerMessage(
-          await postRequest(
-            setup,
-            setupApplySyncRequest(relayResponse.message),
-          ),
-          "ApplySyncMessage",
-        );
-        assertOk(response.result);
-        if (response.skippedError)
-          skippedErrorTypes.push(response.skippedError.type);
-        if (response.result.value.type === "Converged")
-          return { skippedErrorTypes, replySizes };
-        assertSame(response.result.value.type, "Response");
-        message = response.result.value.message;
-      }
-      throw new Error("The round did not converge.");
-    };
-
-    /** Asserts that the relay holds the client's change. */
-    const assertOnRelay = (
-      relay: TestSqliteAndRelayStorageSetup,
-      message: CrdtMessage,
-    ) => {
-      assertOk(
-        decryptAndDecodeDbChange({
-          xChaCha20Poly1305: createXChaCha20Poly1305(),
-        })(
-          {
-            timestamp: message.timestamp,
-            change: relay.storage.readDbChange(
-              testAppOwnerIdBytes,
-              timestampToTimestampBytes(message.timestamp),
-            ),
-          },
-          testAppOwner.encryptionKey,
-        ),
-        message.change,
-      );
-    };
 
     it("finishes a round with a relay that keeps offering a change it cannot decrypt", async () => {
       await using setup = await setupDbWorker();
@@ -4173,6 +4171,534 @@ describe("sync message flow", () => {
       );
       assertSame(relay.storage.getSize(testAppOwnerIdBytes), 1);
       assertEqual(setup.consoleEntryOrErrors, []);
+    });
+  });
+
+  describe("stored bytes", () => {
+    const readStoredBytes = (sqlite: Sqlite): number | undefined =>
+      sqlite.exec<{ storedBytes: number }>(sql`
+        select "storedBytes"
+        from evolu_usage
+        where "ownerId" = ${testAppOwnerIdBytes};
+      `).rows[0]?.storedBytes;
+
+    /**
+     * Writes changes of every kind the count covers: local ones, an update and
+     * a deletion among them, received ones whose length prefix takes one, two
+     * and three bytes, one whose columns are split between its table and the
+     * quarantine, and one in drift quarantine. A local-only row has no change.
+     */
+    const writeChanges = async (
+      setup: DbWorkerSetup,
+      receive: (
+        messages: ReadonlyArray<readonly [CrdtMessage, OwnerEncryptionKey]>,
+      ) => Promise<unknown>,
+    ): Promise<void> => {
+      const localId = setup.createId();
+      for (const change of [
+        { values: { name: "local" }, isInsert: true, isDelete: null },
+        { values: { name: "updated" }, isInsert: false, isDelete: null },
+        { values: {}, isInsert: false, isDelete: true },
+      ])
+        await postRequest(
+          setup,
+          setupMutateRequest(setup.evoluInstanceId, [
+            createMutationChange({
+              table: "testTable",
+              id: localId,
+              ...change,
+            }),
+          ]),
+        );
+      await postRequest(
+        setup,
+        setupMutateRequest(setup.evoluInstanceId, [
+          createMutationChange({
+            table: "_localTable",
+            id: setup.createId(),
+            values: { value: "local only" },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ]),
+      );
+      await receive(
+        [
+          createMessage(setup, 1, "remote"),
+          createMessage(setup, 2, "remote".padEnd(200, ".")),
+          createMessage(setup, 3, "remote".padEnd(20_000, ".")),
+          {
+            timestamp: createTimestamp({ millis: Millis.orThrow(4) }),
+            change: DbChange.orThrow({
+              table: "testTable",
+              id: setup.createId(),
+              values: { name: "split", note: "quarantined" },
+              isInsert: true,
+              isDelete: null,
+            }),
+          },
+          createMessage(setup, 2 * defaultTimestampMaxDrift, "drifted"),
+        ].map((message) => [message, testAppOwner.encryptionKey] as const),
+      );
+    };
+
+    /** Asserts that the client holds the quarantine {@link writeChanges} makes. */
+    const assertQuarantine = (setup: DbWorkerSetup): void => {
+      assertEqual(
+        setup.sqlite.exec(sql`
+          select "column", "reason"
+          from evolu_message_quarantine
+          order by "column";
+        `).rows,
+        [
+          { column: "createdAt", reason: QuarantineReason.TimestampDrift },
+          { column: "name", reason: QuarantineReason.TimestampDrift },
+          { column: "note", reason: QuarantineReason.Schema },
+        ],
+      );
+    };
+
+    it("counts the bytes a relay counts for the changes it stores and sends", async () => {
+      await using setup = await setupDbWorker();
+      await using relay = await setupSqliteAndRelayStorage();
+      await writeChanges(setup, (messages) => storeOnRelay(relay, messages));
+
+      await syncWithRelay(setup, relay);
+      assertQuarantine(setup);
+
+      const storedBytes = readStoredBytes(relay.sqlite);
+      assertNotUndefined(storedBytes);
+      assertSame(readStoredBytes(setup.sqlite), storedBytes);
+
+      // A timestamp stored before isn't counted again, beside a new one.
+      await applyBroadcast(setup, [
+        [createMessage(setup, 1, "remote"), testAppOwner.encryptionKey],
+        [createMessage(setup, 5, "new"), testAppOwner.encryptionKey],
+      ]);
+      await syncWithRelay(setup, relay);
+      assert(
+        (readStoredBytes(relay.sqlite) ?? 0) > storedBytes,
+        "The relay should count the new change.",
+      );
+      assertSame(readStoredBytes(setup.sqlite), readStoredBytes(relay.sqlite));
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "OwnerUsage",
+        usage: { storedBytes: readStoredBytes(relay.sqlite) },
+      });
+      assertEqual(setup.consoleEntryOrErrors, []);
+    });
+
+    it("uploads a write while connected as SQLite stores it, so a relay counts it as this database does", async () => {
+      await using setup = await setupDbWorker();
+      await using relay = await setupSqliteAndRelayStorage();
+      const outputs = await postRequest(
+        setup,
+        setupMutateRequest(setup.evoluInstanceId, [
+          createMutationChange({
+            table: "testTable",
+            id: setup.createId(),
+            // SQLite stores the lone surrogate as U+FFFD, so this text
+            // encodes as Json only as stored.
+            values: { name: '{"a":"\uD800"}' },
+            isInsert: true,
+            isDelete: null,
+          }),
+          createMutationChange({
+            table: "testTable",
+            id: setup.createId(),
+            values: { name: SqliteValue.orThrow(-0) },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ]),
+      );
+      const output = outputs[0];
+      assert(
+        output?.type === "OnQueuedResponse" &&
+          output.response.type === "ForEvolu" &&
+          output.response.message.type === "Mutate",
+        "Expected the mutation's answer.",
+      );
+      const messages = output.response.message.messagesByOwnerId.get(
+        testAppOwner.id,
+      );
+      assertNotUndefined(messages);
+
+      // As the SharedWorker uploads the answered write while connected.
+      await storeOnRelay(
+        relay,
+        messages.map((message) => [message, testAppOwner.encryptionKey]),
+      );
+
+      assertSame(readStoredBytes(relay.sqlite), readStoredBytes(setup.sqlite));
+    });
+
+    /** Loads an owner's usage, as the instance's loadOwnerUsage asks for it. */
+    const loadOwnerUsage = async (
+      setup: DbWorkerSetup,
+      ownerId: OwnerId = testAppOwner.id,
+    ): Promise<unknown> => {
+      const attemptId = setup.createId();
+      const outputs = await postRequest(
+        setup,
+        {
+          type: "ForEvolu",
+          id: setup.evoluInstanceId,
+          message: { type: "LoadOwnerUsage", ownerId },
+        },
+        attemptId,
+      );
+      const output = outputs.find(
+        (output) =>
+          output.type === "OnQueuedResponse" && output.attemptId === attemptId,
+      );
+      assert(
+        output?.type === "OnQueuedResponse" &&
+          output.response.type === "ForEvolu",
+        "Expected the load's answer.",
+      );
+      return output.response.message;
+    };
+
+    /** Writes a change of testTable under testAppOwner. */
+    const insertRow = (
+      setup: DbWorkerSetup,
+      values: Record<string, SqliteValue>,
+    ): Promise<unknown> =>
+      postRequest(
+        setup,
+        setupMutateRequest(setup.evoluInstanceId, [
+          createMutationChange({
+            table: "testTable",
+            id: setup.createId(),
+            values,
+            isInsert: true,
+            isDelete: null,
+          }),
+        ]),
+      );
+
+    it("counts an owner an earlier release wrote to once its usage loads, and counts on from that", async () => {
+      await using setup = await setupDbWorker();
+      await writeChanges(setup, (messages) => applyBroadcast(setup, messages));
+      assertQuarantine(setup);
+      const counted = readStoredBytes(setup.sqlite);
+      assertNotUndefined(counted);
+      // An earlier release writes 1 on every write, also over a count, and
+      // this one leaves it until the owner's usage loads.
+      setup.sqlite.exec(sql`update evolu_usage set "storedBytes" = 1;`);
+      const later = createMessage(setup, 5, "later");
+      await applyBroadcast(setup, [[later, testAppOwner.encryptionKey]]);
+      assertSame(readStoredBytes(setup.sqlite), 1);
+
+      const storedBytes = counted + getEncryptedDbChangeLength(later);
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "OwnerUsage",
+        usage: { storedBytes },
+      });
+      assertSame(readStoredBytes(setup.sqlite), storedBytes);
+      const last = createMessage(setup, 6, "last");
+      await applyBroadcast(setup, [[last, testAppOwner.encryptionKey]]);
+      assertSame(
+        readStoredBytes(setup.sqlite),
+        storedBytes + getEncryptedDbChangeLength(last),
+      );
+      assertEqual(setup.consoleEntryOrErrors, []);
+    });
+
+    it("loads null for an owner without a stored change, also with rows of a local-only table", async () => {
+      await using setup = await setupDbWorker();
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "OwnerUsage",
+        usage: null,
+      });
+      await postRequest(
+        setup,
+        setupMutateRequest(setup.evoluInstanceId, [
+          createMutationChange({
+            table: "_localTable",
+            id: setup.createId(),
+            values: { value: "local only" },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ]),
+      );
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "OwnerUsage",
+        usage: null,
+      });
+    });
+
+    it("counts an owner whose every change is quarantined", async () => {
+      await using setup = await setupDbWorker();
+      const drifted = createMessage(
+        setup,
+        2 * defaultTimestampMaxDrift,
+        "drifted",
+      );
+      await applyBroadcast(setup, [[drifted, testAppOwner.encryptionKey]]);
+      assertEqual(
+        setup.sqlite.exec(sql`select count(*) as count from evolu_history;`)
+          .rows,
+        [{ count: 0 }],
+      );
+      const storedBytes = getEncryptedDbChangeLength(drifted);
+      assertSame(readStoredBytes(setup.sqlite), storedBytes);
+      setup.sqlite.exec(sql`update evolu_usage set "storedBytes" = 1;`);
+
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "OwnerUsage",
+        usage: { storedBytes },
+      });
+    });
+
+    it("counts an owner synced again after its deletion from 0", async () => {
+      await using setup = await setupDbWorker();
+      await using relay = await setupSqliteAndRelayStorage();
+      await writeChanges(setup, (messages) => storeOnRelay(relay, messages));
+      await syncWithRelay(setup, relay);
+      await postRequest(setup, {
+        type: "ForEvolu",
+        id: setup.evoluInstanceId,
+        message: { type: "DeleteOwner", ownerId: testAppOwner.id },
+      });
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "OwnerUsage",
+        usage: null,
+      });
+
+      await syncWithRelay(setup, relay);
+
+      const storedBytes = readStoredBytes(relay.sqlite);
+      assertNotUndefined(storedBytes);
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "OwnerUsage",
+        usage: { storedBytes },
+      });
+      assertEqual(setup.consoleEntryOrErrors, []);
+    });
+
+    it("counts 0 for an owner whose usage an earlier release kept without its changes", async () => {
+      await using setup = await setupDbWorker();
+      await insertRow(setup, { name: "deleted" });
+      // As an earlier release's deleteOwner, which kept the usage row.
+      setup.sqlite.exec(sql`delete from evolu_history;`);
+      setup.sqlite.exec(sql`update evolu_usage set "storedBytes" = 1;`);
+
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "OwnerUsage",
+        usage: { storedBytes: 0 },
+      });
+      assertSame(readStoredBytes(setup.sqlite), 0);
+
+      // Counted from 0 on, so a later write adds its bytes.
+      await insertRow(setup, { name: "after" });
+      const storedBytes = readStoredBytes(setup.sqlite);
+      setup.sqlite.exec(sql`update evolu_usage set "storedBytes" = 1;`);
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "OwnerUsage",
+        usage: { storedBytes },
+      });
+    });
+
+    it("counts a change without a value an earlier release stored that this one can't, such as a number that isn't finite", async () => {
+      await using setup = await setupDbWorker();
+      await insertRow(setup, { name: "kept" });
+      const counted = readStoredBytes(setup.sqlite);
+      // Releases before 8.6.2 stored a number that isn't finite, as REAL.
+      setup.sqlite.exec(sql`
+        insert into evolu_history
+          ("ownerId", "table", "id", "column", "value", "timestamp")
+        select "ownerId", "table", "id", 'note', 9e999, "timestamp"
+        from evolu_history
+        where "column" = 'name';
+      `);
+      setup.sqlite.exec(sql`update evolu_usage set "storedBytes" = 1;`);
+
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "OwnerUsage",
+        usage: { storedBytes: counted },
+      });
+    });
+
+    it("counts -0 and a lone surrogate as SQLite stores them, so a write counts as its history does", async () => {
+      await using setup = await setupDbWorker();
+      // A lone surrogate keeps this JSON text from encoding as Json until
+      // SQLite stores it as U+FFFD.
+      await insertRow(setup, { name: '{"a":"\uD800"}' });
+      // Surrogate pairs are no lone surrogates, and enough of them to
+      // change the padded length if they were.
+      await insertRow(setup, { name: "\u{1F600}".repeat(10) });
+      await insertRow(setup, { name: SqliteValue.orThrow(-0) });
+      const counted = readStoredBytes(setup.sqlite);
+      setup.sqlite.exec(sql`update evolu_usage set "storedBytes" = 1;`);
+
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "OwnerUsage",
+        usage: { storedBytes: counted },
+      });
+    });
+
+    it("answers the count when storing it fails, such as on a full disk, and stores it at a later load", async () => {
+      let failsUsageUpdate = false;
+      await using dbSetup = await setupDb({
+        onExec: (query) => {
+          if (failsUsageUpdate && query.sql.includes("update evolu_usage"))
+            throw new Error("database or disk is full");
+        },
+      });
+      await using setup = await setupDbWorker({ dbSetup });
+      await insertRow(setup, { name: "counted" });
+      const storedBytes = readStoredBytes(setup.sqlite);
+      setup.sqlite.exec(sql`update evolu_usage set "storedBytes" = 1;`);
+
+      failsUsageUpdate = true;
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "OwnerUsage",
+        usage: { storedBytes },
+      });
+      failsUsageUpdate = false;
+      assertSame(readStoredBytes(setup.sqlite), 1);
+
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "OwnerUsage",
+        usage: { storedBytes },
+      });
+      assertSame(readStoredBytes(setup.sqlite), storedBytes);
+      assertEqual(setup.reportDefect.getDefects(), []);
+    });
+
+    it("answers a read SQLite fails with an UnknownError and keeps serving", async () => {
+      const error = new Error("disk I/O error");
+      let failsUsageRead = false;
+      await using dbSetup = await setupDb({
+        onExec: (query) => {
+          if (failsUsageRead && query.sql.includes('select "storedBytes"'))
+            throw error;
+        },
+      });
+      await using setup = await setupDbWorker({ dbSetup });
+      await insertRow(setup, { name: "counted" });
+      const storedBytes = readStoredBytes(setup.sqlite);
+
+      failsUsageRead = true;
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "LoadOwnerUsageFailed",
+        error: createUnknownError(error),
+      });
+      failsUsageRead = false;
+
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "OwnerUsage",
+        usage: { storedBytes },
+      });
+      assertEqual(setup.reportDefect.getDefects(), []);
+    });
+
+    it("counts only the owner whose usage loads", async () => {
+      await using setup = await setupDbWorker();
+      await insertRow(setup, { name: "app owner" });
+      await postRequest(
+        setup,
+        setupMutateRequest(setup.evoluInstanceId, [
+          createMutationChange({
+            ownerId: testDbAppOwner2.id,
+            table: "testTable",
+            id: setup.createId(),
+            values: { name: "other owner".padEnd(300, ".") },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ]),
+      );
+      const otherUsage = await loadOwnerUsage(setup, testDbAppOwner2.id);
+      const storedBytes = readStoredBytes(setup.sqlite);
+      setup.sqlite.exec(sql`update evolu_usage set "storedBytes" = 1;`);
+
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "OwnerUsage",
+        usage: { storedBytes },
+      });
+      assertEqual(
+        setup.sqlite.exec(sql`
+          select "storedBytes"
+          from evolu_usage
+          where "ownerId" = ${ownerIdToOwnerIdBytes(testDbAppOwner2.id)};
+        `).rows,
+        [{ storedBytes: 1 }],
+      );
+      assertEqual(await loadOwnerUsage(setup, testDbAppOwner2.id), otherUsage);
+    });
+
+    it("counts no change it can't rebuild from its history, such as one whose isDeleted isn't a boolean", async () => {
+      await using setup = await setupDbWorker();
+      await insertRow(setup, { name: "valid" });
+      const storedBytes = readStoredBytes(setup.sqlite);
+      await insertRow(setup, { name: "invalid" });
+      setup.sqlite.exec(sql`
+        insert into evolu_history
+          ("ownerId", "table", "id", "column", "value", "timestamp")
+        select "ownerId", "table", "id", 'isDeleted', 'yes', "timestamp"
+        from evolu_history
+        where "column" = 'name' and "value" = 'invalid';
+      `);
+      setup.sqlite.exec(sql`update evolu_usage set "storedBytes" = 1;`);
+
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "OwnerUsage",
+        usage: { storedBytes },
+      });
+    });
+
+    it("keeps the count when quarantined changes are applied after a schema expansion or once time catches up", async () => {
+      await using dbSetup = await setupDb();
+      let storedBytes;
+      {
+        await using setup = await setupDbWorker({ dbSetup });
+        await writeChanges(setup, (messages) =>
+          applyBroadcast(setup, messages),
+        );
+        assertQuarantine(setup);
+        storedBytes = readStoredBytes(setup.sqlite);
+      }
+
+      await using setup = await setupDbWorker({
+        dbSetup: {
+          ...dbSetup,
+          time: testCreateTime({
+            startAt: Millis.orThrow(2 * defaultTimestampMaxDrift),
+          }),
+        },
+        sqliteSchema: createTestSqliteSchema(["name", "note"]),
+      });
+
+      assertEqual(
+        setup.sqlite.exec(sql`select * from evolu_message_quarantine;`).rows,
+        [],
+      );
+      assertSame(readStoredBytes(setup.sqlite), storedBytes);
+      setup.sqlite.exec(sql`update evolu_usage set "storedBytes" = 1;`);
+      assertEqual(await loadOwnerUsage(setup), {
+        type: "OwnerUsage",
+        usage: { storedBytes },
+      });
+    });
+
+    it("counts no change it skips", async () => {
+      await using setup = await setupDbWorker();
+      const valid = createMessage(setup, 1, "valid");
+
+      // Encrypted with another owner's key, so it can't be decrypted.
+      await applyBroadcast(setup, [
+        [valid, testAppOwner.encryptionKey],
+        [createMessage(setup, 2, "foreign"), testDbAppOwner2.encryptionKey],
+      ]);
+
+      assertSame(
+        readStoredBytes(setup.sqlite),
+        getEncryptedDbChangeLength(valid),
+      );
     });
   });
 
@@ -5506,7 +6032,7 @@ describe("quarantine replay", () => {
                 5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
                 235, 212,
               ]),
-              storedBytes: 1,
+              storedBytes: 113,
             },
           ],
         },
@@ -5718,7 +6244,7 @@ describe("quarantine replay", () => {
                 5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
                 235, 212,
               ]),
-              storedBytes: 1,
+              storedBytes: 113,
             },
           ],
         },
@@ -5963,7 +6489,7 @@ describe("quarantine replay", () => {
                 5, 39, 254, 242, 108, 77, 142, 9, 59, 219, 32, 254, 15, 186,
                 235, 212,
               ]),
-              storedBytes: 1,
+              storedBytes: 113,
             },
           ],
         },

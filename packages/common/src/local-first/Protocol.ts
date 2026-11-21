@@ -247,6 +247,7 @@ import {
 } from "../Bytes.ts";
 import type { ConsoleDep } from "../Console.ts";
 import {
+  createPadmePaddedLength,
   createPadmePadding,
   type DecryptWithXChaCha20Poly1305Error,
   EncryptionKey,
@@ -294,6 +295,7 @@ import {
   OwnerId,
   OwnerIdBytes,
   ownerIdToOwnerIdBytes,
+  type OwnerUsage,
   type OwnerWebSocketTransport,
   OwnerWriteKey,
   ownerWriteKeyLength,
@@ -2509,6 +2511,27 @@ export const encodeAndEncryptDbChange =
 
     return buffer.unwrap() as EncryptedDbChange;
   };
+
+/**
+ * Returns the length of the {@link EncryptedDbChange} that
+ * {@link encodeAndEncryptDbChange} returns for a message, without encrypting it,
+ * so a client counts an owner's {@link OwnerUsage.storedBytes} as a relay that
+ * stores the change does.
+ */
+export const getEncryptedDbChangeLength = (
+  message: CrdtMessage,
+): PositiveInt => {
+  const buffer = createBuffer();
+  encodeDbChange(buffer, message);
+  // The padded plaintext and the 16-byte Poly1305 tag.
+  const ciphertextLength = (createPadmePaddedLength(buffer.getLength()) +
+    16) as NonNegativeInt;
+  buffer.reset();
+  encodeNonNegativeInt(buffer, ciphertextLength);
+  return (xChaCha20Poly1305NonceLength +
+    buffer.getLength() +
+    ciphertextLength) as PositiveInt;
+};
 
 /**
  * Encodes a {@link CrdtMessage} as {@link encodeAndEncryptDbChange} does before

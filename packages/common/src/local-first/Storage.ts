@@ -784,7 +784,8 @@ export const createBaseSqliteStorageTables = (deps: SqliteDep): void => {
      * Columns:
      *
      * - `ownerId` – OwnerIdBytes (primary key)
-     * - `storedBytes` – total bytes stored in database
+     * - `storedBytes` – the bytes of the owner's encrypted changes, as
+     *   `OwnerUsage.storedBytes` defines them
      * - `firstTimestamp` – the owner's first timestamp
      * - `lastTimestamp` – the owner's last timestamp
      */
