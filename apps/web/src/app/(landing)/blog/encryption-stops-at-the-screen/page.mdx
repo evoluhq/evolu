@@ -1,0 +1,106 @@
+import { ArticleLayout } from "@/components/ArticleLayout";
+
+export const article = {
+  author: "Daniel Steigerwald",
+  date: "2026-11-21",
+  title: "Encryption stops at the screen",
+  description:
+    "End-to-end encryption and encrypted local databases protect relays and files on disk, not what an app displays. Here is what Evolu protects, where encryption stops, and what apps can actually do on each platform.",
+};
+
+export const metadata = {
+  title: article.title,
+  description: article.description,
+};
+
+export default (props) => <ArticleLayout article={article} {...props} />;
+
+Yesterday, Signal published
+[Signal is Serious About Protecting Your Privacy](https://signal.org/blog/protecting-your-privacy/),
+explaining why it is blocking screenshots on iOS 27 and when AI assistants try
+to read the screen on Android—following its
+[Windows 11 screen-security change](https://signal.org/blog/signal-doesnt-recall/)
+for Microsoft Recall last year. The core problem applies to every privacy-sensitive
+app, including apps built with Evolu: operating systems now ship AI agents that
+read what appears on screen, above the layer where encryption works.
+
+Signal's post also points out that blocking screenshots doesn't stop an agent
+from reading files already on the device. That splits the problem into two
+halves: data at rest on disk, and data once the app unlocks and renders it.
+
+## What Evolu closes on disk
+
+Many web and local-first apps leave user data in plaintext in `localStorage`,
+IndexedDB, OPFS, or plain SQLite files. On a desktop or browser profile, any
+program that can read the user's files can read that storage directly, without
+ever touching the screen.
+
+Evolu encrypts every database an app stores on the device page by page with
+AES-256 and keeps SQLite's temporary files in memory. With a `DeviceSecret`—kept
+in the iOS Keychain, encrypted with an Android Keystore key, or unlocked by a
+passkey on the web via
+[`createPasskeyAuth`](/docs/api-reference/web/functions/createPasskeyAuth)—a
+program that can only read the app's files gets ciphertext, even in a browser.
+(With `InstantStart`, the device database's key is public, so stored files remain
+readable; [Local auth](/docs/local-auth) explains the trade-off.)
+
+That doesn't set Evolu apart from Signal: Signal encrypts its local SQLite
+database with SQLCipher on every platform too. It sets encrypted local-first
+storage apart from plain browser and SQLite storage.
+
+## Where encryption stops
+
+Once an app unlocks its database and puts data on screen, encryption can no
+longer protect it. That boundary is the same for every app:
+
+- **The screen**: Screenshots, screen recording, app-switcher snapshots, and OS
+  AI features such as Windows Recall, Android Gemini Screen Context, and Siri AI
+  read rendered output after decryption.
+- **Accessibility**: Operating-system assist frameworks and third-party agents
+  that users grant accessibility permissions can inspect the app's view tree or
+  DOM.
+- **Notifications and the clipboard**: Anything an app puts into a notification
+  or copies to the clipboard leaves the app's boundary in plaintext, where the
+  OS, notification listeners, and clipboard managers can read it.
+- **Unlocked memory and the browser**: While a tab is open and unlocked,
+  decrypted data and keys live in JavaScript and WebAssembly memory, accessible
+  to browser extensions and any built-in browser AI feature allowed to read the
+  active tab.
+
+For an Evolu app, the most sensitive screen is usually the recovery view showing
+an owner's mnemonic: a single capture of those words gives permanent access to
+the owner's synced history on relays. Keep it hidden until the user asks to see
+it, and avoid putting sensitive content into notifications.
+
+## What an app can do today
+
+None of the major platforms currently gives developers a clean, universal API to
+opt an app out of OS AI reading without side effects. Here is what official
+platform documentation supports today, and what falls back to user settings:
+
+| Platform               | What the app can do                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | What is left to the user                                                                                                                                                                                                                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Android**            | Set [`FLAG_SECURE`](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#FLAG_SECURE) on sensitive windows (including dialogs) to block screenshots, non-secure displays, and the system assistant's default [screen context](https://developer.android.com/training/articles/assistant); Expo wraps it in [`expo-screen-capture`](https://docs.expo.dev/versions/latest/sdk/screen-capture/). On Android 14+, set [`accessibilityDataSensitive`](https://developer.android.com/reference/android/view/View#ACCESSIBILITY_DATA_SENSITIVE_YES) on sensitive native views to restrict accessibility reads to services declared with `isAccessibilityTool` (React Native doesn't expose this prop directly). | Disable Gemini [Screen context](https://support.google.com/gemini/answer/15850607?hl=en) in Gemini settings.                                                                                                                                                                             |
+| **iOS**                | No official API blocks screenshots of ordinary app content ([`preventsCapture`](https://developer.apple.com/documentation/avfoundation/avsamplebufferdisplaylayer/preventscapture) applies to `AVSampleBufferDisplayLayer`, not general views). Libraries such as [`expo-screen-capture`](https://docs.expo.dev/versions/latest/sdk/screen-capture/) reparent the window layer into a secure `UITextField` (an undocumented UIKit behavior) and offer app-switcher blur overlays.                                                                                                                                                                                                                                                    | Add the app to `Settings > Siri > Excluded Apps` ([Apple Support](https://support.apple.com/guide/iphone/change-siri-settings-iphc28624b81abc/ios)).                                                                                                                                     |
+| **macOS**              | No official API blocks screenshots of non-DRM content. Apple marks [`NSWindow.SharingType.none`](https://developer.apple.com/documentation/appkit/nswindow/sharingtype-swift.enum/none) as a legacy constant macOS no longer uses and directs capture protection to FairPlay Streaming; `ScreenCaptureKit` ignores it.                                                                                                                                                                                                                                                                                                                                                                                                               | Add the app to `System Settings > Siri > Excluded Apps` ([Apple Support](https://support.apple.com/guide/mac-help/customize-siri-mchl31570551/mac)).                                                                                                                                     |
+| **Windows / Electron** | Call [`SetWindowDisplayAffinity`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowdisplayaffinity) with `WDA_EXCLUDEFROMCAPTURE` or `WDA_MONITOR`—exposed in Electron as [`win.setContentProtection(true)`](https://www.electronjs.org/docs/latest/api/browser-window#winsetcontentprotectionenable-macos-windows). Microsoft's [Recall developer documentation](https://learn.microsoft.com/en-us/windows/apps/develop/windows-integration/recall/) recommends it to suspend Recall snapshots, while noting it isn't strict DRM. Electron's `setContentProtection` works reliably only on Windows: macOS `ScreenCaptureKit` bypasses it, and Linux doesn't support it.                              | Filter apps or turn off snapshots in [Recall settings](https://support.microsoft.com/en-us/windows/privacy-and-control-over-your-recall-experience-d404f672-7647-41e5-886c-a3c59680af15).                                                                                                |
+| **Web**                | No web API blocks OS screenshots, Recall, or browser AI sidebars. The [Screen Capture API](https://developer.mozilla.org/en-US/docs/Web/API/Screen_Capture_API) governs outgoing capture initiated by a page, not OS capture, and a W3C proposal to prevent screenshots in PWAs was [closed without implementation](https://github.com/w3c/manifest/issues/1154). Use `createPasskeyAuth` for at-rest encryption on disk.                                                                                                                                                                                                                                                                                                            | Use private browsing (which Recall skips in [supported browsers](https://support.microsoft.com/en-us/windows/privacy-and-control-over-your-recall-experience-d404f672-7647-41e5-886c-a3c59680af15)), add site filters in Recall, and manage browser extensions and built-in AI settings. |
+
+## Why Evolu doesn't block capture for you
+
+Evolu is a storage, encryption, and sync library. It owns no window, view
+hierarchy, or notification layer, so screen protection belongs in the app.
+
+Even if Evolu could toggle platform flags, one default wouldn't fit every app.
+Blocking screenshots prevents legitimate screenshots and screen sharing, and—as
+Signal noted when enabling it on Windows 11—can break some accessibility tools.
+A todo app and a private journal make different trade-offs, and many apps only
+want capture protection on a single sensitive screen rather than across the
+entire window. On iOS, blocking screenshots also relies on undocumented UIKit
+internals that can break with OS updates or view-hierarchy changes, which
+doesn't belong inside a database library.
+
+Evolu's job is to keep the boundary clear: encrypt synced changes end to end,
+encrypt databases on disk, and document honestly where that protection ends. See
+[What encryption doesn't protect](/docs/privacy#what-encryption-doesnt-protect)
+for the short reference in the docs.

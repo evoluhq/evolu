@@ -25,6 +25,19 @@ Exports leave encryption: `exportDatabase` returns the database as a plain SQLit
 
 A database kept in memory stores nothing on the device and is gone when its instance ends. Its changes still sync, so an instance of the same owner that stores its database on the device, now or later, keeps them. [Will my data stay on the device?](/docs/faq#will-my-data-stay-on-the-device) says when Evolu keeps a database in memory.
 
+## What encryption doesn't protect
+
+Encryption covers relays and stored databases, not what an app displays. Whatever the app shows can be read by anything the operating system lets read the screen or the app's interface: screenshots, screen recording, accessibility tools, and OS AI assistants such as Windows Recall, Gemini, and Siri AI. The same goes for what the app puts in notifications or on the clipboard. With `InstantStart`, stored files are readable too, as [Encryption on the device](#encryption-on-the-device) and [Local auth](/docs/local-auth) describe.
+
+Blocking screen capture is up to the app, and platform support is uneven:
+
+- **Windows and Electron**: Electron's [`setContentProtection`](https://www.electronjs.org/docs/latest/api/browser-window#winsetcontentprotectionenable-macos-windows) calls [`SetWindowDisplayAffinity`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowdisplayaffinity) on Windows, which blocks screenshots and Windows Recall. It works reliably only on Windows: macOS `ScreenCaptureKit` bypasses it, and Linux doesn't support it.
+- **Android**: [`FLAG_SECURE`](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#FLAG_SECURE) blocks screenshots, screen recording, and the system assistant's screen context ([`expo-screen-capture`](https://docs.expo.dev/versions/latest/sdk/screen-capture/) wraps it in Expo).
+- **iOS and macOS**: Neither offers an official API to block screenshots of ordinary app content. Users can exclude the app in Siri settings instead: `Settings > Siri > Excluded Apps` on [iOS](https://support.apple.com/guide/iphone/change-siri-settings-iphc28624b81abc/ios) and `System Settings > Siri > Excluded Apps` on [macOS](https://support.apple.com/guide/mac-help/customize-siri-mchl31570551/mac).
+- **Browsers**: The web platform offers no API to block OS screenshots or screen capture.
+
+Show an owner's mnemonic only when the user asks for it.
+
 ## Post-quantum resistance
 
 In a "harvest now, decrypt later" attack, an adversary collects encrypted data today and waits for a quantum computer to decrypt it. Evolu is designed so that the changes in such data stay encrypted, as long as the owner secret has enough entropy.
