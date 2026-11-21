@@ -485,10 +485,9 @@
  *   The relay offers it again in every round through the route until the
  *   database stores a message with that timestamp.
  * - The database stores a change it cannot send, a
- *   {@link ProtocolChangeTooLargeError}: one saved before `maxMutationSize`
- *   existed, or a crafted one received from a relay. Every route through a
- *   relay that lacks it skips it on every sync, so each such route stays
- *   settled.
+ *   {@link ProtocolChangeTooLargeError}: one an earlier release saved, or a
+ *   crafted one received from a relay. Every route through a relay that lacks
+ *   it skips it on every sync, so each such route stays settled.
  *
  * The messages received elsewhere that the last condition names request no
  * round through such a route, even while a requested round checks it again,

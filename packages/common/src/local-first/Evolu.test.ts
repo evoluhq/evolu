@@ -5960,6 +5960,38 @@ describe("Evolu", () => {
       assertEqual(completed, ["at limit"]);
     });
 
+    it("measures a mutation as SQLite stores it", async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run, evoluInputs } = setup;
+      const evolu = await run.ok(createSizeEvolu);
+
+      // SQLite stores -0 as 0 and a lone surrogate as U+FFFD.
+      assertEqual(
+        evolu.getMutationSize("note", { count: FiniteNumber.orThrow(-0) }),
+        evolu.getMutationSize("note", { count: FiniteNumber.orThrow(0) }),
+      );
+      // As written, this text takes about a byte per character, within the
+      // limit. Stored, it's JSON, whose numbers take nine bytes each.
+      const body = `[${"0.1,".repeat(150_000)}"\uD800"]`;
+      assertTrue(body.length < maxMutationSize);
+      const size = evolu.getMutationSize("note", { body });
+      assertEqual(
+        size,
+        evolu.getMutationSize("note", {
+          body: body.replace("\uD800", "\uFFFD"),
+        }),
+      );
+
+      const error = assertThrowsInstanceOf(
+        () => evolu.insert("note", { body }),
+        Error,
+      );
+      assertEqual(error.message, tooLargeMessage(size));
+
+      await testWaitForWorkerMessage();
+      assertLength(getChanges(evoluInputs), 0);
+    });
+
     it("lets plain text use the whole limit at a byte per character", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run, evoluInputs } = setup;

@@ -152,10 +152,10 @@
  *
  * Each mutation is limited to {@link maxMutationSize}, so every change fits one
  * message of {@link defaultProtocolMessageMaxSize} next to the largest ranges
- * section. Changes saved before that limit existed, and crafted changes a relay
- * stores, can be larger. Sync skips a stored change that cannot fit an empty
- * message after a pending Skip range, which is the message a later round is
- * guaranteed to reach, and reports it as a {@link ProtocolChangeTooLargeError}.
+ * section. Changes earlier releases saved, and crafted changes a relay stores,
+ * can be larger. Sync skips a stored change that cannot fit an empty message
+ * after a pending Skip range, which is the message a later round is guaranteed
+ * to reach, and reports it as a {@link ProtocolChangeTooLargeError}.
  *
  * ## Why Binary?
  *
@@ -582,12 +582,11 @@ export interface ProtocolTimestampMismatchError extends Typed<"ProtocolTimestamp
  * later round is guaranteed to reach.
  *
  * Every change within {@link maxMutationSize} fits. Larger ones are changes
- * saved before that limit existed and crafted changes a relay stores. A change
- * up to 22 bytes too large for that message can still fit one without a pending
- * skip, so sync may send it, sometimes after reporting it, but usually reports
- * it in every sync like a larger one. With
- * {@link defaultProtocolMessageMaxSize}, PADMÉ padding leaves no honest change
- * size in that 22-byte window.
+ * earlier releases saved and crafted changes a relay stores. A change up to 22
+ * bytes too large for that message can still fit one without a pending skip, so
+ * sync may send it, sometimes after reporting it, but usually reports it in
+ * every sync like a larger one. With {@link defaultProtocolMessageMaxSize},
+ * PADMÉ padding leaves no honest change size in that 22-byte window.
  *
  * An answer to a Timestamps range neither sends nor lists a skipped change, so
  * range fingerprints keep disagreeing about it. A request or a split still
@@ -2515,9 +2514,14 @@ export const encodeAndEncryptDbChange =
  * Encodes a {@link CrdtMessage} as {@link encodeAndEncryptDbChange} does before
  * padding and encryption.
  *
- * {@link Evolu.getMutationSize} measures mutations with this encoding, so
- * {@link maxMutationSize} limits exactly what is encoded, and every change
- * within it fits one protocol message.
+ * Values are encoded as SQLite stores them, as the drivers' contract in
+ * NativeSqlite.ts states: a safe integer binds as INTEGER, so -0 is encoded as
+ * 0, and text binds as UTF-8, so a lone surrogate is encoded as U+FFFD, as
+ * {@link encodeSqliteValue} encodes it. A change thus encodes alike before and
+ * after it's stored, including one received from an earlier release, which sent
+ * it as written. {@link Evolu.getMutationSize} measures mutations with this
+ * encoding, so {@link maxMutationSize} limits exactly what every upload of a
+ * change encodes, and every change within it fits one protocol message.
  */
 export const encodeDbChange = (buffer: Buffer, message: CrdtMessage): void => {
   encodeNonNegativeInt(buffer, encryptedDbChangeVersion);
@@ -2543,7 +2547,11 @@ export const encodeDbChange = (buffer: Buffer, message: CrdtMessage): void => {
     encodeString(buffer, column);
     // DbChange validated every value as a SqliteValue; only its Partial record
     // type admits undefined.
-    encodeSqliteValue(buffer, value as SqliteValue);
+    const sqliteValue = value as SqliteValue;
+    encodeSqliteValue(
+      buffer,
+      Object.is(sqliteValue, -0) ? (0 as FiniteNumber) : sqliteValue,
+    );
   }
 };
 
@@ -2675,14 +2683,15 @@ export const ProtocolValueType = {
  * Writes a {@link SqliteValue} as a {@link ProtocolValueType} code followed by
  * its payload.
  *
- * A string takes the first form that reproduces it exactly: empty; a
- * {@link DateIso} as its time; an {@link Id} as its 16 bytes; JSON text as
- * MessagePack, when `JSON.stringify` writes exactly that text, it nests no
- * deeper than decoding allows, and it contains no `\ud`, which begins the
- * escape of a lone surrogate; or Base64Url as its bytes. Any other string is
- * UTF-8, with a lone surrogate replaced by U+FFFD. A non-negative safe integer
- * other than -0 is a varint, and any other number is MessagePack, which writes
- * a negative integer from -2^31 as an int and the rest as a float64.
+ * A string is encoded as UTF-8 reads it, with each lone surrogate as U+FFFD, in
+ * the first form that reproduces that text exactly: empty; a {@link DateIso} as
+ * its time; an {@link Id} as its 16 bytes; JSON text as MessagePack, when
+ * `JSON.stringify` writes exactly that text, it nests no deeper than decoding
+ * allows, and it contains no `\ud`, which begins the escape of a lone
+ * surrogate; or Base64Url as its bytes. Any other string is UTF-8. A
+ * non-negative safe integer other than -0 is a varint, and any other number is
+ * MessagePack, which writes a negative integer from -2^31 as an int and the
+ * rest as a float64.
  */
 export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
   if (value === null) {
@@ -2730,23 +2739,33 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
       // slowly.
       const first = value[0];
       const last = value[value.length - 1];
-      const json =
+      const isEnclosed =
         (first === '"' && last === '"') ||
         (first === "[" && last === "]") ||
-        (first === "{" && last === "}") ||
+        (first === "{" && last === "}");
+      // Read as U+FFFD, a lone surrogate changes the form only of enclosed
+      // text, which can be JSON then but not before, because JSON.stringify
+      // writes a lone surrogate as an escape. The other forms are ASCII, and
+      // the UTF-8 of any other string replaces it anyway, so other strings
+      // skip the scan.
+      const text = isEnclosed
+        ? value.replaceAll(loneSurrogate, "\uFFFD")
+        : value;
+      const json =
+        isEnclosed ||
         ((first === "-" || (first >= "0" && first <= "9")) &&
           last >= "0" &&
           last <= "9") ||
         value === "true" ||
         value === "false" ||
         value === "null"
-          ? Json.from.parent(value)
+          ? Json.from.parent(text)
           : null;
       // Text that survives the JSON.stringify round trip below writes a lone
       // surrogate as a lowercase \udXXX escape. As Json it would be sent as
       // WTF-8, which @evolu/common 8.6 and earlier decode with U+FFFD, so such
       // text is sent as a string, which every decoder reads exactly.
-      if (json?.ok && !value.includes("\\ud")) {
+      if (json?.ok && !text.includes("\\ud")) {
         const jsonValue = jsonToJsonValue(json.value);
         const jsonBuffer = createBuffer();
         try {
@@ -2758,7 +2777,7 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
           // round-trip. Some valid JSON strings like "-0E0" get normalized to
           // "0" during parsing, which would cause data corruption if we don't
           // verify round-trip safety.
-          if (JSON.stringify(jsonValue) === value) {
+          if (JSON.stringify(jsonValue) === text) {
             const jsonBytes = jsonBuffer.unwrap();
             encodeNonNegativeInt(buffer, ProtocolValueType.Json);
             encodeLength(buffer, jsonBytes);
@@ -2810,6 +2829,10 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
   encodeLength(buffer, value);
   buffer.extend(value);
 };
+
+// With the u flag, a surrogate pair is one code point outside the class, so it
+// matches only a lone surrogate.
+const loneSurrogate = /[\uD800-\uDFFF]/gu;
 
 /**
  * Reads a {@link SqliteValue} that {@link encodeSqliteValue} wrote. It throws on

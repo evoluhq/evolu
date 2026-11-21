@@ -1408,12 +1408,11 @@ export type DevicePersistence = "Persisted" | "NotPersisted" | "Unknown";
  * owner, check the owner's keys.
  *
  * A {@link ProtocolChangeTooLargeError} skip is a change no protocol message can
- * hold: one this device saved before {@link maxMutationSize} existed, or a
- * crafted one received from a relay. Every route through a relay that lacks it
- * shows it after each sync, and everything else still syncs, but changes
- * received from one relay reach the others only after a reconnect or
- * {@link Evolu.requestSync}. The change is not recovered, and replacing relays
- * does not help.
+ * hold: one an earlier release saved on this device, or a crafted one received
+ * from a relay. Every route through a relay that lacks it shows it after each
+ * sync, and everything else still syncs, but changes received from one relay
+ * reach the others only after a reconnect or {@link Evolu.requestSync}. The
+ * change is not recovered, and replacing relays does not help.
  *
  * @group Core
  */
@@ -4441,7 +4440,7 @@ const createEvoluInstance =
         // gets it already batched and cannot reach the call site; quarantine,
         // which holds changes stored for sync; and skipping it in sync, which
         // keeps range fingerprints disagreeing. Received changes are not
-        // checked. Changes saved before this limit can be too large for any
+        // checked. Changes earlier releases saved can be too large for any
         // protocol message, as can crafted changes on a relay. Their
         // fingerprints disagree either way, so sync skips them, which ends
         // every round instead of retrying forever. A client reports such a

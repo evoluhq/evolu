@@ -59,6 +59,7 @@ import {
   createTimestampsBuffer,
   decodeSqliteValue,
   decryptAndDecodeDbChange,
+  encodeDbChange,
   encodeSqliteValue,
   encodeAndEncryptDbChange,
   MessageType,
@@ -267,6 +268,23 @@ test("encodeSqliteValue/decodeSqliteValue replaces a lone surrogate in a string 
 
   assertEqualBytes(buffer.unwrap(), [20, 5, 97, 0xef, 0xbf, 0xbd, 98]);
   assertSame(decodeSqliteValue(buffer), "a�b");
+});
+
+test("encodeSqliteValue reads a lone surrogate in JSON text as U+FFFD", () => {
+  for (const [value, stored] of [
+    ['"\uD800"', '"\uFFFD"'],
+    ['[0.5,"\uDC00"]', '[0.5,"\uFFFD"]'],
+    ['{"a":"b\uD800"}', '{"a":"b\uFFFD"}'],
+  ] as const) {
+    const buffer = createBuffer();
+    encodeSqliteValue(buffer, value);
+    const storedBuffer = createBuffer();
+    encodeSqliteValue(storedBuffer, stored);
+
+    assertSame(buffer.unwrap()[0], ProtocolValueType.Json);
+    assertEqualBytes(buffer.unwrap(), storedBuffer.unwrap());
+    assertSame(decodeSqliteValue(buffer), stored);
+  }
 });
 
 test("encodeSqliteValue encodes JSON text with an escaped lone surrogate as a string", () => {
@@ -759,27 +777,47 @@ test("encodeAndEncryptDbChange preserves null values", () => {
   );
 });
 
-test("encodeAndEncryptDbChange preserves negative zero", () => {
+test("encodeDbChange encodes values as SQLite stores them", () => {
   const deps = setupCryptoDeps();
-  const message: CrdtMessage = {
-    timestamp: createInitialTimestamp(deps),
+  const timestamp = createInitialTimestamp(deps);
+  const id = createId(deps);
+  const createMessage = (values: Record<string, SqliteValue>): CrdtMessage => ({
+    timestamp,
     change: DbChange.orThrow({
       table: "employee",
-      id: createId(deps),
-      values: { score: FiniteNumber.orThrow(-0) },
+      id,
+      values,
       isInsert: false,
       isDelete: null,
     }),
+  });
+  const encode = (message: CrdtMessage) => {
+    const buffer = createBuffer();
+    encodeDbChange(buffer, message);
+    return buffer.unwrap();
   };
-  const encryptedMessage = createEncryptedCrdtMessage(deps, message);
-  const decrypted = getOrThrow(
-    decryptAndDecodeDbChange(deps)(
-      encryptedMessage,
-      testAppOwner.encryptionKey,
-    ),
-  );
+  const written = createMessage({
+    score: SqliteValue.orThrow(-0),
+    note: "a\uD800",
+    // JSON once its lone surrogate is U+FFFD, so it encodes as Json.
+    data: '[0.5,"\uDC00"]',
+  });
+  const stored = createMessage({
+    score: SqliteValue.orThrow(0),
+    note: "a\uFFFD",
+    data: '[0.5,"\uFFFD"]',
+  });
 
-  assertSame(decrypted.values.score, -0);
+  assertEqualBytes(encode(written), encode(stored));
+  assertEqual(
+    getOrThrow(
+      decryptAndDecodeDbChange(deps)(
+        createEncryptedCrdtMessage(deps, written),
+        testAppOwner.encryptionKey,
+      ),
+    ),
+    stored.change,
+  );
 });
 
 test("decryptAndDecodeDbChange timestamp tamper-proofing", () => {
