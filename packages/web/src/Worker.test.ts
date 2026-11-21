@@ -154,6 +154,48 @@ test("createMessagePort assigns and clears the native onmessage handler", () => 
   );
 });
 
+test("disposing a port does not close it after a port transferred it", () => {
+  const nativePort = createClosableNativePort<string>();
+  const nativeCarrier = createClosableNativePort<string>();
+  const port = createMessagePort<string, string>(
+    nativePort as unknown as NativeMessagePort<string, string>,
+  );
+  const carrier = createMessagePort<string, string>(
+    nativeCarrier as unknown as NativeMessagePort<string, string>,
+  );
+
+  port.onMessage = () => {};
+  carrier.postMessage("port", [port.native]);
+  port[Symbol.dispose]();
+  carrier[Symbol.dispose]();
+
+  assertEqual(nativePort.close.mock.callCount(), 0);
+  assertEqual(nativePort.onmessage, null);
+  assertEqual(nativeCarrier.close.mock.callCount(), 1);
+});
+
+test("disposing a port closes it after its transfer threw", () => {
+  const nativePort = createClosableNativePort<string>();
+  const nativeCarrier = createClosableNativePort<string>();
+  nativeCarrier.postMessage.mock.mockImplementation(() => {
+    throw new Error("DataCloneError");
+  });
+  const port = createMessagePort<string, string>(
+    nativePort as unknown as NativeMessagePort<string, string>,
+  );
+  const carrier = createMessagePort<string, string>(
+    nativeCarrier as unknown as NativeMessagePort<string, string>,
+  );
+
+  assertThrowsInstanceOf(
+    () => carrier.postMessage("port", [port.native]),
+    Error,
+  );
+  port[Symbol.dispose]();
+
+  assertEqual(nativePort.close.mock.callCount(), 1);
+});
+
 test("createBroadcastChannel wraps native BroadcastChannel", async () => {
   const channelName = `test-channel-${crypto.randomUUID()}`;
   const channel1 = createBroadcastChannel<string>(channelName);
@@ -351,6 +393,26 @@ describe("one-tab SharedWorker polyfill", () => {
     workerSelf[Symbol.dispose]();
 
     assertEqual(received, ["first"]);
+  });
+
+  it("createOneTabSharedWorkerSelfPolyfill leaves open a port its connection transferred", () => {
+    const nativeSelf = createClosableNativePort<string>();
+    const nativePort = createClosableNativePort<string>();
+    using workerSelf = createOneTabSharedWorkerSelfPolyfill<string, string>(
+      nativeSelf as unknown as DedicatedWorkerGlobalScope,
+    );
+    const port = createMessagePort<string, string>(
+      nativePort as unknown as NativeMessagePort<string, string>,
+    );
+    let connectedPort!: MessagePort<string, string>;
+
+    workerSelf.onConnect = (connected) => {
+      connectedPort = connected;
+    };
+    connectedPort.postMessage("port", [port.native]);
+    port[Symbol.dispose]();
+
+    assertEqual(nativePort.close.mock.callCount(), 0);
   });
 
   it("createOneTabSharedWorkerSelfPolyfill disposes from connected port", () => {

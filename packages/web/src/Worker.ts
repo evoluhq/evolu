@@ -258,7 +258,7 @@ export const createOneTabSharedWorkerSelfPolyfill = <Input, Output = never>(
     postMessage: (message, transfer) => {
       if (disposables.disposed) return;
       if (transfer == null) nativeSelf.postMessage(message);
-      else nativeSelf.postMessage(message, [...transfer]);
+      else postMessageWithTransfer(nativeSelf, message, transfer);
     },
 
     get onMessage() {
@@ -380,7 +380,7 @@ const wrap = <Input, Output>(
   return {
     postMessage: (message: Input, transfer?: ReadonlyArray<Transferable>) => {
       if (transfer == null) native.postMessage(message);
-      else native.postMessage(message, [...transfer]);
+      else postMessageWithTransfer(native, message, transfer);
     },
 
     get onMessage() {
@@ -405,8 +405,28 @@ const wrap = <Input, Output>(
     [Symbol.dispose]: () => {
       // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
       native.onmessage = null;
+      if (transferredObjects.has(native)) return;
       if ("terminate" in native) native.terminate();
       else native.close();
     },
   };
 };
+
+const postMessageWithTransfer = (
+  native:
+    DedicatedWorkerGlobalScope | globalThis.MessagePort | globalThis.Worker,
+  message: unknown,
+  transfer: ReadonlyArray<Transferable>,
+): void => {
+  const transferables = [...transfer];
+  native.postMessage(message, transferables);
+  for (const transferable of transferables)
+    transferredObjects.add(transferable);
+};
+
+// Disposing a wrapper doesn't close a port a wrapper has transferred. A
+// transfer detaches the port, so closing it afterwards should do nothing, but
+// WebKit, as in Safari 27.2, closes the channel for the port's new owner when
+// that owner runs in the same process, and terminates the process once the new
+// owner transfers the port on (https://bugs.webkit.org/show_bug.cgi?id=315394).
+const transferredObjects = new WeakSet<object>();
