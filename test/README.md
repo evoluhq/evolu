@@ -117,6 +117,17 @@ follows this.
 Tests of how long something waits, such as a busy timeout, keep wall-clock
 time, because waiting uses no CPU.
 
+## Git commands in tests
+
+CI runs the unit, integration, and bundle suites inside a container whose user
+does not own the checkout, so `git` refuses commands that inspect the repository
+checkout unless `safe.directory` allows it. Pass `-c safe.directory=*` when
+spawning `git` against the repository checkout in tests or tested scripts (as
+`scripts/adr.test.mts` does); commands against an isolated temporary repository
+created by the test itself do not need it unless the test also runs under
+`GIT_TEST_ASSUME_DIFFERENT_OWNER=1`, which reproduces the container ownership
+check locally.
+
 ## Integration tests
 
 Integration tests exercise real platform implementations, external systems, or
@@ -147,7 +158,14 @@ Run focused browser tests with
 `pnpm exec vitest run --project=<project> <test-files>`. Without `--mode`, they
 run in Chromium, Firefox and WebKit; `--mode` selects `chromium`, `firefox`,
 `webkit` or `firefox-webkit`, and any other mode fails before tests run.
-`--coverage` runs only Chromium.
+`--coverage` runs only Chromium. Playwright disables the back/forward cache
+(`bfcache`) by default in Chromium (via `--disable-back-forward-cache`,
+removable only through `ignoreDefaultArgs` in browser launch options, not per
+test on a shared browser) and in Firefox (via Playwright's `playwright.cfg`
+setting `fission.bfcacheInParent` to `false`, which `ignoreDefaultArgs` does not
+override), and neither the Vitest browser configs nor
+`test/e2e/playwright.config.mts` overrides it, so Chromium and Firefox browser
+and E2E tests do not exercise `bfcache` behavior by default.
 
 The `browser-sqlite-wasm` project loads
 `packages/sqlite-wasm/wasm/sqlite3.wasm`, which CI builds in its SQLite Wasm
