@@ -1,6 +1,6 @@
 {
   "name": "@evolu/vue",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Evolu for Vue",
   "keywords": [
     "evolu",
@@ -41,7 +41,7 @@
     "@typescript/native": "npm:typescript@^7.0.2"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.29.1",
+    "@evolu/common": "^8.30.0",
     "vue": ">=3.5.24"
   },
   "publishConfig": {
