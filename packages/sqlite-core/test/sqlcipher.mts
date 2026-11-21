@@ -161,11 +161,19 @@ export interface SqlcipherFixtureResult {
   readonly stderr: string;
 }
 
+/**
+ * Runs the fixture, in `env` when given, without `LD_PRELOAD` and
+ * `DYLD_INSERT_LIBRARIES`, so a sanitizer runtime preloaded into a sanitized
+ * test process stays out of the unsanitized fixture binary.
+ */
 export const runSqlcipherFixture = (
   fixture: string,
   args: ReadonlyArray<string>,
+  env: NodeJS.ProcessEnv = process.env,
 ): SqlcipherFixtureResult => {
+  const { LD_PRELOAD: _, DYLD_INSERT_LIBRARIES: __, ...commandEnv } = env;
   const result = spawnSync(fixture, args, {
+    env: commandEnv,
     encoding: "utf8",
     timeout: 60_000,
     killSignal: "SIGKILL",
