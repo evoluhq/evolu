@@ -1,80 +1,103 @@
 # Evolu repository guidance
 
-This file selectively summarizes [Conventions](<apps/web/src/app/(docs)/docs/conventions/page.mdx>)
-and adds repository workflow. It suffices for routine work; read only the
-relevant Conventions section when a rule here is unclear or when reviewing or
-changing a convention. Keep shared rules consistent; not every convention needs
-a summary here.
+This file selectively summarizes
+[Conventions](<apps/web/src/app/(docs)/docs/conventions/page.mdx>) and adds
+repository workflow. Read only the relevant Conventions section when unclear or
+when reviewing/changing a convention; keep shared rules consistent. Nested
+native/SQLite `AGENTS.md` files are listed under Verification.
 
 ## Working on a task
 
 - Keep reviews read-only unless edits are requested. Preserve unrelated
   working-tree changes. Do not create a commit unless asked.
-- Commit messages use sentence case, with no `feat:`/`fix:` prefix or trailing period.
-- Git pushes sign with an SSH key on the maintainer's Trezor, as the
-  [Supply chain](<apps/web/src/app/(docs)/docs/supply-chain/page.mdx>) page
-  describes. A push that fails with `device not found` waits for the
-  maintainer to connect and unlock the Trezor; never push another way, such
-  as over HTTPS with a token.
-- Write new modules and helper scripts in TypeScript. Keep existing JavaScript,
-  MJS, and CJS files in their current language unless migrating them is the task.
-- Evolu supports only the current major version of each tool, as the examples
-  use it, such as Vite, Next.js, React, Expo, React Native, TypeScript, and
-  Node.js. Add no workarounds or tests for older versions, and don't report
-  review findings that affect only them. Browsers are different: Evolu
-  supports current Chromium, Firefox, and WebKit and works around their bugs.
+- When rejecting a review finding for an intentional trade-off, state
+  user-visible behavior in the symbol's JSDoc, record rationale in a brief `//`
+  comment, show it in triage, and apply it to the working tree before the next
+  round so it does not recur (folding into unpushed commits only per the commit
+  rule below).
+- For unsettled non-trivial designs, align on a plan in chat before coding (no
+  untracked working-tree scratchpads).
+- Commit messages use sentence case, with no `feat:`/`fix:` prefix or trailing
+  period. One feature or ADR per commit; separate unrelated fixes; name the
+  package or framework in single-package commits; fold review fixes into the
+  unpushed commits they fix only after the maintainer has seen them uncommitted
+  or asks.
+- Git pushes sign with the maintainer's Trezor SSH key
+  ([Supply chain](<apps/web/src/app/(docs)/docs/supply-chain/page.mdx>)). On
+  `device not found`, wait for the maintainer to unlock it; never push another
+  way (e.g. HTTPS with a token).
+- Write new modules and helper scripts in TypeScript. Keep existing JS, MJS, and
+  CJS files in their current language unless migrating them is the task.
+- Support only the current major version of each tool, as the examples use it
+  (such as Vite, Next.js, React, Expo, React Native, TypeScript, and Node.js):
+  no workarounds, tests, or review findings that affect only older versions.
+  Current Chromium, Firefox, and WebKit are supported (work around their bugs).
 
 ## Repository and commands
 
-This is a pnpm TypeScript monorepo. Use the Node.js version in `.nvmrc`.
-`apps/web/` runs Next 16, whose APIs differ from older versions; when changing
-Next-specific configuration or routing, consult the bundled docs in
-`node_modules/next/dist/docs/`.
+This is a pnpm TypeScript monorepo (`.nvmrc` Node.js). `apps/web/` runs Next 16
+(consult `node_modules/next/dist/docs/` for Next config/routing). `typescript`
+is TS 6 (`@typescript/typescript6`) and `@typescript/native` is TS 7 (`>=7` peer
+warnings are intentional); `pnpm typecheck` checks all TypeScript except
+`examples/` and `apps/web/deploy/` using TS 7 and is fast (keep it a sequential
+`tsc` chain); `pnpm build:docs` (TypeDoc) checks exported packages with TS 6
+(never set `skipErrorChecking: true`; `next build` also runs TS 6); run
+`pnpm exec tsc --build tsconfig.typecheck.json --force` after bumping `@types/*`.
 
-Run standalone TypeScript scripts with `node script.mts`. Run GitHub CLI
-commands with network access. To render a documented code example as an image
-for a post, run `node scripts/code-image.mts --help`.
+Run standalone TS scripts with `node script.mts`, `gh` with network access, and
+`node scripts/code-image.mts --help` for code images. Never run `pnpm` or
+`@changesets/cli` in a scratch copy with symlinked `node_modules` (pnpm rewires
+workspace links in the original checkout).
 
 ## Verification
 
-- Run checks directly relevant to the change. Scope tests, linting, formatting,
-  and builds to affected files or packages. Do not run full test suites merely
-  because a change touches exports, multiple packages, or infrastructure.
-- Do not run `pnpm verify`, or all of its component commands one by one, unless
-  the user explicitly requests it; CI runs it on pull requests and pushes to main.
-- For implementation changes, use `pnpm test:node "<test-file-or-glob>"`; quote
-  globs. For Vitest suites, select the owning project and relevant test files
-  from its configuration and follow `test/README.md`.
-- Format changed TypeScript, JavaScript, Markdown, and MDX files with
-  `pnpm exec prettier --write <changed-files>`, and lint changed source files
-  with `pnpm exec oxlint <changed-files>`. Node tests do not check types; run
-  `pnpm typecheck`, which checks all TypeScript except `examples/` and
-  `apps/web/deploy/` and is fast.
-- After changing documentation examples or exported APIs, run
-  `pnpm test:jsdoc`, which checks the JSDoc of every package, every
-  changeset, and every handwritten docs page and blog post. Pass files, such
-  as `pnpm test:jsdoc <changed-file>`, to check only those. `packages/svelte`
-  is excluded because Node.js cannot run its examples.
-- After changing MDX pages, the MDX plugins in `apps/web/src/mdx/`,
-  `apps/web/src/lib/navigation.ts`, exported declarations in `packages/*/src`,
-  the types they reference, their JSDoc, or API reference organization, or
-  renaming, moving, or removing pages, run `pnpm build:docs` and resolve its
-  warnings, which fail CI. Then run
-  `pnpm test:node --no-experimental-test-coverage test/integration/nodejs/web/Docs.test.ts`,
-  which compiles every handwritten MDX page and checks internal links in those
-  pages and in navigation. TSX pages, JSDoc, and READMEs are not checked, so
-  verify links you add there and search for a renamed page's or heading's old
-  URL.
+- Scope checks to affected files or packages; never run full suites merely for
+  touching exports, multiple packages, or infra. Run verification commands
+  directly, not via wrapper scripts.
+- Do not run `pnpm verify` (or its commands one by one) unless requested; CI
+  runs it on PRs and pushes to main.
+- Run Node tests with `pnpm test:node "<file-or-glob>"` (quote globs; never
+  bare `pnpm test:node`, which picks up `dist/` and `tmp/`). For Vitest, pick
+  the owning project and files per `test/README.md`.
+- Format changed TS/JS/MD/MDX with `pnpm exec prettier --write <files>`, lint
+  changed source with `pnpm exec oxlint <files>`, and run `pnpm typecheck` (Node
+  tests do not check types).
+- Check for `apps/web/.next/dev/lock` before running `next build`,
+  `pnpm build:web`, `pnpm build:docs` (incl. `pnpm test:integration:nodejs`),
+  `pnpm test:e2e`, or `pnpm test:e2e:dev` in the same checkout: while `pnpm dev`
+  runs there, run none of them, ask the maintainer first, and never restart
+  their servers. Start a dev server only when asked to read a page.
+- Once required checks pass, stop repeating or expanding verification without
+  new changes or unresolved concerns. Node's test runner (`pnpm test:node`,
+  `pnpm test:bundle`) counts timeouts as cancelled, not failed, so check exit
+  code and cancelled count, not just `fail 0`.
+- After changing documentation examples or exported APIs, run `pnpm test:jsdoc`,
+  which checks the JSDoc of every package, every changeset, and every
+  handwritten docs page and blog post. Pass files, such as
+  `pnpm test:jsdoc <changed-file>`, to check only those. `packages/svelte` is
+  excluded because Node.js cannot run its examples.
+- After changing MDX, `apps/web/src/mdx/`, `apps/web/src/lib/navigation.ts`,
+  exported declarations/types/JSDoc in `packages/*/src`, API reference
+  organization, or page moves/removals, run `pnpm build:docs` (every TypeDoc
+  warning fails it; resolve them all), then
+  `pnpm test:node --no-experimental-test-coverage test/integration/nodejs/web/Docs.test.ts`
+  (compiles handwritten MDX and checks links in handwritten pages, navigation,
+  and TypeDoc API reference pages; verify non-TypeDoc JSDoc, TSX, READMEs, and
+  old URLs manually).
+- After changing `apps/web/` production export or playgrounds, run
+  `pnpm build:web` and `pnpm test:e2e`. `pnpm test:e2e:dev` serves `next dev`
+  and skips `StaticSite.spec.mts`, so use it only for iterating on playgrounds
+  (`test/README.md`).
 - After changing `packages/common/src` outside tests, run `pnpm bench:type` and
-  `pnpm test:bundle`, which builds `@evolu/common` and measures its `dist`.
-  After changing sync protocol or storage code, such as
-  `packages/common/src/local-first/Protocol.ts`, `Storage.ts`, or `Relay.ts`,
-  also run `pnpm bench:protocol`; `--base=<ref>` compares with another commit.
-  Each benchmark takes under a minute. Report metric and bundle-size changes;
-  update baselines and snapshots only when the user explicitly requests it.
-- After changing storage algorithms, SQL, indexes, or query plans, select the
-  relevant storage tests. Run `pnpm bench:storage` only when the user
-  explicitly requests it.
+  `pnpm test:bundle` (builds `@evolu/common`; needs
+  `packages/sqlite-wasm/wasm/sqlite3.wasm` via `pnpm sqlite-wasm:download`, or
+  see `packages/sqlite-wasm/AGENTS.md`). For sync protocol or storage
+  (`Protocol.ts`, `Storage.ts`, `Relay.ts`), also run `pnpm bench:protocol`
+  (`--base=<ref>`). Report metric and bundle-size changes; update bench
+  baselines and bundle snapshots only on explicit user request, except
+  `ci-anchor.txt` and `bench/app-size/baselines.json` below.
+- After changing storage algorithms, SQL, indexes, or query plans, run relevant
+  storage tests; run `pnpm bench:storage` only when explicitly requested.
 - When a change leaves the Bench workflow unable to compare a suite with its
   anchor, rewrite the suite's `ci-anchor.txt` in the same commit to say why,
   which moves its CI anchor. Protocol runtime cannot compare across a change to
@@ -82,144 +105,56 @@ for a post, run `node scripts/code-image.mts --help`.
   list of cases, or to a case's workload hash, which `workload.mts`,
   `bench/protocol/frames.mts` and Evolu code such as `testAppOwner` feed;
   storage cannot compare across a change to `bench/storage/measure.mts`.
-- After a change that moves the example apps' sizes on purpose, such as to
-  `@evolu/react-native`'s native code or the examples' dependencies, update
-  `bench/app-size/baselines.json` from a dispatched CI run on its branch, as
-  `bench/app-size/README.md` describes. The app jobs report size differences
-  and never fail on them.
-- After changing a published package's `dependencies`,
-  `optionalDependencies`, `exports`, `publishConfig`, `types`, or `files`, or
-  its build configuration, run `pnpm build`, then
-  `pnpm check:packages`, which packs all packages and needs their built `dist`,
-  the pinned SQLite wasm, and the six SQLite addons of `@evolu/nodejs` in
-  `packages/nodejs/native`, which only CI builds for every target. Download
-  them from a Checks run with
-  `gh run download <run> -p 'nodejs-native-*' -D <dir>`, which puts each in a
-  directory of its own, then
-  `cp -R <dir>/nodejs-native-*/. packages/nodejs/native/`. Packing
-  `@evolu/react-native` runs its prepack, which writes `native/` and needs
-  what the core's tests need to write it: clang with `llvm-nm`, make, unzip,
-  and the pinned SQLite source or network access.
+- Optimize speed only against end-to-end regressions relative to what a change
+  replaces; microbenchmarks explain differences, not set targets.
+- After intentionally moving example app sizes (e.g. `@evolu/react-native`
+  native code or example deps), update `bench/app-size/baselines.json` from a
+  dispatched CI run (`bench/app-size/README.md`; reports diffs, never fails).
 - After changing dependencies in any `package.json`, run `pnpm lint:sherif`.
-- After changing `packages/sqlite-wasm/scripts/generate.mts`, `bindings.mts`, or
-  `upstream/`, regenerate with `node packages/sqlite-wasm/scripts/generate.mts`.
-  After changing `packages/sqlite-wasm/src` or `scripts`, run
-  `pnpm test:sqlite-wasm`, which fails below 100% line, branch, or function
-  coverage. Tests that run SQLite Wasm need the uncommitted
-  `packages/sqlite-wasm/wasm/sqlite3.wasm` and fail when it is missing or stale
-  after a pin change. Get the pinned one with `pnpm sqlite-wasm:download`, which
-  needs network access and downloads the version in
-  `packages/sqlite-wasm/package.json`. It fails with HTTP 404 until that version
-  is published, and with a checksum mismatch after a pin change until the next
-  release; in either case, build it as `packages/sqlite-wasm/README.md`
-  describes.
-- After changing `packages/sqlite-core`, run the affected C tests with
-  `node packages/sqlite-core/scripts/test.mts <test-name-prefix>` and the
-  affected TypeScript test files with `pnpm test:node`, then
-  `pnpm test:sqlite-core` once, which fails below 100% line, branch, or
-  function coverage of the package's TypeScript, or when the C tests cover
-  less than every line, branch, or function of `src` and `binding` that the
-  host compiles.
-  On a CPU that lacks a hardware crypto feature its architecture's paths use,
-  such as an arm64 one without SHA-512 or DIT, it allows C gaps only in the
-  crypto layer's files, and on CI, the CPU must report the features its runner
-  declares in `.github/workflows/checks.yaml`.
-  `node packages/sqlite-core/scripts/test.mts --coverage` lists the C gaps.
-  A change to what the wasm compiles from the core, its `src`, vendored files,
-  `scripts/compile.mts` or `scripts/sqlite-source.mts`, also needs the wasm
-  rebuilt and re-pinned, as `packages/sqlite-wasm/scripts/build-wasm.mts`
-  describes, and `pnpm test:sqlite-wasm`. A change to what
-  `@evolu/react-native` vendors from the core, such as its `src`, `binding`,
-  vendored files, `scripts/compile.mts` or `scripts/sqlite-source.mts`, also
-  needs `node packages/react-native/scripts/vendor-native.mts --update`, which
-  rewrites `packages/react-native/native.json`, then
-  `pnpm test:react-native-sqlite`, which also runs React Native's binding
-  conformance suite on `node/binding.c`, the core's N-API mirror of that
-  binding, and runs it again, with the mirror's other tests and the driver's,
-  under AddressSanitizer and UndefinedBehaviorSanitizer, and, with the
-  mirror's other tests, instrumented for coverage, which fails below 100%
-  line, branch, or function coverage of `node/binding.c` and `node/module.c`,
-  the C of `@evolu/nodejs`'s addon, so a change to either needs that script
-  too. `@evolu/react-native`
-  ships the vendored core, so a change to what it vendors also needs a patch
-  changeset for it, unless an unreleased changeset already covers the change.
-  `@evolu/nodejs` ships the core compiled inside its addons, so a change to
-  `packages/sqlite-core` also needs an `@evolu/nodejs` changeset.
-  The tests need clang with `llvm-profdata` and `llvm-cov`, which Xcode
-  installs, and on Ubuntu the llvm package (installed with clang unless
-  Recommends are skipped), make, unzip and zip, on Linux also OpenSSL's
-  development headers and clang's shared AddressSanitizer runtime, and network
-  access the first time, to fetch the pinned SQLite source and expo-sqlite
-  releases.
-- After changing `packages/react-native/scripts`, `src`, `test/device`,
-  `test/bindingConformance.ts`, the podspec, `cpp/CMakeLists.txt` or
-  `react-native.config.js`, run `pnpm test:react-native-sqlite`, which runs
-  the package's tests and fails below 100% line, branch, or function coverage
-  of `scripts`, `src/Sqlite.ts` and `src/sqlite`, of `@evolu/common`'s
-  `src/NativeSqlite.ts`, the driver they share, and of `@evolu/sqlite-core`'s
-  `node/binding.c` and `node/module.c`. It needs what the core's tests need,
-  and Ruby and CMake, for the podspec's and CMake's tests, which take CMake
-  from the PATH or the Android SDK.
-- After changing how `@evolu/react-native` builds into apps, its podspec,
-  `cpp/CMakeLists.txt`, `ios/`, `android/`, `react-native.config.js`,
-  `codegenConfig`, the device suites or either example's native setup, run
-  the device route on a simulator and an emulator in the example it affects,
-  as `.github/workflows/react-native-app.yaml` does: build and install the
-  example in Release, on iOS run
-  `node packages/react-native/scripts/vendor-native.mts --check-objects=<derived data>/Build/Intermediates.noindex/Pods.build/Release-iphonesimulator/EvoluReactNative.build/Objects-normal/arm64`,
-  write the fixtures with
-  `node packages/react-native/scripts/device-tests.mts --write-fixtures=<dir>`,
-  which needs what the core's SQLCipher tests need, then run that script with
-  `--platform`, `--device`, `--app`, `--url` and `--fixtures`. Android needs a `google_apis` image, which allows `adb root`.
-  Pull requests run those jobs only when they change a path
-  `scripts/select-react-native-app.mts` lists, so a new path only the app
-  jobs check goes there.
-- After changing `packages/react-native/cpp`, `test/hermes`,
-  `test/bindingConformance.ts`, `scripts/hermes.mts` or what the package
-  vendors, run `pnpm test:react-native-hermes` on macOS. It runs the
-  conformance suite and the Hermes tests on the JSI adapter under the Hermes
-  that React Native pins, with AddressSanitizer and UndefinedBehaviorSanitizer
-  and then ThreadSanitizer, and fails below 100% line, branch, or function
-  coverage of `cpp/EvoluSqliteBinding.cpp`. It needs `native/`, which
-  `node packages/react-native/scripts/vendor-native.mts` writes, Xcode's clang,
-  and network access the first time, to fetch the pinned Hermes tarball.
-  After changing `cpp`, also run `vendor-native.mts --cross-compile=ios` on
-  macOS, and `--cross-compile=android --ndk=<the NDK's directory>` where an NDK
-  is installed, which compile the adapter for every target with warnings as
-  errors and check the names its object defines.
+- After changing a published package's `dependencies`, `optionalDependencies`,
+  `exports`, `publishConfig`, `types`, `files`, or build config, run
+  `pnpm build` then `pnpm check:packages` (checks exact dep pins across
+  published packages incl. `@evolu/relay` and packs/checks `packages/*` exports;
+  needs `dist`, `sqlite3.wasm`, and
+  `packages/{nodejs,react-native,sqlite-wasm}/AGENTS.md` prereqs).
 - After changing browser APIs, platform-sensitive behavior, polyfills, workers,
-  or browser test configuration, run the affected browser projects with
-  `pnpm exec vitest run --project=<project> <test-files>`, which runs them in
-  Chromium, Firefox, and WebKit, instead of `pnpm test:integration:browsers`,
-  which runs every browser project.
-- Once required checks pass, stop expanding or repeating verification unless
-  new changes, failures, or unresolved concerns justify it. Node's test runner,
-  used by `pnpm test:node` and `pnpm test:bundle`, counts a timed-out test as
-  cancelled, not failed, so `fail 0` can hide a timeout; check the exit code and
-  the cancelled count before reporting a pass.
+  or browser test config, run affected projects with
+  `pnpm exec vitest run --project=<project> <test-files>` (Chromium, Firefox,
+  WebKit) instead of `pnpm test:integration:browsers`.
+- For native/SQLite packages, read and follow: `packages/sqlite-core/AGENTS.md`,
+  `packages/sqlite-wasm/AGENTS.md` (also
+  `test/integration/{nodejs,browsers}/sqlite-wasm/` and
+  `test/integration/nodejs/Sqlite/WasmSqliteDriver.test.ts`),
+  `packages/react-native/AGENTS.md` (also `packages/common/src/NativeSqlite.ts`,
+  `examples/react-{expo,native}` native setup/`package.json`,
+  `scripts/select-react-native-app.mts`,
+  `.github/workflows/react-native-app.yaml`), and `packages/nodejs/AGENTS.md`
+  (native addon, `packages/common/src/NativeSqlite.ts`,
+  `packages/nodejs/src/{NativeSqlite,NativeSqliteRows,Sqlite}.ts`).
 
 ## Third-party packages
 
-- Ask before adding a runtime dependency to a published package; first check
-  whether a few lines of our own code would do. Report its repository,
-  maintainers, dependency count, and
+- Ask before adding a runtime dep to a published package; first check if a few
+  lines of our code suffice. Report repo, maintainers, dep count, and
   `npm view <pkg>@<version> _npmUser maintainers dist.attestations --json`.
-- Published packages pin external runtime dependencies to exact versions, which
-  `pnpm check:packages` enforces; peer dependencies keep ranges. Keep
-  `@noble/hashes` at the exact version `@scure/bip39` depends on, so apps
-  install one copy.
-- When a runtime dependency of a published package changes, read
-  `npm diff --diff=<pkg>@<old> --diff=<pkg>@<new>`, compare
-  `npm view <pkg>@<old> _npmUser maintainers dist.attestations --json` with
-  `<new>`, and report new dependencies, install scripts, network, filesystem,
-  or `eval` use, minified or encoded code, and a changed publisher or
-  maintainer or lost provenance. Add a changeset; an update that changes no
-  behavior is a patch.
-- Ask before allowing a package's install scripts in `allowBuilds` or
-  weakening the release-age or trust checks in `pnpm-workspace.yaml` or
-  `apps/web/deploy/.npmrc`, such as with a `minimumReleaseAgeExclude` or
-  `trustPolicyExclude` entry. pnpm can write such entries itself, so check
-  `git diff pnpm-workspace.yaml` after installs.
+- Published packages pin external runtime deps to exact versions
+  (`pnpm check:packages`); peer deps keep ranges. Keep `@noble/hashes` pinned to
+  the exact version `@scure/bip39` depends on.
+- When a published package's runtime dep changes, read
+  `npm diff --diff=<pkg>@<old> --diff=<pkg>@<new>` and compare `npm view`
+  `_npmUser maintainers dist.attestations --json`; report new deps, install
+  scripts, network/fs/`eval`, minified/encoded code, changed publisher/maintainer,
+  or lost provenance. Add a changeset (patch if behavior unchanged).
+- Ask before allowing install scripts or weakening release-age/trust checks in
+  `pnpm-workspace.yaml` (`allowBuilds`, `minimumReleaseAgeExclude`,
+  `trustPolicyExclude`) or `apps/web/deploy/.npmrc` (`min-release-age`,
+  `ignore-scripts`); pnpm can write such entries itself, so check
+  `git diff pnpm-workspace.yaml` after installs. For a lockfile-only transitive
+  update: add a temporary entry to `overrides` in `pnpm-workspace.yaml` →
+  `pnpm install` → remove the entry → `pnpm install` → verify empty
+  `git diff pnpm-workspace.yaml`, the bumped version stayed in `pnpm-lock.yaml`,
+  and `pnpm install --lockfile-only --no-prefer-frozen-lockfile` leaves
+  `pnpm-lock.yaml` unchanged.
 
 ## Module structure and naming
 
@@ -242,6 +177,11 @@ for a post, run `node scripts/code-image.mts --help`.
 
 ## Functions and data
 
+- Core API principles: privacy/security > performance (report measured cost);
+  public APIs do only what is asked (no implicit follow-ups); published
+  `packages/` APIs stay reusable via DI (never delete public API merely because
+  this repo does not call it); validate required configuration at runtime, with
+  no recovery/migration paths for previously misconfigured deployments.
 - Do not extract a helper used only once; inline it.
 - Use interfaces and `createX` factories instead of classes. Model domain objects
   as plain data; use `Typed` for tags and `typed` or `object` for validation.
@@ -255,7 +195,9 @@ for a post, run `node scripts/code-image.mts --help`.
   Keep transition checks and updates with the code that owns the state, and
   change the phase and its data together. Cancel late event delivery or check
   that the event still belongs to the current operation. A boolean or nullable
-  value suffices when it represents the whole state.
+  value suffices when it represents the whole state. For concurrent lifecycles,
+  specify or revise the `states × events` table in the chat plan before changing
+  code.
 - Inside factories, order declarations as: derived constants/assertions, mutable
   variables, owned resources, listeners/timers, local functions, returned API.
 - Inline single-use, non-exported options types without `readonly`. Use readonly
@@ -278,8 +220,10 @@ for a post, run `node scripts/code-image.mts --help`.
 
 ## Results, Types, and brands
 
-- Fallible public APIs return `Result<T, E>` with exact plain-object domain errors,
-  not `Error` instances. Use `ok()` for success without a value and `trySync` or
+- Fallible public APIs return `Result<T, E>` with exact plain-object recoverable
+  domain errors, not `Error` instances. Do not wrap unrecoverable defects into
+  `Result`, and use `run.abortable(task)` rather than catching `AbortError` from
+  `run(task)`. Use `ok()` for success without a value and `trySync` or
   `tryAsync` to convert thrown/rejected values.
 - Name error interfaces `XError`. Drop `Error` from the discriminant only when
   the remainder clearly names a failure: `UserNotFoundError` extends
@@ -297,8 +241,9 @@ for a post, run `node scripts/code-image.mts --help`.
   included, because TypeScript cannot prove structural invariants such as
   data-only properties. A public function also keeps a cheap check where a
   wrongly typed value would otherwise hang, spin, or silently break a limit.
-- For a named object Type `X`, declare
-  `export interface X extends InferType<typeof X> {}` immediately after it.
+- For a named `object()` or `typed()` Type `X`, declare
+  `interface X extends InferType<typeof X> {}` immediately after it (exported
+  when `X` is exported).
 - Use a standalone `Brand<"Name">` for opaque handles. Reserve bare `Brand`
   intersections for values that only library code produces, cast where they are
   produced; give other domain values a validated `brand(...)` Type.
@@ -318,10 +263,13 @@ for a post, run `node scripts/code-image.mts --help`.
   create them at module scope.
 - Tasks declare dependencies in `Task<T, E, D>` and read `run.deps`. Call
   `run(task)`, never `task(run)`.
-- Objects with multiple async operations create one internal `Run` shared by
-  those operations.
+- Objects with multiple async operations create one internal `Run`, with
+  `run.create()` inside a `Task` and the platform's `createRun()` in a
+  synchronous factory, shared by those operations.
 - Create disposable objects with `disposable`. Pass the owned `DisposableStack`
-  or `AsyncDisposableStack` when cleanup resources are involved.
+  or `AsyncDisposableStack` when cleanup resources are involved. Never read
+  `Symbol.dispose` or `Symbol.asyncDispose` at module scope in `packages/*/src`
+  (imports evaluate before `installPolyfills()`).
 - Use `Time.now` for a moment recorded, displayed, or compared across devices
   and `Time.performance.now` for durations that drive behavior. Subtracting two
   `Time.now` readings compiles but breaks under a clock adjustment. A deadline
@@ -345,65 +293,79 @@ for a post, run `node scripts/code-image.mts --help`.
   decision that no single code site owns, such as WebSocket over WebTransport
   or how the relay's Docker image is built, as a Proposed ADR from
   `docs/adr/template.md` only when it is hard to reverse, surprising without
-  context, and a real trade-off. Only a maintainer accepts or rejects an ADR;
-  when they do, set its status and date. Point to an accepted ADR from the code
-  it governs with a comment naming its path, supersede it only through an ADR
-  a maintainer accepted, and run `pnpm test:node scripts/adr.test.mts`.
+  context, and a real trade-off. Draft an ADR only when a maintainer asks for
+  one or agrees to record a decision (1–2 pages, no implementation/API details
+  or single-module rules). Only a maintainer accepts or rejects an ADR; when
+  they do, set its status and date. Never rewrite a pushed accepted or rejected
+  ADR beyond typos and links (unpushed local ADRs can be edited in place). Point
+  to an accepted ADR from the code it governs with a comment naming its path, supersede it only through
+  an ADR a maintainer accepted, and run `pnpm test:node scripts/adr.test.mts`.
+- Keep guide pages concise ("what the developer does"), leaving error catalogs
+  and internal mechanics in JSDoc.
 - TypeScript examples are standalone and deterministic, with explicit imports
   and assertions. Use `ts` fences, or `tsx` for JSX; other spellings fail. On a
-  documentation page, setup the page already shows or names, and assertions
-  that would distract, may sit between `// ---cut-start---` and
+  documentation page (never in JSDoc), setup the page already shows or names,
+  and assertions that would distract, may sit between `// ---cut-start---` and
   `// ---cut-end---` lines, which the website hides.
-- Prove contracts: `assertType` for types, `assertEqual` for Data, `assertSame`
-  for SameValue/reference identity, `assertTrue`/`assertFalse` for predicates,
-  `assert` for invariants/narrowing, and `assertOk`/`assertErr` for Results.
+- Prove contracts: `assertType` (types), `assertEqual` (Data), `assertSame`
+  (SameValue/identity), `assertTrue`/`assertFalse` (predicates), `assert`
+  (invariants/narrowing), `assertOk`/`assertErr` (Results).
 - When changing API reference organization, read only the relevant section of
   [Conventions](<apps/web/src/app/(docs)/docs/conventions/page.mdx#api-reference-organization>).
 - Feature additions and bug fixes need a test that fails without the change.
   Cover the changed behavior, including relevant branches and failure paths.
   Report pre-existing coverage gaps without adding unrelated tests solely to
-  reach 100% coverage of an entire source file.
+  reach 100% coverage of an entire source file, except where a suite enforces
+  100%.
+- Do not write exact-string tests on translated locale messages. A locale
+  wording fix needs no new test, because structural intl tests cover it — say in
+  the report why it has none, and add a structural test only for a new kind of
+  bug.
 - Each `@ts-expect-error` comment copies the Evolu `CompileTimeError` message
   verbatim when there is one and otherwise describes the rejected TypeScript
   contract, never a generic one such as "should fail."
 - Create fresh dependencies per test. Library-exported helpers use `testX`;
-  local/test-only setup helpers use `setupX`. `testCreateDeps` and `testCreateRun`
+  local and test-only helpers use `setupX`. `testCreateDeps` and `testCreateRun`
   are in `packages/common/src/Task.ts`.
-- Cost tests compare thread CPU time with a linear baseline from the same run,
-  not a fixed time; wait tests keep wall-clock time. See `test/README.md`.
+- Cost tests compare thread CPU time with a same-run linear baseline; wait tests
+  keep wall-clock time (`test/README.md`).
 
 ## Changesets and versioning
 
-- Published API/runtime changes require a changeset: patch for fixes, minor for
-  additions, major for breaking changes, also in Changesets pre-release mode.
-  Create it with `pnpm changeset --minor <packages> -m "<title>"` (likewise
-  `--patch` or `--major`; comma-separate packages), which rejects misspelled or
-  private packages, then write the body in the file it prints.
-- Changesets are release notes describing the final change relative to committed
-  code. Start with a short, standalone, past-tense title without a trailing
-  period, explain observable behavior or migration impact, and keep unrelated
-  changes separate. Do not create changesets for review fixes, debugging, or
-  iterations on uncommitted work, or release notes for bugs that existed only in
-  uncommitted code. Update an existing changeset only if the final user-facing
-  behavior or version impact changes.
-- TypeScript usage changes need tested examples following the documentation
-  rules. For breaking changes, prove old usage is rejected and show its replacement
-  in the same example. Documentation-only/tooling-only notes need no example.
+- Published API/runtime changes require a changeset (`patch` fix, `minor`
+  addition, `major` breaking, also in pre-release mode): run
+  `pnpm changeset --minor <packages> -m "<title>"` (or `--patch`/`--major`;
+  comma-separate packages; rejects misspelled/private packages), then write the
+  body in the printed file.
+- Changesets describe final changes relative to the last tagged release. The
+  Version Packages pull request consumes them (`changeset version`); merging it
+  triggers the Release `publish` job, which stages and tags each released
+  package (`@evolu/<pkg>@<version>`), while npm serves a version only after
+  maintainer approval (if release checks fail after merge, changesets are
+  already gone and no tag exists yet). Check
+  `git fetch --tags && git tag --contains <sha> '<package>@*'` for whether a
+  package's commit is tagged, and `npm view <package>@<version>` for
+  installability.
+- Start with a short, standalone, past-tense title without a trailing period;
+  write for everyday developers in proportion to likelihood, starting with
+  _why_, then observable behavior or migration impact, combining one cohesive
+  multi-package change into one changeset and keeping unrelated changes
+  separate. Never hand-edit generated `CHANGELOG.md` or add changesets for
+  review fixes, debugging, or uncommitted iterations; update an existing one
+  only if final user-facing behavior or version impact changes.
+- TypeScript usage changes need tested examples per docs rules (for breaking
+  changes, prove old usage fails and show its replacement together).
+  Docs/tooling-only notes need no example.
 - Renaming or removing an exported runtime symbol or type of a stable API is
   never a patch, however simple the migration: add the new name in a minor, keep
   the old one as a `@deprecated` alias that names its replacement, and remove
   deprecated aliases together in an occasional major.
-- Local-first APIs, including their platform and framework integrations, and
-  APIs marked `@experimental` are not stable yet. Incompatible changes to them,
-  including renames and removals, are patch, not major; use minor for additions,
-  and document migration impact.
-- `@evolu/sqlite-wasm` does not follow semver. It is versioned
-  `<SQLite version>-build<n>`, any build may change its API, and
-  `scripts/version-sqlite-wasm.mts` replaces the version its changeset bump
-  computes, so the bump type only selects its release-notes heading.
-- `@evolu/sqlite-core` is private. Its code ships inside `@evolu/sqlite-wasm`,
-  `@evolu/react-native` and `@evolu/nodejs`. Changesets skips private
-  packages, so a change to it needs a changeset for each published package that
-  already ships the change, and none while none does. Never name it in a
-  changeset: Changesets never consumes such a file, which keeps the release
-  workflow from publishing.
+- Local-first APIs (including platform/framework integrations) and
+  `@experimental` APIs are unstable: breaking changes (including renames and
+  removals) are `patch`, additions are `minor`; document migration impact.
+- `@evolu/sqlite-wasm` is versioned `<SQLite version>-build<n>` via
+  `scripts/version-sqlite-wasm.mts`, so its bump type only selects the heading
+  (`packages/sqlite-wasm/AGENTS.md`). `@evolu/sqlite-core` is private/skipped
+  (see `packages/sqlite-core/AGENTS.md`): add changesets for the published
+  packages that ship a change, and never name `@evolu/sqlite-core` in a
+  changeset (unconsumed files block release).

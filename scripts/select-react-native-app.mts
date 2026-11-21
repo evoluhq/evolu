@@ -18,11 +18,11 @@
  *   autolinking, entry files and the Android build's configuration cache.
  * - A change to `packages/react-native/package.json` that touches only its
  *   `version` and `peerDependencies`, and a change to
- *   `packages/react-native/CHANGELOG.md`, select none, so a Version Packages
- *   pull request runs no app job. The podspec reads the version only as the
- *   pod's metadata, a peer range installs nothing without a change to
- *   `pnpm-lock.yaml`, and the release runs every app job on the commit it
- *   releases.
+ *   `packages/react-native/CHANGELOG.md` or `packages/react-native/AGENTS.md`,
+ *   select none, so a Version Packages pull request or an agent-guidance edit
+ *   runs no app job. The podspec reads the version only as the pod's metadata,
+ *   a peer range installs nothing without a change to `pnpm-lock.yaml`, and the
+ *   release runs every app job on the commit it releases.
  * - A renamed file counts under both its old and its new path.
  * - A missing, all-zero or unfetchable base selects every job, and so does a
  *   `workflow_dispatch` run, as for a branch.
@@ -57,6 +57,7 @@ const expoPaths = [
 ];
 
 const reactNativePackageJson = "packages/react-native/package.json";
+const reactNativeAgents = "packages/react-native/AGENTS.md";
 const reactNativeChangelog = "packages/react-native/CHANGELOG.md";
 
 const withoutExpoPaths = [
@@ -123,7 +124,12 @@ export const selectReactNativeAppJobs = ({
     }
   };
   const files = diff.split("\0").filter((file) => {
-    if (file === "" || file === reactNativeChangelog) return false;
+    if (
+      file === "" ||
+      file === reactNativeChangelog ||
+      file === reactNativeAgents
+    )
+      return false;
     if (file !== reactNativePackageJson) return true;
     const before = packageJsonWithoutReleaseFields(base);
     return (

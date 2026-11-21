@@ -42,10 +42,10 @@ is part of its contract.
 Use Node.js's built-in coverage for unit tests. Cover the changed behavior,
 including relevant branches and failure paths. Report pre-existing coverage
 gaps without adding unrelated tests solely to reach 100% coverage of an entire
-source file. Integration and bundle tests verify
-compositions and artifacts; browser suites can also collect coverage where the
-engine supports it. Documentation examples are executable tests and belong in
-the test pipeline. Use consistent script roles such as `test:unit`,
+source file, except where a suite enforces 100%. Integration and bundle tests
+verify compositions and artifacts; browser suites can also collect coverage
+where the engine supports it. Documentation examples are executable tests and
+belong in the test pipeline. Use consistent script roles such as `test:unit`,
 `test:integration`, `test:bundle`, and `test:jsdoc`; `test` runs every category
 the project has.
 

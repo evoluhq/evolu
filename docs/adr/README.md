@@ -18,10 +18,12 @@ resolved.
   number. Evolu names a file only after its title, because parallel agent
   sessions would pick the same next number, and renumbering would break the
   paths that code points to.
-- **Never rewritten once decided.** An accepted or rejected ADR changes only to
-  fix typos and links or to be marked superseded. When a decision changes, a new
-  ADR supersedes it, and the old one links to the new one, so the log shows
-  which decision governed the code and for how long.
+- **Never rewritten once pushed and decided.** Once pushed, an accepted or
+  rejected ADR changes only to fix typos and links or to be marked superseded;
+  an unpushed local ADR can still be edited in place with maintainer approval.
+  When a pushed decision changes, a new ADR supersedes it and the old one links
+  to the new one, preserving the log of which accepted decisions governed the
+  code and for how long (and why rejected ones lost).
 - **Honest about trade-offs.** It lists the serious alternatives and why they
   lost, the consequences, and what would make us revisit the decision.
 

@@ -19,8 +19,8 @@ const nextConfig = {
   // A static export has no image optimizer, so it cannot use the default loader.
   images: { unoptimized: true },
   reactStrictMode: true,
-  // The root AGENTS.md is the single source of agent guidance; do not let
-  // `next dev` generate apps/web/AGENTS.md and CLAUDE.md.
+  // Web agent guidance lives in root AGENTS.md; do not let `next dev` generate
+  // apps/web/AGENTS.md.
   agentRules: false,
   pageExtensions: ["js", "jsx", "ts", "tsx", "mdx"],
   transpilePackages: [

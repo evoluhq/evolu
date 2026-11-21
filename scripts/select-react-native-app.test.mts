@@ -41,6 +41,11 @@ describe("selectReactNativeAppJobs", () => {
     [["examples/react-native/Ünïcode.tsx"], all],
     [["packages/sqlite-core/node/binding.c"], none],
     [["packages/sqlite-core/test/codec_test.c"], none],
+    [["packages/react-native/AGENTS.md"], none],
+    [
+      ["packages/react-native/AGENTS.md", "packages/react-native/src/index.ts"],
+      expoOnly,
+    ],
     [["packages/common/src/Type.ts", "README.md"], none],
     [
       ["examples/react-expo-other/a.ts", "packages/react-native-web/a.ts"],

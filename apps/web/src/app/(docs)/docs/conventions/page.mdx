@@ -7,11 +7,26 @@ export const metadata = { title: "Conventions" };
 Conventions minimize decision-making and improve consistency.
 
 This page and the guides it links to explain Evolu's coding conventions.
-The repository's `AGENTS.md` is a selective summary for routine agent work,
-with additional repository workflow instructions. Keep shared rules consistent;
-not every convention needs a summary there. Agents should read only the relevant
-documentation section when clarification is needed or when reviewing or changing
-a convention.
+The repository's root `AGENTS.md` selectively summarizes them for routine agent
+work and adds repository workflow, while packages with native or build tooling
+keep their own workflow in nested `AGENTS.md` files. Keep shared rules
+consistent; not every convention needs a summary there. Agents should read only
+the relevant documentation section when clarification is needed or when
+reviewing or changing a convention.
+
+## API design
+
+- **Privacy and security first.** Privacy and security take priority over
+  performance. When a design trades performance for privacy or security, report
+  the measured cost.
+- **Explicit calls only.** Public APIs do only what the call asks, without
+  implicit follow-up actions.
+- **Reusable packages via DI.** Published packages expose reusable public API
+  wired through [dependency injection](/docs/dependency-injection). Do not
+  remove public API merely because this repository does not call it.
+- **No misconfiguration migrations.** Validate required configuration at runtime,
+  without adding recovery or migration paths for previously misconfigured
+  deployments.
 
 ## Imports and exports
 
@@ -756,6 +771,12 @@ change the phase and its data together.
 For example, an owner registration can wait for its turn, acquire transports,
 or be active. Only the active variant stores the transport lease.
 
+For concurrent lifecycles, specify the `states × events` transition table up
+front, express the invariant in the type itself without side flags beside a
+union, and revise that table before changing the implementation. Before adding a
+new input or transition to an existing state field, inspect every reader of that
+field so none observes a state it did not expect.
+
 An event can arrive after its operation has been replaced. Cancel delivery when
 possible or check the operation's identity before applying the event. For
 example, a database worker reply must match the current dispatch attempt before
@@ -777,6 +798,12 @@ When the object owns cleanup resources, register them in a `DisposableStack` or
 stack into the returned object. Omit the stack when disposal only needs to make
 the object unusable.
 
+Never read `Symbol.dispose` or `Symbol.asyncDispose` at module scope in
+`packages/*/src` (for example, as computed property keys on a shared prototype).
+ES module imports evaluate before `installPolyfills()` runs (for example, when
+`createEvoluDeps` installs polyfills on Safari), so the symbol would evaluate as
+`undefined`. Read them inside factories or functions instead.
+
 For full disposal patterns, anti-patterns, and `move()` examples, see
 [Resource management](/docs/resource-management).
 
@@ -785,6 +812,12 @@ For full disposal patterns, anti-patterns, and `move()` examples, see
 Validate external input with Evolu Types. A cast or assertion does not replace
 decoding untrusted data. Construct Types with factories such as `createType`, `brand`,
 `array`, and `object`.
+
+Canonical Evolu Types validate strict canonical input; do not silently autofix
+or normalize invalid values in public APIs. Transformation Types such as
+`IntFromString`, `HttpUrlFromString`, and `JsonValueFromJson` are the explicit
+exception for user-entered or serialized external text input: they reject
+invalid values while parsing and canonicalizing valid non-canonical text.
 
 Use [`Brand`](/docs/api-reference/common/Brand/interfaces/Brand) to give
 otherwise identical values distinct meaning at the type level. Branding lets us
@@ -950,17 +983,18 @@ inline.
 
 ## Result and errors
 
-Fallible public APIs return `Result<T, E>` for typed domain errors. Represent
-domain errors as exact plain objects, not `Error` instances. Name their
-interfaces `XError`. Omit the `Error` suffix from the discriminant only when
-the remaining name already clearly describes a failure, as in
+Fallible public APIs return `Result<T, E>` for recoverable domain errors.
+Represent domain errors as exact plain objects, not `Error` instances. Name
+their interfaces `XError`. Omit the `Error` suffix from the discriminant only
+when the remaining name already clearly describes a failure, as in
 `UserNotFoundError extends Typed<"UserNotFound">`. Keep it for names such as
 `TimeoutError`, `RetryError`, and `AbortError`.
 
-Use `trySync` and `tryAsync` to convert thrown or rejected values into a Result.
-Use `getOrThrow` and Type `.orThrow` for module initialization, startup and
-configuration loading, test fixtures, or internal invariants. Do not use them
-to process user input.
+Use `trySync` and `tryAsync` to convert recoverable thrown or rejected values
+into a Result; let unrecoverable defects propagate instead of wrapping them in
+`Result`. Use `getOrThrow` and Type `.orThrow` for module initialization,
+startup and configuration loading, test fixtures, or internal invariants. Do not
+use them to process user input.
 
 See the [Result module](/docs/api-reference/common/Result) for composition and
 error-handling examples.
@@ -1007,7 +1041,11 @@ Every feature addition and bug fix includes a test that fails without the
 change. Create fresh dependencies in each test. Cover the changed behavior,
 including relevant branches and failure paths. Report pre-existing coverage
 gaps without adding unrelated tests solely to reach 100% coverage of an entire
-source file.
+source file, except where a suite enforces 100%. Do not write exact-string tests
+on translated locale messages. A locale wording fix needs no new test, because
+the structural tests in `packages/common/src/intl/intl.test.ts` already check
+that every locale keeps each message's values and distinctions; add a structural
+test only for a new kind of bug.
 
 Use `assertType` for compile-time contracts and `@ts-expect-error` for rejected
 programs. Every `@ts-expect-error` must describe the specific expected rejection.
@@ -1035,9 +1073,17 @@ composition root, where module-level instances are allowed.
 
 Tasks declare dependencies in `Task<T, E, D>` and read them through `run.deps`.
 Call Tasks with `run(task)`, never `task(run)`. Return, handle, or translate an
-`Err` before accessing the result's value. An object exposing multiple
-asynchronous operations creates one internal `Run` that every asynchronous
-method uses.
+`Err` before accessing the result's value. Use `run.abortable(task)` when abort
+should be handled as a `Result` error rather than catching `AbortError` from
+`run(task)`. An object exposing multiple asynchronous operations creates one
+internal `Run` — with `run.create()` inside a `Task` and the platform's
+`createRun()` in a synchronous factory (such as `createEvoluDeps`) — and runs
+every asynchronous method through it.
+
+A `Run` liveness guard such as `if (run.getState().type !== "Running") return`
+is a smell: it usually means a Task is running on a `Run` that can already be
+disposed or aborted. Fix `Run` ownership so the operation lives under the right
+parent, or make cleanup a plain non-`Task` function.
 
 See [Dependency injection](/docs/dependency-injection) for synchronous examples
 and the [Task module](/docs/api-reference/common/Task) for asynchronous
@@ -1091,6 +1137,14 @@ a `//` comment at the workaround, not in public JSDoc. Describe the behavior it
 handles and link the upstream issue, such as a WebKit, Chromium, or Mozilla bug,
 so a maintainer knows why the code exists and can check whether it is still
 needed.
+
+When rejecting a review finding for an intentional trade-off, state any behavior
+users can hit in the symbol's JSDoc and record the rationale in a brief `//`
+comment at the code so it does not recur.
+
+Keep guide pages concise and focused on what the developer does. Put error
+catalogs and internal mechanics in API JSDoc instead of repeating them on guide
+pages.
 
 ### Executable examples
 
@@ -1151,15 +1205,17 @@ published npm package instead of a bundle, as an architecture decision record
 (ADR) in [`docs/adr`](https://github.com/evoluhq/evolu/tree/main/docs/adr),
 whose README explains what an ADR is. Write one only when the decision is hard
 to reverse, surprising without context, and the result of a real trade-off. The
-reason for one piece of code stays in a `//` comment at that code, such as why
-an oversized mutation throws, and behavior and constraints stay in module JSDoc,
+reason for one piece of code — including rationale and rejected alternatives for
+a single-module rule — stays in a `//` comment at that code, such as why an
+oversized mutation throws, and behavior and constraints stay in module JSDoc,
 such as how Evolu handles clock drift.
 
 Copy `docs/adr/template.md` to a file named with a short slug of the title, and
-state the decision in the title. Keep the record to one or two pages and link
-module docs, issues, and measurements instead of restating them. Before
-proposing a design, check `docs/adr` for an ADR that already proposes or
-rejects it.
+state the decision in the title. Keep each record to one or two pages for one
+major decision — leave out implementation or API details and single-module
+rules — and link module docs, issues, and measurements instead of restating
+them. Before proposing a design, check `docs/adr` for an ADR that already
+proposes or rejects it.
 
 A new ADR is Proposed, so contributors and agents can read the design before it
 is decided. It does not bind and is revised until a maintainer accepts or
@@ -1167,11 +1223,14 @@ rejects it. Its date is the day it was proposed until a maintainer accepts or
 rejects it, and then the day of that decision. A rejected ADR stays, so the
 idea is not proposed again.
 
-Do not rewrite an accepted or rejected ADR beyond fixing typos and links. When a
-decision changes, propose a new ADR. When a maintainer accepts it, change the
-old one's status to `Superseded by` with a link to the new one and move the
-code's pointers to the new one. An accepted ADR binds, so a change that
-conflicts with one needs an accepted superseding ADR first.
+Do not rewrite a pushed accepted or rejected ADR beyond fixing typos and links;
+an unpushed local ADR can still be edited in place with maintainer approval.
+When the decision of a pushed accepted or rejected ADR changes, propose a new
+ADR; when a maintainer accepts it, change the old one's status to
+`Superseded by` with a link to the new one, and for a superseded accepted ADR
+move the code's pointers to the new one. An accepted ADR binds, so a change that
+conflicts with one first needs a maintainer to accept a superseding ADR or,
+while the ADR is unpushed, to approve an edit to it in place.
 
 Code that a decision governs points to its accepted ADR with a comment naming
 the path, such as `// See docs/adr/sync-uses-websocket-not-webtransport.md.`
@@ -1219,3 +1278,22 @@ npm package, it is versioned `<SQLite version>-build<n>`, and any build may
 change its API. `scripts/version-sqlite-wasm.mts` replaces the version its
 changeset bump computes, so the bump type only selects the heading of its
 release notes. Its README describes the scheme for users.
+
+### Changesets
+
+Changesets describe the final observable change relative to the last tagged
+release, not relative to uncommitted iterations or intermediate commits. The
+Version Packages pull request (which can follow any push) consumes
+`.changeset/*.md` via `changeset version`; merging it triggers the `Release`
+`publish` job, which stages and tags each released package
+(`@evolu/<pkg>@<version>`), while npm serves a version only after maintainer
+approval (if release checks fail after merge, the changeset files are already
+gone and no new tag exists yet). Check
+`git fetch --tags && git tag --contains <sha> '<package>@*'` for whether a
+package's commit is tagged, and `npm view <package>@<version>` for
+installability. Never hand-edit generated `CHANGELOG.md` files.
+
+Write release notes for everyday developers, starting with why the change
+matters and spending space in proportion to how likely a user is to hit it.
+Combine one cohesive multi-package change into a single changeset, and keep
+unrelated changes separate.
