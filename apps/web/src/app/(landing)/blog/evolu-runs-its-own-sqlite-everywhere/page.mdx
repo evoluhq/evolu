@@ -97,7 +97,7 @@ from [BearSSL](https://www.bearssl.org) and
 [Monocypher](https://monocypher.org), vendored, pinned and checked by their
 digests.
 
-The core takes a key only from Evolu, as 32 raw bytes, never a password.
+The core takes a key as 32 raw bytes from its caller, never a password.
 Encrypting pages is the easy part of encrypting a database. A database is only
 as safe as its key: where it comes from, where it's kept, how it changes, and
 what's lost when it's lost. Evolu answers all of that for its owners and
