@@ -94,10 +94,10 @@ describe("GitHub workflows", () => {
     );
   });
 
-  // Every app job builds what it runs from the source or from pnpm's store,
-  // which the repository's setup action restores for every job, so the jobs
-  // use only actions that restore nothing else. Uploading an artifact, at
-  // checks.yaml's pin, restores nothing.
+  // Every app job builds what it runs from the source and fresh installs (the
+  // repository's setup action keeps pnpm's cache off), so the jobs use only
+  // actions that restore nothing else. Uploading an artifact, at checks.yaml's
+  // pin, restores nothing.
   it("use only checkout, the cache, the repository's setup action and the artifact upload in the React Native app jobs", () => {
     const actions = [
       ...workflow("react-native-app.yaml").matchAll(/\buses: (\S+)/gmu),

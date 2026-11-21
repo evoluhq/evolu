@@ -80,11 +80,10 @@ jobs:
         uses: ./.github/actions/setup-node-pnpm-install
 
       # The archives, SQLite's and expo-sqlite's, as the sqlite-core job caches
-      # them, which every use verifies against their pins. Besides pnpm's store,
-      # which the repository's setup action restores for every job, nothing
-      # else is cached, as for the NDK in checks.yaml: jobs on main that run
-      # dependency code can write the Actions cache, and nothing would verify
-      # restored Pods, Gradle caches or compiler caches.
+      # them, which every use verifies against their pins. Nothing else is
+      # cached, as for the NDK in checks.yaml: jobs on main that run dependency
+      # code can write the Actions cache, and nothing would verify restored
+      # Pods, Gradle caches or compiler caches.
       - name: Cache source archives
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
