@@ -809,6 +809,11 @@ jobs:
       - name: Build
         run: pnpm build:web
 
+      # Runs here rather than in Tests (Node.js integration) because pnpm
+      # build:web already ran pnpm build:docs, which these tests require.
+      - name: Test docs
+        run: pnpm test:docs
+
       # On the Workers Free plan, a Worker version accepts at most 20,000 files
       # and no file over 25 MiB, and only the deploy, after a merge, would
       # reject the export.

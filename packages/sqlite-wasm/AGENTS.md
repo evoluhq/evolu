@@ -23,12 +23,11 @@ and the Docker build command.
 ## The `wasm/sqlite3.wasm` binary
 
 - Tests, dev servers, and package checks that load or pack SQLite Wasm
-  (including `pnpm test:unit`, `pnpm test:sqlite-wasm`,
-  `pnpm test:integration:nodejs`, `pnpm test:bundle`, `pnpm build:web`,
-  `apps/web` `dev` via `check-wasm.mts`, `pnpm check:packages`, and browser/E2E
-  suites) require the uncommitted `packages/sqlite-wasm/wasm/sqlite3.wasm` and
-  fail when it is missing or does not match `wasmSha256` in
-  `packages/sqlite-wasm/scripts/check-wasm.mts`.
+  (including `pnpm test:unit`, `pnpm test:sqlite-wasm`, `pnpm test:bundle`,
+  `pnpm build:web`, `apps/web` `dev` via `check-wasm.mts`, `pnpm check:packages`,
+  and browser/E2E suites) require the uncommitted
+  `packages/sqlite-wasm/wasm/sqlite3.wasm` and fail when it is missing or does
+  not match `wasmSha256` in `packages/sqlite-wasm/scripts/check-wasm.mts`.
 - Get the pinned binary with `pnpm sqlite-wasm:download`, which needs network
   access and downloads the version in `packages/sqlite-wasm/package.json`. It
   fails with HTTP 404 until that version is published, and with a checksum

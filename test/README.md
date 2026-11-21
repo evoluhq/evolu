@@ -138,10 +138,13 @@ tooling.
 Run all integration tests with `pnpm test:integration`. Node.js integrations
 run without source coverage with `pnpm test:integration:nodejs`; their contract
 is the behavior across real components and platform implementations rather than
-which source lines they execute.
-The Node.js integration command builds documentation first so the web
-documentation tests, which compile handwritten MDX pages and check their links,
-and the search tests use the generated API reference and current documentation.
+which source lines they execute. It omits the SQLite Wasm Node.js integration
+tests (`integration/nodejs/sqlite-wasm/` and
+`integration/nodejs/Sqlite/WasmSqliteDriver.test.ts`), which
+`pnpm test:sqlite-wasm` already runs with 100% coverage, and the web
+documentation and search tests (`integration/nodejs/web/`), which require
+`pnpm build:docs` and run in CI's `Build web` job after `pnpm build:web`
+(locally, run `pnpm build:docs` then `pnpm test:docs`).
 `pnpm test:integration:browsers` runs only the explicitly configured browser
 integration projects: first in Chromium with coverage, then in Firefox and
 WebKit without coverage because those engines do not support V8 coverage. Its

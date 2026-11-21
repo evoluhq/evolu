@@ -1,7 +1,8 @@
 import { assert, assertEqual, assertTrue } from "@evolu/common";
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { globSync, readdirSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 
 const root = new URL("../", import.meta.url);
 const files = readdirSync(new URL(".github", root), {
@@ -446,6 +447,63 @@ describe("GitHub workflows", () => {
     assertEqual(
       run("sqlite-core-c"),
       "pnpm test:node --no-experimental-test-coverage packages/sqlite-core/test/core.test.mts",
+    );
+  });
+
+  // Node.js integration tests split across test:sqlite-wasm (SQLite Wasm),
+  // test:integration:nodejs (the rest without docs), and test:docs (docs and
+  // search, which need pnpm build:docs and run in build-web after
+  // pnpm build:web). Every file under test/integration/nodejs must run in
+  // exactly one of them.
+  it("partition test/integration/nodejs across test:sqlite-wasm, test:integration:nodejs, and test:docs", () => {
+    const { scripts } = JSON.parse(
+      readFileSync(new URL("package.json", root), "utf8"),
+    ) as { readonly scripts: Readonly<Record<string, string>> };
+    const checks = workflow("checks.yaml");
+    const testsJob = job(checks, "tests");
+    assertTrue(testsJob.includes("pnpm test:sqlite-wasm"));
+    assertTrue(testsJob.includes("pnpm test:integration:nodejs"));
+
+    const buildWebSteps = splitSteps(job(checks, "build-web"));
+    const buildIndex = buildWebSteps.findIndex((step) =>
+      step.includes("run: pnpm build:web\n"),
+    );
+    const testDocsIndex = buildWebSteps.findIndex((step) =>
+      step.includes("run: pnpm test:docs\n"),
+    );
+    assertTrue(buildIndex >= 0 && testDocsIndex > buildIndex);
+
+    const rootPath = fileURLToPath(root);
+    const expandNodejsPatterns = (command: string): ReadonlyArray<string> => {
+      const patterns = [
+        ...command.matchAll(/test\/integration\/nodejs\/[^\s"']+/gu),
+      ].map(([pattern]) => pattern);
+      assertTrue(patterns.length > 0);
+      return [
+        ...new Set(
+          patterns.flatMap((pattern) => globSync(pattern, { cwd: rootPath })),
+        ),
+      ].toSorted();
+    };
+
+    const wasmFiles = expandNodejsPatterns(scripts["test:sqlite-wasm"]);
+    const nodejsFiles = expandNodejsPatterns(
+      scripts["test:integration:nodejs"],
+    );
+    const docsFiles = expandNodejsPatterns(scripts["test:docs"]);
+
+    assertTrue(docsFiles.includes("test/integration/nodejs/web/Docs.test.ts"));
+    assertTrue(
+      docsFiles.includes("test/integration/nodejs/web/Search.test.ts"),
+    );
+
+    const allCovered = [...wasmFiles, ...nodejsFiles, ...docsFiles];
+    assertEqual(allCovered.length, new Set(allCovered).size);
+    assertEqual(
+      allCovered.toSorted(),
+      globSync("test/integration/nodejs/**/*.test.ts", {
+        cwd: rootPath,
+      }).toSorted(),
     );
   });
 });

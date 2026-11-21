@@ -63,7 +63,7 @@ workspace links in the original checkout).
   changed source with `pnpm exec oxlint <files>`, and run `pnpm typecheck` (Node
   tests do not check types).
 - Check for `apps/web/.next/dev/lock` before running `next build`,
-  `pnpm build:web`, `pnpm build:docs` (incl. `pnpm test:integration:nodejs`),
+  `pnpm build:web`, `pnpm build:docs` (incl. `pnpm test:integration`),
   `pnpm test:e2e`, or `pnpm test:e2e:dev` in the same checkout: while `pnpm dev`
   runs there, run none of them, ask the maintainer first, and never restart
   their servers. Start a dev server only when asked to read a page.
