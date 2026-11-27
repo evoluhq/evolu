@@ -354,14 +354,33 @@ describe("GitHub workflows", () => {
       ...text.slice(text.indexOf("\njobs:\n")).matchAll(/^  ([\w-]+):$/gmu),
     ].map(([, name]) => name);
 
-    assertTrue(jobs.length > 0);
-    assertEqual(
-      jobs.filter(
-        (name) =>
-          !job(text, name).includes(
-            "\n    if: github.repository == 'evoluhq/evolu'\n",
-          ),
+    assertTrue(text.includes('    - cron: "17 20 * * *"'));
+    const appJobNames = [
+      "react-native-app",
+      "react-native-app-latest",
+      "react-native-apple-latest",
+    ];
+    assertEqual(jobs, ["select-nightly", ...appJobNames]);
+    assertTrue(
+      job(text, "select-nightly").includes(
+        "\n    if: github.repository == 'evoluhq/evolu'\n",
       ),
+    );
+    assertTrue(
+      job(text, "select-nightly").includes(
+        "\n      run: ${{ steps.select.outputs.run }}\n",
+      ),
+    );
+    assertEqual(
+      appJobNames.filter((name) => {
+        const selected = job(text, name);
+        return (
+          !selected.includes("\n    needs: select-nightly\n") ||
+          !selected.includes(
+            "\n    if: github.repository == 'evoluhq/evolu' && needs.select-nightly.outputs.run == 'true'\n",
+          )
+        );
+      }),
       [],
     );
     // Every app job, and on the newest image every one that isn't Android's.
