@@ -80,6 +80,7 @@ import type {
   CrdtMessage,
   EncryptedCrdtMessage,
   EncryptedDbChange,
+  Fingerprint,
   FingerprintRange,
   StorageDep,
 } from "./Storage.ts";
@@ -118,6 +119,7 @@ import {
   maxCounter,
   maxNodeId,
   NodeId,
+  orderTimestamp,
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
 } from "./Timestamp.ts";
@@ -3735,4 +3737,277 @@ test("client range-only continuation has no local broadcast", async () => {
   );
   assertSame(result.type, "Response");
   assertFalse("broadcast" in result);
+});
+
+test("seeded malformed sync messages never panic or apply invalid data", async () => {
+  const deps = setupCryptoDeps();
+  const stored = createEncryptedCrdtMessage(deps, createTestCrdtMessage(deps));
+
+  const createStorage = (calls: Array<string>) => {
+    const records: Array<EncryptedCrdtMessage> = [stored];
+    const fingerprint = (begin: number, end: number): Fingerprint => {
+      const result = new Uint8Array(zeroFingerprint);
+      for (let i = begin; i < end; i++) {
+        const bytes = timestampToTimestampBytes(records[i].timestamp);
+        const next = timestampBytesToFingerprint(bytes);
+        for (let j = 0; j < result.length; j++) result[j] ^= next[j];
+      }
+      return result as Fingerprint;
+    };
+    const storage = {
+      getSize: () => {
+        calls.push("getSize");
+        return NonNegativeInt.orThrow(records.length);
+      },
+      fingerprint: (
+        _ownerId: OwnerIdBytes,
+        begin: NonNegativeInt,
+        end: NonNegativeInt,
+      ) => {
+        calls.push("fingerprint");
+        return fingerprint(begin, end);
+      },
+      fingerprintRanges: (
+        _ownerId: OwnerIdBytes,
+        buckets: NonEmptyReadonlyArray<NonNegativeInt>,
+        upperBound = InfiniteUpperBound,
+      ) => {
+        calls.push("fingerprintRanges");
+        let begin = 0;
+        return buckets.map((end, i): FingerprintRange => {
+          const result: FingerprintRange = {
+            type: RangeType.Fingerprint,
+            upperBound:
+              i === buckets.length - 1
+                ? upperBound
+                : timestampToTimestampBytes(records[end].timestamp),
+            fingerprint: fingerprint(begin, end),
+          };
+          begin = end;
+          return result;
+        });
+      },
+      findLowerBound: (
+        _ownerId: OwnerIdBytes,
+        begin: NonNegativeInt,
+        end: NonNegativeInt,
+        upperBound: FingerprintRange["upperBound"],
+      ) => {
+        calls.push("findLowerBound");
+        if (upperBound === InfiniteUpperBound) return end;
+        const timestamp = timestampBytesToTimestamp(upperBound);
+        for (let i = begin; i < end; i++)
+          if (orderTimestamp(records[i].timestamp, timestamp) >= 0)
+            return NonNegativeInt.orThrow(i);
+        return end;
+      },
+      iterate: (
+        _ownerId: OwnerIdBytes,
+        begin: NonNegativeInt,
+        end: NonNegativeInt,
+        callback: (
+          timestamp: ReturnType<typeof timestampToTimestampBytes>,
+          index: NonNegativeInt,
+        ) => boolean,
+      ) => {
+        calls.push("iterate");
+        for (let i = begin; i < end; i++)
+          if (
+            !callback(
+              timestampToTimestampBytes(records[i].timestamp),
+              NonNegativeInt.orThrow(i),
+            )
+          )
+            break;
+      },
+      readDbChange: (
+        _ownerId: OwnerIdBytes,
+        timestamp: ReturnType<typeof timestampToTimestampBytes>,
+      ) => {
+        calls.push("readDbChange");
+        const record = records.find(
+          (item) =>
+            orderTimestamp(
+              item.timestamp,
+              timestampBytesToTimestamp(timestamp),
+            ) === 0,
+        );
+        assertNonNullable(record);
+        return record.change;
+      },
+      validateWriteKey: () => {
+        calls.push("validateWriteKey");
+        return true;
+      },
+      writeMessages:
+        (
+          _ownerId: OwnerIdBytes,
+          writeKeyOrMessages:
+            OwnerWriteKey | NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+          relayMessages?: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
+        ) =>
+        () => {
+          calls.push("writeMessages");
+          const messages =
+            writeKeyOrMessages instanceof Uint8Array
+              ? relayMessages
+              : writeKeyOrMessages;
+          assertNonNullable(messages);
+          for (const message of messages) {
+            if (
+              !records.some(
+                (record) =>
+                  orderTimestamp(record.timestamp, message.timestamp) === 0,
+              )
+            )
+              records.push(message);
+          }
+          records.sort((a, b) => orderTimestamp(a.timestamp, b.timestamp));
+          return ok();
+        },
+    } satisfies RelayStorageDep["storage"] & StorageDep["storage"];
+    return storage;
+  };
+
+  const message = createEncryptedCrdtMessage(deps, createTestCrdtMessage(deps));
+  const request = createProtocolMessageBuffer(testAppOwner.id, {
+    messageType: MessageType.Request,
+    writeKey: testAppOwner.writeKey,
+    subscriptionFlag: SubscriptionFlags.Subscribe,
+  });
+  request.addMessage(message);
+  request.addRange({
+    type: RangeType.Fingerprint,
+    upperBound: InfiniteUpperBound,
+    fingerprint: zeroFingerprint,
+  });
+  const response = createProtocolMessageBuffer(testAppOwner.id, {
+    messageType: MessageType.Response,
+    errorCode: ProtocolErrorCode.NoError,
+  });
+  response.addMessage(message);
+  response.addRange({
+    type: RangeType.Fingerprint,
+    upperBound: InfiniteUpperBound,
+    fingerprint: zeroFingerprint,
+  });
+  const errorResponse = createProtocolMessageBuffer(testAppOwner.id, {
+    messageType: MessageType.Response,
+    errorCode: ProtocolErrorCode.QuotaError,
+  });
+  const broadcasts = createProtocolBroadcastMessagesFromCrdtMessages(deps)(
+    testAppOwner,
+    [createTestCrdtMessage(deps)],
+  );
+  const sync = createProtocolMessageForSync({
+    storage: createStorage([]),
+  })(testAppOwner.id);
+  const validMessages: ReadonlyArray<Uint8Array> = [
+    request.unwrap(),
+    response.unwrap(),
+    errorResponse.unwrap(),
+    ...broadcasts,
+    sync,
+  ];
+
+  const inputs = fc.oneof(
+    fc.uint8Array({ maxLength: 256 }),
+    fc
+      .uint8Array({ maxLength: 256 })
+      .map(
+        (tail) => new Uint8Array([...setupRequestHeader().unwrap(), ...tail]),
+      ),
+    fc.constantFrom(...validMessages),
+    fc
+      .record({
+        source: fc.constantFrom(...validMessages),
+        kind: fc.integer({ min: 0, max: 4 }),
+        offset: fc.nat(10_000),
+        byte: fc.nat(255),
+        extension: fc.uint8Array({ maxLength: 32 }),
+      })
+      .map(({ source, kind, offset, byte, extension }) => {
+        const index = offset % (source.length + 1);
+        switch (kind) {
+          case 0: {
+            const mutated = source.slice();
+            if (mutated.length > 0) mutated[index % mutated.length] ^= byte | 1;
+            return mutated;
+          }
+          case 1:
+            return new Uint8Array([
+              ...source.slice(0, index),
+              byte,
+              ...source.slice(index),
+            ]);
+          case 2:
+            return new Uint8Array([
+              ...source.slice(0, index),
+              ...source.slice(index + 1),
+            ]);
+          case 3:
+            return source.slice(0, index);
+          default:
+            return new Uint8Array([...source, ...extension]);
+        }
+      }),
+  );
+
+  await fc.assert(
+    fc.asyncProperty(inputs, async (input) => {
+      const relayCalls: Array<string> = [];
+      await using relay = testCreateRun({
+        storage: createStorage(relayCalls),
+      });
+      const relayResult = await relay(
+        applyProtocolMessageAsRelay(input, {
+          subscribe: () => {
+            relayCalls.push("subscribe");
+          },
+          unsubscribe: () => {
+            relayCalls.push("unsubscribe");
+          },
+          broadcast: () => {
+            relayCalls.push("broadcast");
+          },
+        }),
+      );
+      assertEqual(relay.deps.reportDefect.getDefects(), []);
+      if (!relayResult.ok) {
+        assertSame(relayResult.error.type, "ProtocolInvalidDataError");
+        assertEqual(relayCalls, []);
+      } else {
+        assertTrue(
+          relayResult.value.message.length <= defaultProtocolMessageMaxSize,
+        );
+        await using receiver = testCreateRun({
+          storage: createStorage([]),
+        });
+        const parsed = await receiver(
+          applyProtocolMessageAsClient(relayResult.value.message),
+        );
+        assertTrue(
+          parsed.ok || parsed.error.type !== "ProtocolInvalidDataError",
+        );
+        assertEqual(receiver.deps.reportDefect.getDefects(), []);
+      }
+
+      for (const withWriteKey of [false, true]) {
+        const clientCalls: Array<string> = [];
+        await using client = testCreateRun({
+          storage: createStorage(clientCalls),
+        });
+        const result = await client(
+          applyProtocolMessageAsClient(
+            input,
+            withWriteKey ? { writeKey: testAppOwner.writeKey } : {},
+          ),
+        );
+        assertEqual(client.deps.reportDefect.getDefects(), []);
+        if (!result.ok && result.error.type === "ProtocolInvalidDataError")
+          assertEqual(clientCalls, []);
+      }
+    }),
+    { seed: 7462026, numRuns: 60 },
+  );
 });
