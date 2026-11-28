@@ -141,6 +141,7 @@ export const createRelay =
     name = "evolu-relay" as Name,
     isOwnerAllowed,
     isOwnerWithinQuota,
+    isOwnerAllowedToWrite,
     pingInterval = "30s",
   }: NodeJsRelayConfig): Task<Relay, never, RelayDeps> =>
   async (run) => {
@@ -215,7 +216,10 @@ export const createRelay =
 
     const ownerSocketRelation = createRelation<OwnerId, WebSocket>();
 
-    const storage = createRelaySqliteStorage(deps)({ isOwnerWithinQuota });
+    const storage = createRelaySqliteStorage(deps)({
+      isOwnerWithinQuota,
+      ...(isOwnerAllowedToWrite === undefined ? {} : { isOwnerAllowedToWrite }),
+    });
     const relayRun = disposer.use(run.create({ storage }));
 
     const pingClients = (): void => {
