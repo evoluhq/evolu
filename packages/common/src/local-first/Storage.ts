@@ -36,7 +36,12 @@ import {
 } from "../Type.ts";
 import type { Awaitable } from "../Types.ts";
 import type { Evolu } from "./Evolu.ts";
-import type { OwnerError, OwnerIdBytes, SharedOwner } from "./Owner.ts";
+import type {
+  OwnerError,
+  OwnerIdBytes,
+  OwnerWriteKey,
+  SharedOwner,
+} from "./Owner.ts";
 import { OwnerId } from "./Owner.ts";
 import type { ProtocolQuotaError } from "./Protocol.ts";
 import type { RelayStorage } from "./Relay.ts";
@@ -111,6 +116,32 @@ export interface StorageConfig {
    */
   readonly isOwnerWithinQuota: (
     ownerId: OwnerId,
+    requiredBytes: NonNegativeInt,
+  ) => Awaitable<boolean>;
+
+  /**
+   * Callback called before an owner's first write, with the write key the
+   * client presented and the total bytes that would be stored after the write.
+   *
+   * Return `false` to refuse the write. The relay then stores neither the write
+   * key nor the messages, so a relay can verify the key against a durable
+   * registration record before creating any owner state, for example after the
+   * relay lost its owner record.
+   *
+   * The callback receives the raw write key. Never log or persist it.
+   *
+   * Like {@link isOwnerWithinQuota}, the callback may be synchronous or
+   * asynchronous, and it must not throw or reject, because a throw is a defect
+   * that shuts the relay down for a supervisor to restart it. A callback
+   * calling a remote service catches its failure and returns whether to allow
+   * the write.
+   *
+   * When omitted, an owner's first write stores the presented write key, which
+   * is the behavior of earlier releases.
+   */
+  readonly isOwnerAllowedToWrite?: (
+    ownerId: OwnerId,
+    writeKey: OwnerWriteKey,
     requiredBytes: NonNegativeInt,
   ) => Awaitable<boolean>;
 }

@@ -1767,6 +1767,112 @@ describe("createRelay", () => {
     );
   });
 
+  it("verifies the presented write key before the first write stores it", async () => {
+    let seen:
+      | { ownerId: unknown; writeKey: unknown; requiredBytes: number }
+      | undefined;
+    await using setup = await startTestRelay({
+      isOwnerAllowedToWrite: (ownerId, writeKey, requiredBytes) => {
+        seen = { ownerId, writeKey, requiredBytes };
+        return true;
+      },
+    });
+    const socket = await setupRelayWebSocket(
+      `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
+    );
+    const response = socket.waitForMessage();
+    socket.send(
+      createProtocolUploadFromCrdtMessages(setupCryptoDeps(setup.run.deps))(
+        testAppOwner,
+        [testCreateCrdtMessage(testCreateId()(), 1, "x")],
+      ).message,
+    );
+
+    assertEqual(
+      await response,
+      createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Response,
+        errorCode: ProtocolErrorCode.NoError,
+      }).unwrap(),
+    );
+
+    assertNotUndefined(seen);
+    assertEqual(seen.ownerId, testAppOwner.id);
+    assertEqual(seen.writeKey, testAppOwner.writeKey);
+    assertTrue(seen.requiredBytes > 0);
+    assertEqual(
+      setup.driver.exec(sql`select count(*) as count from evolu_writeKey;`)
+        .rows,
+      [{ count: 1 }],
+    );
+  });
+
+  it("stores no write key when the write-key check refuses", async () => {
+    await using setup = await startTestRelay({
+      isOwnerAllowedToWrite: () => false,
+    });
+    const socket = await setupRelayWebSocket(
+      `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
+    );
+    const response = socket.waitForMessage();
+    socket.send(
+      createProtocolUploadFromCrdtMessages(setupCryptoDeps(setup.run.deps))(
+        testAppOwner,
+        [testCreateCrdtMessage(testCreateId()(), 1, "x")],
+      ).message,
+    );
+
+    assertEqual(
+      await response,
+      createProtocolMessageBuffer(testAppOwner.id, {
+        messageType: MessageType.Response,
+        errorCode: ProtocolErrorCode.WriteKeyError,
+      }).unwrap(),
+    );
+
+    assertEqual(
+      setup.driver.exec(sql`select count(*) as count from evolu_writeKey;`)
+        .rows,
+      [{ count: 0 }],
+    );
+    assertEqual(
+      setup.driver.exec(sql`select count(*) as count from evolu_message;`).rows,
+      [{ count: 0 }],
+    );
+  });
+
+  it("does not verify the write key after the first write stored it", async () => {
+    let calls = 0;
+    await using setup = await startTestRelay({
+      isOwnerAllowedToWrite: () => {
+        calls++;
+        return true;
+      },
+    });
+    const socket = await setupRelayWebSocket(
+      `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
+    );
+    const createId = testCreateId();
+    for (const timestamp of [1, 2]) {
+      const response = socket.waitForMessage();
+      socket.send(
+        createProtocolUploadFromCrdtMessages(setupCryptoDeps(setup.run.deps))(
+          testAppOwner,
+          [testCreateCrdtMessage(createId(), timestamp, "x")],
+        ).message,
+      );
+      assertEqual(
+        await response,
+        createProtocolMessageBuffer(testAppOwner.id, {
+          messageType: MessageType.Response,
+          errorCode: ProtocolErrorCode.NoError,
+        }).unwrap(),
+      );
+    }
+
+    assertEqual(calls, 1);
+  });
+
   it("deletes an owner's data and closes the connections subscribed to it", async () => {
     await using disposer = new AsyncDisposableStack();
     const createId = testCreateId();

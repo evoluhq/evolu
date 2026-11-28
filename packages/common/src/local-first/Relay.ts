@@ -384,6 +384,28 @@ export const createRelaySqliteStorage =
               });
             }
 
+            // Verify the presented write key before the first write stores it,
+            // so a relay can bind an owner to a durable registration record.
+            if (
+              storedWriteKey.value === null &&
+              config.isOwnerAllowedToWrite !== undefined
+            ) {
+              const allowed = config.isOwnerAllowedToWrite(
+                ownerId,
+                writeKey,
+                newStoredBytes,
+              );
+              const isAllowed = isPromiseLike(allowed)
+                ? await allowed
+                : allowed;
+              if (!isAllowed) {
+                return err<RelayStorageWriteMessagesError>({
+                  type: "StorageWriteKeyError",
+                  ownerId,
+                });
+              }
+            }
+
             // Earlier releases choose how to insert a timestamp from these
             // bounds, so they stay true until the next schema migration drops
             // them.
