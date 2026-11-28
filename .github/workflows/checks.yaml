@@ -2,6 +2,10 @@ name: Checks
 
 on:
   workflow_call:
+    inputs:
+      skip-sqlite-core:
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -125,6 +129,7 @@ jobs:
   # built with AddressSanitizer and UndefinedBehaviorSanitizer. The
   # amalgamation comes from the pinned SQLite source.
   sqlite-core:
+    if: ${{ !inputs.skip-sqlite-core }}
     name: SQLite core (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -169,6 +174,7 @@ jobs:
   # tests, so they're a job of their own, which runs beside the sqlite-core
   # job's. The amalgamation comes from the pinned SQLite source.
   sqlite-core-c:
+    if: ${{ !inputs.skip-sqlite-core }}
     name: SQLite core C (${{ matrix.m32 && '32-bit' || matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30

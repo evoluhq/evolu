@@ -11,10 +11,54 @@ concurrency: ${{ github.workflow }}-${{ github.ref }}
 permissions: {}
 
 jobs:
+  # Only Release pushes in the upstream repository may skip unchanged SQLite
+  # core checks; all other invocations of Checks keep their full validation.
+  select-sqlite-core:
+    if: github.repository == 'evoluhq/evolu' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    name: Select SQLite core jobs
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      skip: ${{ steps.select.outputs.skip }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: ".nvmrc"
+          package-manager-cache: false
+
+      # The previous push alone may not have passed the SQLite checks.
+      - name: Find the latest successful Release push
+        id: baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          base=$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/workflows/release.yaml/runs" \
+            -f branch=main -f event=push -f status=success -f per_page=1 \
+            --jq '.workflow_runs[0].head_sha // empty') || base=""
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+
+      - name: Select
+        id: select
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ steps.baseline.outputs.base }}
+        run: node scripts/select-sqlite-core.mts --event="$EVENT" --base="$BASE"
+
   checks:
+    needs: select-sqlite-core
+    # A skipped/failed selection must not skip checks; preserve cancellation.
+    if: ${{ !cancelled() }}
     permissions:
       contents: read
     uses: ./.github/workflows/checks.yaml
+    with:
+      skip-sqlite-core: ${{ needs.select-sqlite-core.result == 'success' && needs.select-sqlite-core.outputs.skip == 'true' }}
 
   select-mode:
     # Prevents release automation from running on forks.
